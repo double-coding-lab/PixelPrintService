@@ -1,0 +1,24 @@
+{
+  "version": "2.0.0",
+  "project": {
+    "name": "pp-d2c",
+    "framework": "react",
+    "styleFormat": "scss"
+  },
+  "merge": {
+    "mode": "flat"
+  },
+  "unit": {
+    "figmaBase": 375,
+    "outputUnit": "px",
+    "outputBase": 750,
+    "scale": 2
+  },
+  "images": {
+    "assetsDir": "static/",
+    "imageBaseUrl": "https://assets.example.com/"
+  },
+  "output": {
+    "dir": "pages/"
+  }
+}

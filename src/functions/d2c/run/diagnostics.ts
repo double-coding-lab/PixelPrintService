@@ -1,0 +1,324 @@
+import { createHash } from 'node:crypto';
+import type { Sequelize } from 'sequelize';
+import { Op } from 'sequelize';
+import type { D2cRun } from '@/models/D2cRun';
+import type { D2cTimeline } from '@/models/D2cTimeline';
+import type { D2cAgentCheckpoint } from '@/models/D2cAgentCheckpoint';
+import { ownedSession, requireIdentifier, SessionError } from '../session/access';
+import { toolFeedbackSchema } from './toolFeedback';
+import { runFailureSchema } from './errors';
+import { modelActivitySchema } from './agent/modelActivity';
+
+const tools = new Set([
+  'prepare_slices',
+  'list_files',
+  'read_file',
+  'write_file',
+  'delete_file',
+  'figma',
+  'check_rules',
+  'delegate_agent',
+  'wait_subagents',
+  'ask_user',
+]);
+const terminal = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
+type Step = {
+  id: string;
+  type: 'model' | 'tool' | 'summary' | 'subagent';
+  name: string;
+  status: 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown';
+  startedAt: string | null;
+  endedAt: string | null;
+  durationMs: number | null;
+  feedbackCode?: string;
+  /** 请求参数元数据，不代表网关实际采用的思考强度。 */
+  requestedReasoningEffort?: 'low' | 'high';
+  reasoningEscalated?: boolean;
+};
+
+/** 非法或缺失时间保持未知，不能把历史空值展示为1970年或0ms。 */
+function timestamp(value: unknown): string | null {
+  if (!(value instanceof Date) && typeof value !== 'string') return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
+/** 私有工具调用ID只用于内部配对，公开步骤用摘要标识而不回传原文。 */
+function stepId(value: string) {
+  return createHash('sha256').update(value).digest('hex').slice(0, 24);
+}
+
+/** 工具耗时含调用登记至返回之间的排队等待；窗口缺一端时明确保持未知。 */
+function executionSteps(rows: D2cTimeline[], status: string): Step[] {
+  const steps: Step[] = [];
+  const models = new Map<string, Step>();
+  const calls = new Map<string, Step>();
+  for (const row of rows) {
+    const at = timestamp(row.createdAt);
+    const data = row.displayPayload ?? {};
+    if (row.kind === 'model_status') {
+      const parsed = modelActivitySchema.safeParse(data);
+      if (!parsed.success) continue;
+      const event = parsed.data;
+      let step = models.get(event.operationId);
+      if (!step || event.status === 'started') {
+        step = {
+          id: stepId(`model:${event.operationId}:${row.seq}`),
+          type:
+            event.scope === 'summary'
+              ? 'summary'
+              : event.scope === 'generation'
+                ? 'model'
+                : 'subagent',
+          name:
+            event.scope === 'summary'
+              ? '上下文摘要'
+              : event.scope === 'design'
+                ? '设计分析模型'
+                : event.scope === 'review'
+                  ? '代码审查模型'
+                  : event.scope === 'rule_scan'
+                    ? '规则扫描模型'
+                    : event.scope === 'ui'
+                      ? 'UI 实现模型'
+                      : '模型请求',
+          status: 'running',
+          startedAt: event.status === 'started' ? at : null,
+          endedAt: null,
+          durationMs: null,
+        };
+        models.set(event.operationId, step);
+        steps.push(step);
+      }
+      if (event.requestedReasoningEffort !== undefined)
+        step.requestedReasoningEffort = event.requestedReasoningEffort;
+      if (event.reasoningEscalated !== undefined)
+        step.reasoningEscalated = event.reasoningEscalated;
+      if (event.status !== 'started') {
+        step.status =
+          event.status === 'failed' && status === 'interrupted' ? 'interrupted' : event.status;
+        step.endedAt = at;
+        step.durationMs = event.durationMs ?? null;
+      }
+      continue;
+    }
+    if (row.kind !== 'tool_call' && row.kind !== 'tool_result') continue;
+    const callId =
+      typeof row.toolCallId === 'string'
+        ? row.toolCallId
+        : typeof data.callId === 'string'
+          ? data.callId
+          : null;
+    const name = typeof data.name === 'string' && tools.has(data.name) ? data.name : '未知工具';
+    let step = callId ? calls.get(callId) : undefined;
+    if (row.kind === 'tool_call' || !step || (name !== '未知工具' && step.name !== name)) {
+      step = {
+        id: stepId(`tool:${row.seq}:${callId ?? ''}`),
+        type: 'tool',
+        name,
+        status: row.kind === 'tool_call' ? 'running' : 'unknown',
+        startedAt: row.kind === 'tool_call' ? at : null,
+        endedAt: null,
+        durationMs: null,
+      };
+      if (callId) calls.set(callId, step);
+      steps.push(step);
+    }
+    if (row.kind === 'tool_result') {
+      const feedback = toolFeedbackSchema.safeParse(data.feedback);
+      if (feedback.success) step.feedbackCode = feedback.data.code;
+      step.status =
+        data.recovered === true
+          ? 'unknown'
+          : feedback.success
+            ? 'failed'
+            : data.status === 'failed'
+              ? 'failed'
+              : data.status === 'interrupted'
+                ? 'interrupted'
+                : data.status === 'completed'
+                  ? 'completed'
+                  : 'unknown';
+      step.endedAt = at;
+      if (data.recovered !== true && step.startedAt && at)
+        step.durationMs = Math.max(0, Date.parse(at) - Date.parse(step.startedAt));
+    }
+  }
+  for (const step of steps) {
+    if (step.status === 'running' && terminal.has(status))
+      step.status = status === 'failed' ? 'failed' : 'interrupted';
+  }
+  return steps;
+}
+
+/** 累计各轮时间跨度，首个结束事件固定结束时刻，避免停止后继续改写updatedAt而计入空闲。 */
+function sessionTiming(runs: D2cRun[], events: D2cTimeline[], observedAt: string) {
+  const ends = new Map<string, string>();
+  const stopped = new Set([...terminal, 'paused']);
+  for (const event of events) {
+    const at = timestamp(event.createdAt);
+    if (event.runId && at && stopped.has(event.displayPayload?.status as string)) {
+      const prior = ends.get(event.runId);
+      if (!prior || at < prior) ends.set(event.runId, at);
+    }
+  }
+  let elapsedMs = 0;
+  let runningCount = 0;
+  for (const run of runs) {
+    const start = timestamp(run.createdAt);
+    const ended = run.runId ? ends.get(run.runId) : undefined;
+    const isStopped = stopped.has(run.status);
+    const end = ended ?? (isStopped ? timestamp(run.updatedAt) : observedAt);
+    if (!start || !end) return { elapsedMs: null, runningCount: 0 };
+    elapsedMs += Math.max(0, Date.parse(end) - Date.parse(start));
+    if (!ended && !isStopped) runningCount++;
+  }
+  return { elapsedMs, runningCount };
+}
+
+/**
+ * 读取本人会话的有限诊断窗口，只选择元数据列，不创建图或反序列化检查点。
+ * 轮次与事件在执行期间可能继续推进，observedAt/timelineSeq标记本次读取范围。
+ */
+export async function readRunDiagnostics(
+  mysql: Sequelize,
+  userId: string,
+  sessionId: string,
+  selectedRunId?: string,
+) {
+  const { session } = await ownedSession(mysql, userId, sessionId);
+  if (selectedRunId) requireIdentifier(selectedRunId);
+  const runs = mysql.models.D2cRun as typeof D2cRun;
+  const timeline = mysql.models.D2cTimeline as typeof D2cTimeline;
+  const checkpoints = mysql.models.D2cAgentCheckpoint as typeof D2cAgentCheckpoint | undefined;
+  if (!runs || !timeline)
+    throw new SessionError(503, 'DIAGNOSTICS_UNAVAILABLE', '执行诊断暂不可用');
+  /** 会话总时间包含全部轮次，仅读取时间/状态元数据，不受最近10轮菜单限制。 */
+  const sessionRuns = await runs.findAll({
+    where: { sessionId },
+    attributes: ['runId', 'status', 'createdAt', 'updatedAt'],
+    order: [
+      ['createdAt', 'DESC'],
+      ['id', 'DESC'],
+    ],
+  });
+  const recent = sessionRuns.slice(0, 10);
+  const runId = selectedRunId ?? session.activeRunId ?? recent[0]?.runId;
+  const run = runId
+    ? await runs.findOne({
+        where: { runId, sessionId },
+        attributes: [
+          'runId',
+          'sessionId',
+          'status',
+          'modelSnapshot',
+          'usage',
+          'error',
+          'createdAt',
+          'updatedAt',
+          'leaseExpiresAt',
+        ],
+      })
+    : null;
+  if (runId && (!run || run.runId !== runId || run.sessionId !== sessionId))
+    throw new SessionError(404, 'RUN_NOT_FOUND', '执行轮次不存在');
+  const rows = run
+    ? await timeline.findAll({
+        where: {
+          sessionId,
+          runId,
+          kind: { [Op.in]: ['model_status', 'tool_call', 'tool_result'] },
+        },
+        attributes: ['seq', 'kind', 'toolCallId', 'createdAt', 'displayPayload'],
+        order: [['seq', 'DESC']],
+        limit: 201,
+      })
+    : [];
+  const hasMore = rows.length > 200;
+  const steps = executionSteps(rows.slice(0, 200).reverse(), run?.status ?? 'unknown');
+  const checkpoint = checkpoints
+    ? await checkpoints.findOne({
+        where: { sessionId, threadId: `d2c:${sessionId}`, checkpointNs: '' },
+        attributes: ['createdAt', 'updatedAt'],
+        order: [
+          ['createdAt', 'DESC'],
+          ['id', 'DESC'],
+        ],
+      })
+    : null;
+  const timeEvents = await timeline.findAll({
+    where: { sessionId, kind: 'run_status' },
+    attributes: ['runId', 'createdAt', 'displayPayload'],
+  });
+  const observedAt = new Date().toISOString();
+  const sessionTime = sessionTiming(sessionRuns, timeEvents, observedAt);
+  const createdAt = timestamp(run?.createdAt);
+  const finishedAt = run && terminal.has(run.status) ? timestamp(run.updatedAt) : null;
+  const expiresAt = timestamp(run?.leaseExpiresAt);
+  const live = run && (run.status === 'running' || run.status === 'stopping');
+  const active = live ? steps.find((step) => step.status === 'running') : null;
+  const savedAt = timestamp(checkpoint?.updatedAt) ?? timestamp(checkpoint?.createdAt);
+  /** 只计已保存供应商用量，未报告时Token保持null，不把未知用量当作零成本。 */
+  const count = (name: string) => {
+    const value = run?.usage?.[name];
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  };
+  const reportedRequests = count('reportedRequests');
+  const failure = run?.error && runFailureSchema.safeParse(run.error.failure);
+  const model = run?.modelSnapshot?.MODEL_NAME;
+  return {
+    sessionId,
+    runId: run?.runId ?? null,
+    status: run?.status ?? null,
+    timelineSeq: Math.max(session.timelineSeq, ...rows.map((row) => row.seq ?? 0)),
+    observedAt,
+    sessionElapsedMs: sessionTime.elapsedMs,
+    sessionRunningCount: sessionTime.runningCount,
+    modelName: typeof model === 'string' && /^[A-Za-z0-9_.:/-]{1,128}$/.test(model) ? model : null,
+    createdAt,
+    finishedAt,
+    elapsedMs: createdAt
+      ? Math.max(0, Date.parse(finishedAt ?? observedAt) - Date.parse(createdAt))
+      : null,
+    lease: {
+      expiresAt,
+      expired: Boolean(live && expiresAt && Date.parse(expiresAt) <= Date.parse(observedAt)),
+    },
+    runs: recent
+      .filter((row) => typeof row.runId === 'string')
+      .map((row) => ({
+        runId: row.runId!,
+        status: row.status,
+        createdAt: timestamp(row.createdAt),
+      })),
+    current: active ? { type: active.type, name: active.name, startedAt: active.startedAt } : null,
+    steps,
+    hasMore,
+    checkpoint: {
+      available: !!savedAt,
+      savedAt,
+      scope: 'session' as const,
+      continuation:
+        run?.runId === session.activeRunId && run.status === 'waiting_input'
+          ? ('answer' as const)
+          : run?.runId === session.activeRunId && run.status === 'interrupted'
+            ? ('resume' as const)
+            : ('none' as const),
+    },
+    usage: {
+      requests: count('requests'),
+      reportedRequests,
+      completedRequests: count('completedRequests'),
+      failedRequests: count('failedRequests'),
+      interruptedRequests: count('interruptedRequests'),
+      pendingRequests: count('pendingRequests'),
+      unreportedRequests: count('unreportedRequests'),
+      usageComplete:
+        typeof run?.usage?.usageComplete === 'boolean' ? run.usage.usageComplete : null,
+      inputTokens: reportedRequests ? count('inputTokens') : null,
+      outputTokens: reportedRequests ? count('outputTokens') : null,
+      totalTokens: reportedRequests ? count('totalTokens') : null,
+    },
+    failure: failure && failure.success ? failure.data : null,
+  };
+}

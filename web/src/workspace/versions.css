@@ -1,0 +1,137 @@
+.versions-disclosure {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 48%;
+  overflow: auto;
+  border-top: 1px solid var(--line, #e0e2e6);
+}
+.versions-disclosure > summary {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 12px;
+  color: var(--muted, #858a94);
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+.versions-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.versions-disclosure > summary > .icon {
+  width: 12px;
+  height: 12px;
+}
+.versions-disclosure[open] > summary > .icon {
+  transform: rotate(90deg);
+}
+.versions-heading {
+  margin-right: auto;
+}
+.versions-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.versions-actions .icon {
+  width: 14px;
+  height: 14px;
+}
+.versions-expand-label,
+.versions-collapse-label {
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+.versions-disclosure:not([open]) .versions-collapse-label,
+.versions-disclosure[open] .versions-expand-label {
+  display: none;
+}
+.versions-disclosure > .versions-panel {
+  max-height: none;
+  overflow: visible;
+  border-top: 0;
+}
+
+.versions-panel {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  max-height: 48%;
+  padding: 10px 12px;
+  overflow: auto;
+  border-top: 1px solid var(--line, #e0e2e6);
+  background: #fafafb;
+}
+
+.version-entry-heading,
+.version-entry-actions,
+.versions-pending {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.versions-panel .versions-hint {
+  margin: 0;
+  color: #626975;
+  font-size: 12px;
+}
+
+.versions-scroll {
+  min-height: 0;
+  flex-shrink: 0;
+}
+
+.versions-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.version-entry {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line, #e0e2e6);
+  border-radius: 6px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+
+.version-entry-heading > strong {
+  min-width: 0;
+  flex: 1;
+}
+
+.version-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: #626975;
+  font-size: 12px;
+}
+
+.versions-panel .version-error {
+  margin: 0;
+  color: #b42318;
+}
+
+.versions-pending {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.versions-panel > .ant-alert,
+.versions-panel > .ant-pagination {
+  flex-shrink: 0;
+}

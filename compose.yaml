@@ -1,0 +1,51 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: pixelprint
+      MYSQL_USER: pixelprint
+      MYSQL_PASSWORD: ${PIXELPRINT_DB_PASSWORD:-change-this-database-password}
+      MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+    ports:
+      - '127.0.0.1:3306:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h localhost --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 40
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  app:
+    build: .
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./project.config.json:/app/project.config.json:ro
+      - app_data:/app/.data
+      - app_runtime:/app/.runtime
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ['sh', '-c', 'npm run db:init && npm start']
+    restart: unless-stopped
+volumes:
+  mysql_data:
+  redis_data:
+  app_data:
+  app_runtime:

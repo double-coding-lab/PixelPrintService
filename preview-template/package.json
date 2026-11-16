@@ -1,0 +1,31 @@
+{
+  "name": "pixelprint-h5-preview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4180 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build",
+    "serve": "vite preview --host 127.0.0.1 --port 4180 --strictPort",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native-web": "0.21.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "4.7.0",
+    "postcss-px-to-viewport-8-plugin": "1.2.5",
+    "sass": "1.93.2",
+    "typescript": "5.9.3",
+    "vite": "6.4.3"
+  }
+}

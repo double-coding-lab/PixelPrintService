@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.runtime-data/
+.online-d2c-tasks/
+.d2c-cache/
+pixelprint/
+.Knowledge/
+.task/
+.codex/
+.claude/
+package-lock.json
+.env
+.env.*

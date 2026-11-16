@@ -1,0 +1,252 @@
+.subagent-view {
+  border: 0;
+  background: transparent;
+  color: #426ec9;
+  cursor: pointer;
+  font: inherit;
+  padding: 0 2px;
+  white-space: nowrap;
+  align-self: start;
+  flex-shrink: 0;
+}
+.subagent-view:hover {
+  text-decoration: underline;
+}
+.subagent-view:focus-visible {
+  outline: 2px solid #426ec9;
+  outline-offset: 2px;
+}
+.subagent-activity-description {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.subagent-drawer .ant-drawer-body {
+  padding: 20px 24px 32px;
+}
+.subagent-transcript {
+  min-width: 0;
+  font-size: 13px;
+}
+.subagent-identity,
+.subagent-note,
+.subagent-empty {
+  color: #777b83;
+  font-size: 12px;
+}
+.subagent-identity {
+  overflow-wrap: anywhere;
+  margin-top: 0;
+}
+.subagent-overview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 16px;
+}
+.subagent-overview strong {
+  font-size: 14px;
+}
+.subagent-overview > span {
+  color: #667085;
+  font-size: 12px;
+}
+.subagent-overview > span[data-status='completed'] {
+  color: #388165;
+}
+.subagent-overview > span[data-status='failed'] {
+  color: #bd4a4a;
+}
+.subagent-overview time {
+  margin-left: auto;
+  font-size: 11px;
+  color: #98a0ad;
+}
+.subagent-transcript > ol {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+.subagent-transcript > ol > li {
+  margin: 0 0 20px;
+  overflow-wrap: anywhere;
+}
+.subagent-entry-heading {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 11px;
+  color: #9299a5;
+}
+.subagent-message .markdown-message {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.75;
+  max-height: none;
+  overflow: visible;
+}
+.subagent-message .markdown-message p {
+  margin: 8px 0;
+}
+.subagent-message .markdown-message li {
+  padding: 0;
+  border: 0;
+  margin: 4px 0;
+}
+.subagent-scope,
+.subagent-task,
+.subagent-processing {
+  min-width: 0;
+  font-size: 12px;
+}
+.subagent-scope > summary,
+.subagent-task > summary,
+.subagent-processing > summary {
+  cursor: pointer;
+  color: #687282;
+  padding: 8px 0;
+}
+.subagent-scope summary > span,
+.subagent-processing summary > span {
+  margin-left: 6px;
+  color: #98a0ad;
+  font-size: 11px;
+}
+.subagent-task > summary {
+  display: list-item;
+}
+.subagent-task summary time {
+  margin-left: 10px;
+  color: #98a0ad;
+  font-size: 11px;
+}
+.subagent-task .markdown-message {
+  padding: 8px 14px;
+  border-left: 2px solid #e7eaf0;
+}
+.subagent-scope {
+  border-bottom: 1px solid #edf0f4;
+  padding-bottom: 8px;
+}
+.subagent-scope > ul {
+  list-style: none;
+  padding: 4px 0 4px 14px;
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+}
+.subagent-scope li {
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+}
+.subagent-scope code {
+  font-size: 11px;
+  color: #677383;
+}
+.subagent-scope p {
+  color: #98a0ad;
+}
+.subagent-processing-list {
+  margin: 4px 0;
+  padding-left: 12px;
+  border-left: 1px solid #e7eaf0;
+  max-height: 45dvh;
+  overflow: auto;
+}
+.subagent-tool {
+  min-width: 0;
+  padding: 4px 0;
+}
+.subagent-tool > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  padding: 6px 2px;
+  list-style: none;
+}
+.subagent-tool > summary::-webkit-details-marker {
+  display: none;
+}
+.subagent-tool > summary::before {
+  content: '›';
+  color: #a4acb8;
+}
+.subagent-tool[open] > summary::before {
+  transform: rotate(90deg);
+}
+.subagent-tool summary code {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #586779;
+}
+.subagent-tool-detail {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #8c95a3;
+  font-size: 11px;
+}
+.subagent-tool-state {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #8c95a3;
+}
+.subagent-tool[data-status='tool_feedback'] .subagent-tool-state {
+  color: #ad783b;
+}
+.subagent-tool[data-status='tool_failed'] .subagent-tool-state {
+  color: #bd4a4a;
+}
+.subagent-tool-meta {
+  padding: 4px 14px 10px;
+  color: #8c95a3;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.subagent-tool-meta p {
+  margin: 6px 0;
+}
+.subagent-tool-meta > code {
+  display: block;
+}
+.subagent-feedback {
+  color: #ad783b;
+}
+.subagent-loading {
+  padding: 12px 0;
+  color: #777b83;
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .subagent-drawer .ant-drawer-body {
+    padding: 16px;
+  }
+  .subagent-tool-detail {
+    display: none;
+  }
+  .subagent-tool-state {
+    margin-left: auto;
+  }
+}
+.subagent-drawer-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.subagent-drawer-title code {
+  font-size: 11px;
+  font-weight: 400;
+  color: #9299a5;
+}
+
+.subagent-load-status {
+  margin: 12px 0;
+  color: #7b8493;
+  font-size: 12px;
+}
+
+.subagent-reasoning {
+  padding: 10px 0;
+}

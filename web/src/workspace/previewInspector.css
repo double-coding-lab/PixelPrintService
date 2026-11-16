@@ -1,0 +1,217 @@
+.preview-inspector {
+  position: fixed;
+  z-index: 1100;
+  left: 12px;
+  top: 12px;
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #dce3ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #344054;
+  font-size: 12px;
+  box-shadow:
+    0 16px 48px #1d33592b,
+    0 2px 8px #1d335914;
+}
+.preview-inspector.is-hover {
+  pointer-events: none;
+}
+.preview-inspector.is-hover .preview-inspector-heading {
+  cursor: default;
+}
+.preview-inspector-heading,
+.preview-inspector-identity,
+.preview-inspector-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.preview-inspector-heading {
+  flex-shrink: 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: #f7f9fc;
+  border-bottom: 1px solid #edf0f5;
+}
+.preview-inspector-heading:focus-visible {
+  outline: 2px solid #7096d5;
+  outline-offset: -2px;
+}
+.preview-inspector.is-dragging .preview-inspector-heading {
+  cursor: grabbing;
+}
+.preview-inspector-grip {
+  color: #98a2b3;
+  font-size: 18px;
+}
+.preview-inspector-identity {
+  flex-wrap: wrap;
+}
+.preview-inspector-identity strong,
+.preview-inspector-size,
+.preview-inspector-selector code,
+.preview-inspector-fields dd,
+.preview-inspector-metrics dd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.preview-inspector-identity strong {
+  color: #345fa4;
+  overflow-wrap: anywhere;
+}
+.preview-inspector-indicator {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #477bd4;
+}
+.preview-inspector-size {
+  color: #69768b;
+  font-size: 11px;
+}
+.preview-inspector-content {
+  min-height: 0;
+  max-height: 270px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px;
+}
+.preview-inspector-selector {
+  justify-content: space-between;
+}
+.preview-inspector-selector code {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  padding: 5px 7px;
+  border-radius: 4px;
+  background: #f3f5f8;
+  color: #475569;
+  user-select: text;
+}
+.preview-inspector-selector button {
+  flex-shrink: 0;
+}
+.preview-inspector-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+  margin: 12px 0;
+}
+.preview-inspector-metrics dt {
+  margin-bottom: 3px;
+  color: #8791a2;
+  font-size: 11px;
+}
+.preview-inspector-metrics dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-inspector-details {
+  border-top: 1px solid #edf0f5;
+  padding-top: 8px;
+}
+.preview-inspector-details summary {
+  cursor: pointer;
+  color: #6b778c;
+  user-select: none;
+}
+.preview-inspector-details summary span {
+  margin-left: 4px;
+  color: #98a2b3;
+  font-size: 11px;
+}
+.preview-inspector-fields {
+  display: grid;
+  grid-template-columns: minmax(80px, max-content) minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 10px 0 0;
+}
+.preview-inspector-fields dt {
+  color: #8791a2;
+}
+.preview-inspector-fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+}
+.preview-inspector-copy,
+.preview-inspector-hint,
+.preview-inspector-waiting {
+  color: #8791a2;
+  font-size: 11px;
+}
+.preview-inspector-hint {
+  margin: 8px 0 0;
+}
+.preview-inspector-waiting {
+  margin: 0;
+  padding: 12px;
+}
+@media (max-width: 600px) {
+  .preview-inspector-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.preview-inspector-current-class {
+  align-items: flex-start;
+}
+.preview-inspector-selector-details {
+  margin-top: 8px;
+}
+.preview-inspector-selector-details > summary {
+  color: #8791a2;
+  font-size: 11px;
+  cursor: pointer;
+}
+.preview-inspector-selector-details > .preview-inspector-selector {
+  align-items: flex-start;
+  margin-top: 6px;
+}
+
+.preview-inspector-source-trigger.ant-btn {
+  margin-top: 6px;
+  padding-inline: 0;
+  color: #71829b;
+  font-size: 11px;
+}
+.preview-inspector-source-trigger .icon,
+.preview-inspector-source-link .icon {
+  width: 12px;
+  height: 12px;
+}
+.preview-inspector-source-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  margin-left: 3px;
+  border: 0;
+  border-radius: 3px;
+  color: #8b96a8;
+  background: transparent;
+  cursor: pointer;
+}
+.preview-inspector-source-link:hover,
+.preview-inspector-source-link:focus-visible {
+  color: #426ec9;
+  background: #edf2fc;
+}

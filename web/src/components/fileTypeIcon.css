@@ -1,0 +1,48 @@
+.file-type-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  vertical-align: -3px;
+  color: #7c8798;
+}
+
+.file-type-icon--folder {
+  color: #c5963d;
+}
+.file-type-icon--javascript {
+  color: #c29a28;
+}
+.file-type-icon--typescript,
+.file-type-icon--react-typescript {
+  color: #3178c6;
+}
+.file-type-icon--react-javascript {
+  color: #139fba;
+}
+.file-type-icon--css {
+  color: #4d76cf;
+}
+.file-type-icon--sass {
+  color: #bf6795;
+}
+.file-type-icon--json {
+  color: #a18a36;
+}
+.file-type-icon--html {
+  color: #d66b42;
+}
+.file-type-icon--markdown {
+  color: #657eac;
+}
+.file-type-icon--image {
+  color: #4b9b7c;
+}
+
+.file-type-icon-letter {
+  fill: #fff;
+  stroke: none;
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+}

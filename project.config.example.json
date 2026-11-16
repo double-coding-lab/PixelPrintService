@@ -1,0 +1,83 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "publicUrl": "http://localhost:8080"
+  },
+  "database": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "name": "pixelprint",
+    "username": "pixelprint",
+    "password": "change-this-database-password"
+  },
+  "redis": {
+    "url": "redis://127.0.0.1:6379"
+  },
+  "auth": {
+    "sessionSecret": "",
+    "sessionTtlSeconds": 86400,
+    "users": []
+  },
+  "logging": {
+    "level": "info"
+  },
+  "storage": {
+    "driver": "local",
+    "directory": ".data/files",
+    "publicUrl": "http://localhost:8080/files",
+    "bucket": "pixelprint",
+    "region": "us-east-1",
+    "endpoint": "",
+    "accessKeyId": "",
+    "secretAccessKey": "",
+    "forcePathStyle": true
+  },
+  "network": {
+    "proxyUrl": ""
+  },
+  "runtime": {
+    "modelConfigs": [
+      {
+        "MODEL_BASE_URL": "http://127.0.0.1:11434/v1",
+        "MODEL_NAME": "qwen2.5-coder:32b",
+        "MODEL_API_KEY": "local",
+        "contextBudgetTokens": 128000,
+        "reasoningPolicy": "provider-default"
+      }
+    ],
+    "d2c": {
+      "execution": {
+        "workRoot": ".runtime/runs",
+        "concurrency": 2,
+        "pollIntervalMs": 1000,
+        "heartbeatMs": 10000,
+        "leaseMs": 60000,
+        "runTimeoutMs": 3600000,
+        "maxTurns": 120
+      },
+      "network": {
+        "allowedExternalHosts": [
+          "api.figma.com",
+          "*.figma.com",
+          "*.figmausercontent.com",
+          "*.amazonaws.com"
+        ]
+      },
+      "storage": {
+        "enabled": true
+      },
+      "secrets": {
+        "activeKeyId": "primary",
+        "keys": {
+          "primary": ""
+        }
+      },
+      "limits": {
+        "textFileBytes": 2097152,
+        "filesPerSession": 500,
+        "uploadBytes": 30000000
+      }
+    }
+  }
+}

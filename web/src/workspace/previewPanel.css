@@ -1,0 +1,100 @@
+@import './sessionFeedback.css';
+
+.version-preview-panel {
+  min-width: 0;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid #e0e2e6;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.version-preview-panel .version-preview-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.version-preview-panel label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  color: #626d7f;
+  font-size: 13px;
+}
+
+.version-preview-panel select {
+  width: 320px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #dedfe2;
+  border-radius: 4px;
+  background: #fff;
+  color: #25272b;
+  font: inherit;
+}
+
+.version-preview-panel p {
+  overflow-wrap: anywhere;
+}
+
+.version-preview-panel .ant-alert {
+  margin: 12px 0;
+}
+
+.version-preview-panel .version-preview-note {
+  margin: 0 0 12px;
+  color: #626d7f;
+  font-size: 12px;
+}
+
+.version-preview-panel .version-preview-placeholder {
+  margin: 0;
+  padding: 24px 12px;
+  border: 1px solid #e0e2e6;
+  border-radius: 4px;
+  color: #626d7f;
+  font-size: 13px;
+  text-align: center;
+}
+
+.version-preview-panel .version-preview-viewport {
+  max-width: 100%;
+  padding: 12px 0;
+  overflow: auto;
+  border: 1px solid #e0e2e6;
+  border-radius: 4px;
+  background: #f7f7f8;
+}
+
+.version-preview-panel iframe {
+  display: block;
+  height: 640px;
+  margin: 0 auto;
+  border: 0;
+  background: #fff;
+}
+
+/* 版本详情内的预览面板沿用外层标签页容器。 */
+.work-detail-tabs .version-preview-panel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+@media (max-width: 600px) {
+  .version-preview-panel label {
+    width: 100%;
+  }
+
+  .version-preview-panel select {
+    flex: 1;
+    width: 100%;
+  }
+}

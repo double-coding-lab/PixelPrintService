@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.runtime/
+.data/
+project.config.json
+.env
+preview-browser/.browsers/
+image-compression/.venv/
+__pycache__/
+*.log
+.DS_Store
+*.private.json

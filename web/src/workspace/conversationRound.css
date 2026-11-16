@@ -1,0 +1,146 @@
+/* Import after styles.css. Process height follows the actual conversation viewport. */
+.conversation-process {
+  min-width: 0;
+}
+
+.conversation-process > summary {
+  width: fit-content;
+  max-width: 100%;
+  color: #78818e;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.conversation-process > summary:focus-visible,
+.conversation-process .activity-entries:focus-visible {
+  outline: 2px solid #648bd3;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.conversation-process .activity-entries {
+  box-sizing: border-box;
+  max-height: min(28rem, 60dvh, var(--conversation-process-max-height, 60dvh));
+  overflow: auto;
+  overscroll-behavior: auto;
+  scrollbar-gutter: stable;
+}
+
+.conversation-process .subagent-activity-description {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.conversation-process .subagent-view {
+  flex-shrink: 0;
+}
+
+.conversation-current-activity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 10px;
+  color: #647084;
+  font-size: 13px;
+}
+
+.conversation-current-activity time {
+  color: #8b94a2;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.execution-progress {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 10px 16px;
+  color: #78818e;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.execution-progress strong {
+  color: #465367;
+  font-weight: 500;
+}
+
+.execution-progress-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #4775c6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-process.is-active .activity-marker {
+    animation: none;
+  }
+}
+
+.model-reasoning {
+  flex: 1;
+  min-width: 0;
+  color: #78818e;
+  overflow-wrap: anywhere;
+}
+
+.model-reasoning > summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.model-reasoning .markdown-message {
+  margin-top: 8px;
+  font-size: inherit;
+  color: inherit;
+}
+
+.execution-progress-content {
+  min-width: 0;
+  flex: 1;
+}
+.execution-progress-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.execution-progress-note {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 4px;
+  line-height: 1.6;
+  font-size: 12px;
+}
+.execution-progress-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8b94a2;
+}
+
+.event-reply-history > details > summary {
+  color: #8b94a2;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 6px 0;
+}
+.event-reply-history > details > summary:hover {
+  color: #426dcb;
+}
+.event-reply-history > details > ol {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid #edf0f4;
+}

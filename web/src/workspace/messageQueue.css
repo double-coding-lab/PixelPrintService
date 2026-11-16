@@ -1,0 +1,109 @@
+.message-queue {
+  flex: none;
+  padding: 4px 18px 8px;
+}
+.message-queue-heading {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+  color: #969ba2;
+  font-size: 11px;
+  line-height: 20px;
+}
+.message-queue-count {
+  font-variant-numeric: tabular-nums;
+}
+.message-queue-count::before {
+  content: '·';
+  margin-right: 5px;
+}
+.message-queue ol {
+  max-height: min(22dvh, 132px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.message-queue li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 3px 0;
+}
+.queued-message-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.queued-message-content > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #81868e;
+  font-size: 12px;
+  line-height: 20px;
+}
+.queued-message-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.queued-message-meta > small {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #a0a5ac;
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.queued-message-meta .icon {
+  width: 11px;
+  height: 11px;
+}
+.queued-message-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.queued-message-actions .ant-btn {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border-radius: 4px;
+  color: #8d939c;
+}
+.queued-message-actions .icon {
+  width: 13px;
+  height: 13px;
+}
+.message-queue li:hover .queued-message-actions,
+.message-queue li:focus-within .queued-message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.message-queue li:hover .queued-message-content > span,
+.message-queue li:focus-within .queued-message-content > span {
+  color: #555d68;
+}
+.message-queue > .ant-alert {
+  margin-bottom: 8px;
+}
+@media (hover: none) {
+  .queued-message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
