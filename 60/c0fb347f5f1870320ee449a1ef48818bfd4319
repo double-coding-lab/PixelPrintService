@@ -1,0 +1,59 @@
+test/generationEditing.test.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 1-227
+src/functions/d2c/run/generationPlan.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 1-43
+src/functions/d2c/run/agent/agent.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 448-469,660-670,958,1370-1372,1374-1375,1809-1812
+web/src/workspace/types.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 132,182
+src/functions/d2c/run/toolActivity.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 37-38
+web/src/workspace/currentActivity.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 15,33,159-164,167-169
+src/functions/d2c/run/agent/subagentTools.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 10-18,129-140
+src/functions/d2c/run/history.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 24
+src/functions/d2c/run/errors.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 76,116
+src/functions/d2c/run/toolFeedback.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 5-12
+web/src/workspace/timeline.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 120,348,367-368
+test/subagentCapabilities.test.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 1-305
+src/functions/d2c/run/tools.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 57-58,477,986-1037,1735-1746,1813-1814
+src/functions/d2c/run/editFile.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 1-29
+src/functions/d2c/run/types.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 68-76
+test/subagentCheckpoint.test.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 1-674
+src/functions/d2c/run/instructions.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 42
+src/functions/d2c/run/subagent.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 49-57,77-81
+src/functions/d2c/run/execute.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 393
+src/functions/d2c/run/agent/subagentCheckpoint.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 173-175,265-266,291-308,312
+src/functions/d2c/run/agent/context.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 21-24,26,47-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "60c0fb347f5f1870320ee449a1ef48818bfd4319",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
