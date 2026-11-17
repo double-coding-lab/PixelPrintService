@@ -1,5 +1,7 @@
 import { previewDiagnostic, previewFailureDiagnostic, previewFailureDetails } from './diagnostics';
 import { PreviewBuildError } from './runner';
+import { missingPreviewFile } from './session';
+import type { D2cRun } from '@/models/D2cRun';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Op, Transaction, fn, col, literal, type Sequelize } from 'sequelize';
 import { createPreviewCache, type PreviewCache, type CachedPreviewFile } from './cache';
@@ -142,12 +144,32 @@ export function createPreviewService(
   ];
 
   /** 本地 miss 不向调用方声称 ready；纯查询不会启动构建。 */
-  async function visible(row: D2cPreview) {
+  async function visible(row: D2cPreview, activeRunId?: string | null) {
     const value = summary(row);
     if (row.sessionId && row.status === 'ready' && !(await cacheAvailable(row)))
       return rebuildErrors.has(cacheKey(row))
         ? { ...value, status: 'failed' as const, error: rebuildErrors.get(cacheKey(row))! }
         : { ...value, status: 'queued' as const };
+    if (
+      row.sessionId &&
+      row.status === 'failed' &&
+      activeRunId &&
+      value.error?.code === 'MODULE_NOT_FOUND'
+    ) {
+      const run = await (mysql.models.D2cRun as typeof D2cRun).findOne({
+        where: { runId: activeRunId, sessionId: row.sessionId },
+        attributes: ['status'],
+      });
+      if (run && ['queued', 'running'].includes(run.status)) {
+        const full = await find(row.previewId!);
+        const waitingForFile = missingPreviewFile(
+          value.error,
+          (full.buildManifest as Manifest).snapshot ?? [],
+        );
+        if (waitingForFile)
+          return { ...value, status: 'waiting_files', error: null, waitingForFile };
+      }
+    }
     return value;
   }
 
@@ -409,15 +431,24 @@ export function createPreviewService(
             break;
           }
         }
-        return { row: current, entries, fileRevision: session.fileRevision, lastReady };
+        return {
+          row: current,
+          entries,
+          fileRevision: session.fileRevision,
+          lastReady,
+          activeRunId: session.activeRunId,
+        };
       },
     );
     if (!result) return null;
-    const { row, ...state } = result;
+    const { row, activeRunId, ...state } = result;
     if (create && row.status === 'ready' && state.lastReady?.previewId !== row.previewId)
       void rebuild(row);
     return {
-      current: state.lastReady?.previewId === row.previewId ? summary(row) : await visible(row),
+      current:
+        state.lastReady?.previewId === row.previewId
+          ? summary(row)
+          : await visible(row, activeRunId),
       ...state,
     };
   }
@@ -538,16 +569,17 @@ export function createPreviewService(
         }
         return {
           currentRow: current,
+          activeRunId: input.session.activeRunId,
           lastReady,
           entries: input.entries,
           fileRevision: input.session.fileRevision,
         };
       },
     );
-    const { currentRow, ...rest } = result;
+    const { currentRow, activeRunId, ...rest } = result;
     if (create && currentRow?.status === 'ready' && !(await cacheAvailable(currentRow)))
       void rebuild(currentRow);
-    return { current: currentRow ? await visible(currentRow) : null, ...rest };
+    return { current: currentRow ? await visible(currentRow, activeRunId) : null, ...rest };
   }
 
   return {

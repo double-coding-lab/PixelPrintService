@@ -8,6 +8,7 @@ export type SessionPreviewSummary = {
   entryPath: string;
   fileRevision: number;
   validatedFileRevision?: number;
+  waitingForFile?: string;
   error?: { message: string; code?: string; file?: string; module?: string } | null;
 };
 export type SessionPreviewState = {
@@ -27,10 +28,11 @@ export function previewFileKey(files: FileInfo[]) {
   );
 }
 
-/** 只在当前构建尚未完成时跟踪，空入口、失败和成功均停止查询。 */
+/** 只在当前构建尚未完成时跟踪，等待生成文件时继续查询任务是否结束，其余终态停止查询。 */
 export function previewBuilding(state: SessionPreviewState | null) {
   return (
-    !!state?.current && ['queued', 'building', 'pending', 'running'].includes(state.current.status)
+    !!state?.current &&
+    ['queued', 'building', 'pending', 'running', 'waiting_files'].includes(state.current.status)
   );
 }
 

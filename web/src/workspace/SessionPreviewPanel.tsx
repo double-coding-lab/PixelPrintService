@@ -88,6 +88,7 @@ export default function SessionPreviewPanel({
   const watcher = useRef<ReturnType<typeof watchSessionPreview> | null>(null);
   const ready = state?.current?.status === 'ready' ? state.current : state?.lastReady;
   const building = previewBuilding(state);
+  const waiting = state?.current?.status === 'waiting_files';
   const loading =
     !error &&
     state?.current?.status !== 'failed' &&
@@ -159,15 +160,17 @@ export default function SessionPreviewPanel({
       <div className="session-preview-toolbar">
         <span role="status" className="session-preview-status">
           {loading && <Spin size="small" />}
-          {building
-            ? '正在更新预览'
-            : state?.current?.status === 'failed'
-              ? '构建失败'
-              : loading
-                ? '正在加载预览'
-                : ready
-                  ? '预览已就绪'
-                  : '等待页面入口'}
+          {waiting
+            ? '等待文件保存'
+            : building
+              ? '正在更新预览'
+              : state?.current?.status === 'failed'
+                ? '构建失败'
+                : loading
+                  ? '正在加载预览'
+                  : ready
+                    ? '预览已就绪'
+                    : '等待页面入口'}
           {shown && ` · 当前展示 r${shown.preview.fileRevision}`}
         </span>
         <Button
@@ -212,6 +215,14 @@ export default function SessionPreviewPanel({
         )}
         {ready?.target === 'rn' && <p className="muted">RN Web 兼容预览，实际效果以原生端为准。</p>}
         {error && <Alert type="error" showIcon title={error} />}
+        {waiting && (
+          <Alert
+            type="info"
+            showIcon
+            title="等待生成文件保存，保存后将自动更新预览"
+            description={state?.current?.waitingForFile}
+          />
+        )}
         {state?.current?.status === 'failed' && (
           <Alert
             type="error"
@@ -225,7 +236,9 @@ export default function SessionPreviewPanel({
             <div className="session-preview-loading" role="status" aria-live="polite">
               <div className="session-preview-loading-heading">
                 <Spin size="small" />
-                <span>{building ? '正在构建预览…' : '正在加载预览…'}</span>
+                <span>
+                  {waiting ? '等待文件保存…' : building ? '正在构建预览…' : '正在加载预览…'}
+                </span>
               </div>
               <Skeleton active title paragraph={{ rows: 5 }} />
             </div>

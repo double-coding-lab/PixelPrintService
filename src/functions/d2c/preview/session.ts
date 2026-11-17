@@ -1,3 +1,5 @@
+import path from 'node:path';
+import type { PreviewDiagnostic } from './diagnostics';
 import { createHash } from 'node:crypto';
 import type { Sequelize, Transaction } from 'sequelize';
 import type { D2cFile } from '../../../models/D2cFile';
@@ -175,4 +177,41 @@ export async function sessionPreviewInput(
       ]),
     ),
   };
+}
+
+/** 仅识别固定快照内导入者缺少的本地文件；包依赖和无法定位的诊断保持失败。 */
+export function missingPreviewFile(diagnostic: PreviewDiagnostic, snapshot: PreviewSnapshotFile[]) {
+  const { file, module } = diagnostic;
+  if (diagnostic.code !== 'MODULE_NOT_FOUND' || !file || !module) return;
+  if (!snapshot.some((item) => item.path === file && item.kind === 'source')) return;
+  const relative = module.startsWith('./');
+  /** 构建器将工作区绝对路径投影为 src/...；只接受导入者同目录下的明确文件路径。 */
+  const normalized =
+    module.startsWith(path.posix.dirname(file) + '/') &&
+    /\.(?:[jt]sx?|s?css|sass|json)$/i.test(module);
+  if (!relative && !normalized) return;
+  const candidate = path.posix.normalize(
+    relative ? path.posix.join(path.posix.dirname(file), module) : module,
+  );
+  try {
+    if (assertArtifactPath(candidate) !== candidate) return;
+  } catch {
+    return;
+  }
+  const candidates = [
+    candidate,
+    ...[
+      '.ts',
+      '.tsx',
+      '.js',
+      '.jsx',
+      '.json',
+      '/index.ts',
+      '/index.tsx',
+      '/index.js',
+      '/index.jsx',
+    ].map((extension) => candidate + extension),
+  ];
+  if (snapshot.some((item) => candidates.includes(item.path))) return;
+  return candidate;
 }
