@@ -1,3 +1,4 @@
+import { runGraphWithRecovery } from './graphRecovery';
 import { createBackgroundDelegations } from './backgroundDelegations';
 import {
   createReasoningMiddleware,
@@ -98,6 +99,8 @@ export type AgentRunInput = {
   inspectDelivery?: () => Promise<DeliverySnapshot>;
   deliveryAdmissionId?: string;
   onDeliveryRecovery?: (value: DeliveryRecovery) => void;
+  /** 图触顶后仅复核已保存文件的最新检查，不创建模型请求。 */
+  onGraphStepLimit?: () => Promise<void>;
   saveScanSnapshot?: (
     path: string,
     content: string,
@@ -442,6 +445,29 @@ export async function runAgent(input: AgentRunInput): Promise<{
       },
     ),
     tool(
+      ({ path, oldText, newText, expectedSha256 }) => {
+        if (path.startsWith(archivePrefix) || path.startsWith(resourcePrefix) || !input.tools.edit)
+          throw toolIssue(
+            'FILE_WRITE_NOT_ALLOWED',
+            'VALIDATION_FAILED',
+            { stage: 'tool', tool: 'edit_file' },
+            { path: path.slice(0, 1024) },
+          );
+        return track(input.tools.edit(path, oldText, newText, expectedSha256));
+      },
+      {
+        name: 'edit_file',
+        description:
+          '局部修改已读文本文件。先read_file取得完整文件sha256，oldText须精确且唯一匹配；使用expectedSha256防止覆盖并发变更。成功返回新的sha256，下次局部编辑使用新摘要。新文件用write_file；禁止借局部编辑改固定配置或证据。',
+        schema: z.object({
+          path: z.string(),
+          oldText: z.string().min(1),
+          newText: z.string(),
+          expectedSha256: z.string().regex(/^[a-f0-9]{64}$/),
+        }),
+      },
+    ),
+    tool(
       ({ path }) => {
         if (path.startsWith(archivePrefix) || path.startsWith(resourcePrefix))
           throw new Error('DEEP_READ_ONLY_PATH');
@@ -631,6 +657,17 @@ export async function runAgent(input: AgentRunInput): Promise<{
       }
       return result;
     };
+    if (childTools.edit) {
+      const edit = childTools.edit.bind(childTools);
+      childTools.edit = async (...args) => {
+        const result = await edit(...args);
+        if (!readToolFeedback(result)) {
+          saved.add(args[0]);
+          await progress?.wrote(args[0]);
+        }
+        return result;
+      };
+    }
     const event = {
       stage: 'subagent' as const,
       agentId: progress?.state.agentId ?? randomUUID(),
@@ -863,6 +900,34 @@ export async function runAgent(input: AgentRunInput): Promise<{
         }
         const child = await runAgent({
           checkpoint: progress?.checkpoint,
+          onGraphStepLimit: async () => {
+            if (role !== 'ui' || !writePaths.every((path) => saved.has(path))) return;
+            for (const directory of childTools.pendingRuleChecks()) {
+              await publish('message', undefined, {
+                message: {
+                  role: 'assistant',
+                  text: '已达到图步数边界，正在复核已保存文件与最新区块检查。',
+                },
+              });
+              let result: string;
+              try {
+                result = await childTools.rules(directory, 'block');
+              } catch (error) {
+                if (
+                  !(error instanceof ToolIssue) ||
+                  error.feedback.code !== 'RULES_FAILED' ||
+                  error.failure.code !== 'VALIDATION_FAILED'
+                )
+                  throw error;
+                result = JSON.stringify(error.feedback);
+              }
+              const issue = readToolFeedback(result);
+              if (issue) {
+                childFeedback = { tool: 'check_rules', detail: directory, feedback: issue };
+                await publish('tool_feedback', 'check_rules', childFeedback);
+              }
+            }
+          },
           continuingSubagent: Boolean(progress),
           recoverSubagentWrite: progress
             ? async (path, content, merge) => {
@@ -890,6 +955,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           ],
           instructions: [
             subagentInstructions(role, nativeScans.size > 0),
+            input.tools.outputPlan ?? '',
             input.userDecisions ?? '',
             ...(nativeScans.size ? [nativeScanInstructions(writePaths)] : []),
             `本次允许写入文件：${JSON.stringify(writePaths)}；只能写入这些精确路径，主Agent维护全局清单。`,
@@ -1143,6 +1209,15 @@ export async function runAgent(input: AgentRunInput): Promise<{
               message:
                 '子任务连续返回无效工具参数，已保存文件保留。请恢复原子任务并只纠正未完成的工具参数。',
             });
+          if ('message' in cause && cause.message === 'DEEP_GRAPH_STEP_LIMIT')
+            return incomplete('GRAPH_STEP_LIMIT', {
+              ...(childFeedback?.feedback?.code === 'RULES_FAILED' &&
+              childTools.pendingRuleChecks().length
+                ? { failure: childFeedback }
+                : {}),
+              message:
+                '子任务图步数达到上限，已保存检查点、文件和未完成项。优先按resume恢复同一子任务；若持续无交付进展，由主Agent读取交接上下文接管，不从头扫描。',
+            });
           if ('message' in cause && cause.message === 'DEEP_CONTEXT_BUDGET')
             return incomplete('CONTEXT_LIMIT', {
               files: [...saved],
@@ -1292,9 +1367,12 @@ export async function runAgent(input: AgentRunInput): Promise<{
         ]
       : [];
   let visionRejected = false;
+  const supportedTools = coreTools.filter(
+    (value) => value.name !== 'edit_file' || input.tools.edit,
+  );
   const controlledTools = input.specialist
-    ? coreTools.filter((value) => subagentToolsForRole(input.specialist!).includes(value.name))
-    : [...coreTools, ...delegatedTools, ...waitingTools, ...questionTools, ...previewTools];
+    ? supportedTools.filter((value) => subagentToolsForRole(input.specialist!).includes(value.name))
+    : [...supportedTools, ...delegatedTools, ...waitingTools, ...questionTools, ...previewTools];
   const textStream =
     input.onText && !input.specialist
       ? createAgentTextStream({
@@ -1728,7 +1806,10 @@ export async function runAgent(input: AgentRunInput): Promise<{
               ),
               invoke,
             );
-          if (!input.specialist && ['write_file', 'delete_file', 'check_rules'].includes(name))
+          if (
+            !input.specialist &&
+            ['write_file', 'edit_file', 'delete_file', 'check_rules'].includes(name)
+          )
             return delegationScheduler.exclusive(
               [String(request.toolCall.args.path ?? '')],
               invoke,
@@ -1988,33 +2069,74 @@ export async function runAgent(input: AgentRunInput): Promise<{
               throw new Error('DEEP_BACKGROUND_SUBAGENT_SCOPE_CHANGED');
           }
         }
-        const stream = await agent.stream(
-          /** 每轮重新发现同一固定包，显式升级资源后不会沿用旧目录元信息。 */
-          input.resume
-            ? new Command({ resume: { [input.resume.interruptId]: input.resume.answer } })
-            : { messages, ...(resources ? { skillsMetadata: null } : {}) },
-          {
-            ...checkpointConfig,
-            signal,
-            ...(!input.specialist && input.subagentProgress && input.checkpoint
-              ? { durability: 'sync' as const }
-              : {}),
-            streamMode: ['updates', 'messages'],
-            recursionLimit: input.maxTurns * 4 + 10,
-            callbacks: [tracingGuard],
+        await runGraphWithRecovery({
+          checkpoint: Boolean(input.checkpoint),
+          guard,
+          onLimit: input.onGraphStepLimit,
+          inspect: async () => {
+            await queue;
+            await guard();
+            const delivery = await input.inspectDelivery?.();
+            const snapshot = input.checkpoint
+              ? await agent.graph.getState(checkpointConfig!)
+              : undefined;
+            const pending = new Set<string>();
+            const stored = (snapshot?.values.messages ?? []) as BaseMessage[];
+            for (const message of stored) {
+              if (AIMessage.isInstance(message))
+                for (const call of message.tool_calls ?? [])
+                  pending.add(call.id ?? '__unidentified_tool__');
+              if (ToolMessage.isInstance(message)) pending.delete(message.tool_call_id);
+            }
+            return {
+              signature: delivery?.signature ?? '',
+              complete: Boolean(
+                input.specialist &&
+                  ['rule_scan', 'ui'].includes(input.specialist) &&
+                  delivery &&
+                  !delivery.problems.length &&
+                  !pending.size &&
+                  snapshot &&
+                  !snapshot.tasks.some((task) => task.interrupts?.length),
+              ),
+            };
           },
-        );
-        for await (const [mode, update] of stream) {
-          signal.throwIfAborted();
-          if (mode !== 'messages' || (!textStream && !reasoningStream)) continue;
-          const [message, metadata] = update;
-          const streamId = metadata.pixelprintStreamId;
-          if (typeof streamId === 'string' && AIMessageChunk.isInstance(message)) {
-            const reasoning = message.additional_kwargs?.reasoning_content;
-            if (typeof reasoning === 'string') await reasoningStream?.append(streamId, reasoning);
-            await textStream?.append(streamId, message.text);
-          }
-        }
+          finish: async () => {
+            await guard();
+            await agent.graph.updateState(checkpointConfig!, null, '__end__');
+            output = '平台已核对授权文件与最新检查，子任务交付完整。';
+          },
+          execute: async (resume, recursionLimit) => {
+            const stream = await agent.stream(
+              /** 原生图续作仅传 null，使用同一检查点和在途预算，不重新追加用户输入。 */
+              resume
+                ? null
+                : input.resume
+                  ? new Command({ resume: { [input.resume.interruptId]: input.resume.answer } })
+                  : { messages, ...(resources ? { skillsMetadata: null } : {}) },
+              {
+                ...checkpointConfig,
+                signal,
+                ...(input.checkpoint ? { durability: 'sync' as const } : {}),
+                streamMode: ['updates', 'messages'],
+                recursionLimit,
+                callbacks: [tracingGuard],
+              },
+            );
+            for await (const [mode, update] of stream) {
+              signal.throwIfAborted();
+              if (mode !== 'messages' || (!textStream && !reasoningStream)) continue;
+              const [message, metadata] = update;
+              const streamId = metadata.pixelprintStreamId;
+              if (typeof streamId === 'string' && AIMessageChunk.isInstance(message)) {
+                const reasoning = message.additional_kwargs?.reasoning_content;
+                if (typeof reasoning === 'string')
+                  await reasoningStream?.append(streamId, reasoning);
+                await textStream?.append(streamId, message.text);
+              }
+            }
+          },
+        });
         await queue;
         await guard();
         await flushBackgroundObservations();
