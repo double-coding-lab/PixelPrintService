@@ -14,6 +14,7 @@ const tools = new Set([
   'list_files',
   'read_file',
   'write_file',
+  'edit_file',
   'delete_file',
   'figma',
   'check_rules',
@@ -31,6 +32,10 @@ type Step = {
   endedAt: string | null;
   durationMs: number | null;
   feedbackCode?: string;
+  /** 客户端观测分段；缺值保持未知，不能推断网关内部排队。 */
+  gatewayRequestId?: string | null;
+  firstChunkMs?: number | null;
+  afterFirstChunkMs?: number | null;
   /** 请求参数元数据，不代表网关实际采用的思考强度。 */
   requestedReasoningEffort?: 'low' | 'high';
   reasoningEscalated?: boolean;
@@ -86,6 +91,9 @@ function executionSteps(rows: D2cTimeline[], status: string): Step[] {
           startedAt: event.status === 'started' ? at : null,
           endedAt: null,
           durationMs: null,
+          gatewayRequestId: null,
+          firstChunkMs: null,
+          afterFirstChunkMs: null,
         };
         models.set(event.operationId, step);
         steps.push(step);
@@ -94,9 +102,14 @@ function executionSteps(rows: D2cTimeline[], status: string): Step[] {
         step.requestedReasoningEffort = event.requestedReasoningEffort;
       if (event.reasoningEscalated !== undefined)
         step.reasoningEscalated = event.reasoningEscalated;
+      if (event.gatewayRequestId !== undefined) step.gatewayRequestId = event.gatewayRequestId;
+      if (event.firstChunkMs !== undefined) step.firstChunkMs = event.firstChunkMs;
+      if (event.afterFirstChunkMs !== undefined) step.afterFirstChunkMs = event.afterFirstChunkMs;
       if (event.status !== 'started') {
         step.status =
-          event.status === 'failed' && status === 'interrupted' ? 'interrupted' : event.status;
+          event.status === 'failed' && (event.interrupted || status === 'interrupted')
+            ? 'interrupted'
+            : event.status;
         step.endedAt = at;
         step.durationMs = event.durationMs ?? null;
       }

@@ -6,6 +6,13 @@ import { data, id } from './api';
 import { getEventFailure } from './timeline';
 import type { SessionDiagnostics } from './types';
 
+/** 新增字段可缺省，兼容旧诊断接口；服务端只投影校验后的计时与编号。 */
+type ModelTimingStep = SessionDiagnostics['steps'][number] & {
+  gatewayRequestId?: string | null;
+  firstChunkMs?: number | null;
+  afterFirstChunkMs?: number | null;
+};
+
 const statuses: Record<string, string> = {
   queued: '排队中',
   running: '执行中',
@@ -232,7 +239,11 @@ export function DiagnosticsContent({
           <h3>耗时步骤</h3>
           <span className="diagnostics-caption">{snapshot.steps.length} 条记录</span>
         </div>
-        <p className="diagnostics-note">工具含排队时间；缺少开始或结果的记录显示耗时未知。</p>
+        <p className="diagnostics-note">
+          工具含排队时间；缺少开始或结果的记录显示耗时未知。模型分段以客户端收到首个实际输出为界，
+          包括正文、思考或工具调用分片；无输出和旧记录保持未知。失败或中断的耗时截至请求结束。
+          无法测量网关内部排队，不能从首块耗时直接推断排队时间。
+        </p>
         {!snapshot.steps.length ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -240,7 +251,7 @@ export function DiagnosticsContent({
           />
         ) : (
           <ol className="diagnostics-steps">
-            {snapshot.steps.map((step) => (
+            {snapshot.steps.map((step: ModelTimingStep) => (
               <li key={step.id} data-status={step.status}>
                 <span className="diagnostics-step-icon">
                   <Icon
@@ -275,6 +286,24 @@ export function DiagnosticsContent({
                       {step.reasoningEscalated === true && ' · 校验后升级'}
                     </span>
                   )}
+                  {step.type !== 'tool' && (
+                    <dl className="diagnostics-model-timing">
+                      <div>
+                        <dt>请求开始→首块</dt>
+                        <dd>{diagnosticDuration(step.firstChunkMs ?? null)}</dd>
+                      </div>
+                      <div>
+                        <dt>首块→结束</dt>
+                        <dd>{diagnosticDuration(step.afterFirstChunkMs ?? null)}</dd>
+                      </div>
+                      <div className="diagnostics-gateway-id">
+                        <dt>网关请求编号</dt>
+                        <dd>
+                          <code>{step.gatewayRequestId ?? '未知'}</code>
+                        </dd>
+                      </div>
+                    </dl>
+                  )}
                   {typeof step.feedbackCode === 'string' && step.feedbackCode && (
                     <div className="diagnostics-feedback">
                       反馈分类：<code>{step.feedbackCode}</code>
@@ -282,6 +311,7 @@ export function DiagnosticsContent({
                   )}
                 </div>
                 <span className="diagnostics-step-duration">
+                  {step.type !== 'tool' && '总耗时 '}
                   {diagnosticDuration(stepDuration(step, now))}
                 </span>
               </li>
