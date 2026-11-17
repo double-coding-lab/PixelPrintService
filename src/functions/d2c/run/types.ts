@@ -65,6 +65,15 @@ export type SliceDesign = {
 export interface GenerationTools {
   /** 服务端固定输入摘要，用于子任务恢复失效判断，不注册为模型工具。 */
   subagentContext?(role?: string): Promise<string>;
+  /** 本轮统一的目录与合并约定，只由平台生成。 */
+  outputPlan?: string;
+  /** 按已读文件摘要精确替换一个片段，权限与完整写入相同。 */
+  edit?(
+    relative: string,
+    oldText: string,
+    newText: string,
+    expectedSha256: string,
+  ): Promise<string>;
   list(): Promise<string[]>;
   read(relative: string, resource: boolean, offset?: number, length?: number): Promise<string>;
   write(relative: string, content: string): Promise<string>;

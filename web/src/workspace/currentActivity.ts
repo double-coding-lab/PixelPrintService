@@ -12,6 +12,7 @@ const tools: Record<string, string> = {
   read_file: '读取规则与资料',
   figma: '查看设计稿',
   write_file: '保存代码',
+  edit_file: '局部修改代码',
   check_rules: '校验代码',
   build_preview: '构建预览',
   inspect_preview: '检查页面效果',
@@ -29,6 +30,7 @@ const toolPhases: Record<string, string> = {
   figma: '分析设计稿',
   prepare_slices: '准备切图',
   write_file: '生成代码',
+  edit_file: '调整代码',
   delete_file: '生成代码',
   check_rules: '校验代码',
   build_preview: '构建预览',
@@ -154,10 +156,17 @@ function activityContext(ordered: TimelineEntry[]) {
       const call = calls.get(data.callId);
       pending.delete(data.callId);
       const name = data.name ?? call?.data.name;
-      if (name === 'write_file' && !data.failure && !data.feedback && !data.interrupted) {
+      if (
+        ['write_file', 'edit_file'].includes(name ?? '') &&
+        !data.failure &&
+        !data.feedback &&
+        !data.interrupted
+      ) {
         const detail = data.detail || call?.data.detail;
         const path =
-          data.path || call?.data.path || detail?.match(/(?:写入文件|保存文件)[：:]\s*(.+)/)?.[1];
+          data.path ||
+          call?.data.path ||
+          detail?.match(/(?:写入文件|保存文件|局部修改文件)[：:]\s*(.+)/)?.[1];
         if (path) saved = { path: clean(path), at: entry.at };
       }
     }

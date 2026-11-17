@@ -54,6 +54,8 @@ import {
 import { inspectRnImageReferences } from './rnImageReferences';
 import { normalizeReadPath, resolveWorkspaceReadPath } from '../utils/readPath';
 import { inspectGenerationDelivery } from './delivery';
+import { editFileText } from './editFile';
+import { generationPlan } from './generationPlan';
 const executeFile = promisify(execFile);
 const figmaCommands: FailureCommand[] = [
   'verify-token',
@@ -472,6 +474,7 @@ export async function createGenerationTools(input: {
           : raw;
       return input.redact(
         JSON.stringify({
+          sha256: createHash('sha256').update(bytes).digest('hex'),
           totalCharacters: text.length,
           offset,
           content: text.slice(offset, offset + length),
@@ -979,6 +982,58 @@ export async function createGenerationTools(input: {
       if (/\.[cm]?[jt]sx?$/.test(relative) && !internal) changedSources.add(relative);
       if (!document) mutation++;
       return `已保存：${relative}`;
+    },
+    /** 精确替换与完整写入共用保存、修订及验收失效逻辑；整个过程由同一短队列保护。 */
+    async edit(relative, oldText, newText, expectedSha256) {
+      try {
+        if (normalizeRelativePath(relative) !== relative) throw new Error('INVALID_PATH');
+      } catch {
+        throw toolIssue(
+          'INVALID_ARGUMENT',
+          'VALIDATION_FAILED',
+          { stage: 'tool', tool: 'edit_file' },
+          { path: relative.slice(0, 1024) },
+        );
+      }
+      if (relative.startsWith('.d2c-cache/') || relative.startsWith('design-reference/'))
+        throw toolIssue('FILE_WRITE_NOT_ALLOWED', 'VALIDATION_FAILED', {
+          stage: 'tool',
+          tool: 'edit_file',
+        });
+      if (!isExecutionDocument(relative)) {
+        try {
+          assertArtifactPath(relative);
+        } catch {
+          throw toolIssue('FILE_WRITE_NOT_ALLOWED', 'VALIDATION_FAILED', {
+            stage: 'tool',
+            tool: 'edit_file',
+          });
+        }
+      }
+      const filename = await resolveWorkspacePath(restored.workspace, relative);
+      let current: string;
+      try {
+        current = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+          await fs.readFile(filename),
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+          throw toolIssue(
+            'FILE_NOT_FOUND',
+            'VALIDATION_FAILED',
+            { stage: 'tool', tool: 'edit_file' },
+            { path: relative },
+          );
+        throw error;
+      }
+      const content = editFileText(relative, current, oldText, newText, expectedSha256);
+      await tools.write(relative, content);
+      return JSON.stringify({
+        ok: true,
+        path: relative,
+        sha256: createHash('sha256').update(content).digest('hex'),
+        message: '片段已替换并保存',
+      });
     },
     /** 受保护图片先返回纠错；源码先提交删除再移除临时副本，存储异常仍终止。 */
     async remove(relative) {
@@ -1677,12 +1732,18 @@ export async function createGenerationTools(input: {
     scriptQueue = pending.catch(() => {});
     return pending;
   }
-  const scriptTools: Pick<GenerationTools, 'write' | 'remove' | 'figma' | 'rules' | 'slices'> = {
-    write: (relative, content) => runScriptAction(() => tools.write(relative, content)),
-    remove: (relative) => runScriptAction(() => tools.remove(relative)),
-    figma: (command, args) => runScriptAction(() => tools.figma(command, args)),
-    rules: (relative, mode) => runScriptAction(() => tools.rules(relative, mode)),
-    slices: (slug, options) => runScriptAction(() => tools.slices(slug, options)),
+  const scriptTools = {
+    edit: (relative: string, oldText: string, newText: string, expectedSha256: string) =>
+      runScriptAction(() => tools.edit!(relative, oldText, newText, expectedSha256)),
+    write: (relative: string, content: string) =>
+      runScriptAction(() => tools.write(relative, content)),
+    remove: (relative: string) => runScriptAction(() => tools.remove(relative)),
+    figma: (...[command, args]: Parameters<GenerationTools['figma']>) =>
+      runScriptAction(() => tools.figma(command, args)),
+    rules: (...[relative, mode]: Parameters<GenerationTools['rules']>) =>
+      runScriptAction(() => tools.rules(relative, mode)),
+    slices: (...[slug, options]: Parameters<GenerationTools['slices']>) =>
+      runScriptAction(() => tools.slices(slug, options)),
   };
   /** 设计缓存和图片地址变化时隔离子任务上下文，避免复用过期扫描。 */
   async function subagentContext(role?: string) {
@@ -1749,6 +1810,8 @@ export async function createGenerationTools(input: {
     },
     tools: {
       subagentContext,
+      outputPlan: generationPlan(executionConfig, await list()),
+      edit: guarded('edit_file', scriptTools.edit),
       list: guarded('list_files', tools.list),
       read: guarded('read_file', tools.read),
       write: guarded('write_file', scriptTools.write),

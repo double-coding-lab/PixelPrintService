@@ -390,6 +390,7 @@ export async function executeGenerationRun(input: {
       ]),
       instructions:
         createGenerationInstructions(target, snapshot.figmaUrl) +
+        `\n${runtime.tools.outputPlan ?? ''}` +
         (snapshot.userDecisions ? `\n${redact(snapshot.userDecisions)}` : '') +
         (snapshot.sourceChangedByUser
           ? '\n[平台通知] 用户已通过在线编辑更新当前工作区源码。继续前重新读取相关文件，保留用户修改。'

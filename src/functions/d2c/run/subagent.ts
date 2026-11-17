@@ -46,7 +46,15 @@ export const subagentEventSchema = z.object({
   detail: z.string().max(512).optional(),
   feedback: toolFeedbackSchema.optional(),
   tool: z
-    .enum(['list_files', 'read_file', 'write_file', 'figma', 'check_rules', 'report_progress'])
+    .enum([
+      'list_files',
+      'read_file',
+      'write_file',
+      'edit_file',
+      'figma',
+      'check_rules',
+      'report_progress',
+    ])
     .optional(),
 });
 export type SubagentEvent = z.infer<typeof subagentEventSchema>;
@@ -66,6 +74,11 @@ export function subagentInstructions(role: SubagentRole, nativeScan = false) {
   const execution = role === 'rule_scan' || role === 'ui';
   return [
     responsibilities[role],
+    ...(role === 'ui'
+      ? [
+          '已存在文件优先read_file获取sha256，再用edit_file唯一片段替换；仅在writePaths内编辑，完成后重新检查区块。不要为局部样式修改重写整个长文件。',
+        ]
+      : []),
     platformImageInstructions,
     '消费平台程序报告时同时读取hits、constraints与deferredChecks：hits是设计命中，constraints是实现约束，deferredChecks要在代码生成后核对，均不能当作已通过检查。程序报告仅在nativeScan.pending逐项判断完成后交付UI。',
     '每完成一批规则或区块分析，调用report_progress保存phase、completed、remaining、nextStep；这是阶段说明，不冒充完整rule-hits.json。遇到阻塞或输出过大时先保存可确认的阶段成果，完整报告按授权路径分批写入；恢复时沿用已有分析只补未完成部分。',

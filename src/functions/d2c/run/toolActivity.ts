@@ -34,6 +34,8 @@ export function describeToolActivity(item: Record<string, unknown>): string | un
     }
     case 'report_progress':
       return `保存子任务进度：${value('phase')}`;
+    case 'edit_file':
+      return `局部修改文件：${value('path')}`;
     case 'write_file':
       return `写入文件：${value('path')}`;
     case 'delete_file':

@@ -170,7 +170,9 @@ async function fileHash(tools: GenerationTools, path: string) {
   const page = JSON.parse(await tools.read(path, false, 0, Number.MAX_SAFE_INTEGER));
   if (page.ok === false || typeof page.content !== 'string' || page.nextOffset !== null)
     return undefined;
-  return digest(page.content);
+  return typeof page.sha256 === 'string' && /^[a-f0-9]{64}$/.test(page.sha256)
+    ? page.sha256
+    : digest(page.content);
 }
 
 /** 核对真实文本；合并批次必须再次合并仍逐字节不变，才可认领未知写入。 */
@@ -260,7 +262,8 @@ export async function createSubagentProgress(
               state = undefined;
               break;
             }
-            if ((await fileHash(tools, path)) === sha) continue;
+            const currentHash = await fileHash(tools, path);
+            if (currentHash === sha) continue;
             /** 文件已提交、进度回执未提交时，先核对原图的未知写入，不能误判用户改源后重建子图。 */
             const graph = new SubagentCheckpoint(checkpoint, `${ns}/${state.agentId}/`);
             const messages = (await graph.getTuple(graph.config()))?.checkpoint.channel_values
@@ -285,11 +288,28 @@ export async function createSubagentProgress(
                       call.args.content,
                       call.args.merge === true,
                     );
-            if (!verified) {
+            /** 未知局部编辑保留原图及真实文件基线，不宣称成功、不重放；子Agent须读取核对并重新检查。 */
+            const pendingEdit =
+              state.role === 'ui' &&
+              (messages ?? []).some(
+                (message) =>
+                  AIMessage.isInstance(message) &&
+                  message.tool_calls?.some(
+                    (call) =>
+                      call.id &&
+                      !done.has(call.id) &&
+                      call.name === 'edit_file' &&
+                      call.args.path === path &&
+                      call.args.expectedSha256 === sha &&
+                      typeof call.args.oldText === 'string' &&
+                      typeof call.args.newText === 'string',
+                  ),
+              );
+            if (!verified && !(pendingEdit && currentHash)) {
               state = undefined;
               break;
             }
-            state.files[path] = verified;
+            state.files[path] = verified ?? currentHash!;
             delete state.result;
             if (state.role === 'rule_scan')
               state.partialFiles = [...new Set([...(state.partialFiles ?? []), path])];

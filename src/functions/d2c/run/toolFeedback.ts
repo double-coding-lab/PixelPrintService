@@ -2,6 +2,14 @@ import { z } from 'zod';
 import { RunExecutionError, type FailureCode, type FailureContext } from './errors';
 
 const definitions = {
+  EDIT_REVISION_CONFLICT: [
+    'adjust',
+    '文件已变化，本次未修改。请重新read_file获取当前内容和sha256，再定位需替换片段。',
+  ],
+  EDIT_MATCH_INVALID: [
+    'adjust',
+    '原片段不存在或匹配多次，本次未修改。请重新读取并补充上下文，使oldText恰好匹配一次；不要盲目重写整个文件。',
+  ],
   NON_TEXT_FILE: [
     'adjust',
     '此文件不能作为 UTF-8 文本读取。图片请使用 PNG、JPEG 或 WebP 原图路径读取；其他二进制文件只核对文件信息，不按文本分页。',

@@ -21,6 +21,7 @@ const toolNames = new Set([
   'list_files',
   'read_file',
   'write_file',
+  'edit_file',
   'delete_file',
   'figma',
   'check_rules',

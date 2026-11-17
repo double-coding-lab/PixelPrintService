@@ -7,7 +7,15 @@ import type { GenerationTools } from '../types';
 /** 返回 LangChain 工具名称，主入口据此过滤子 Agent 可见能力。 */
 export function subagentToolsForRole(role: SubagentRole): string[] {
   return role === 'ui'
-    ? ['list_files', 'read_file', 'write_file', 'figma', 'check_rules', 'report_progress']
+    ? [
+        'list_files',
+        'read_file',
+        'write_file',
+        'edit_file',
+        'figma',
+        'check_rules',
+        'report_progress',
+      ]
     : role === 'rule_scan'
       ? ['list_files', 'read_file', 'write_file', 'figma', 'report_progress']
       : ['list_files', 'read_file', 'report_progress'];
@@ -118,6 +126,18 @@ export function createSubagentTools(
     requiredRuleChecks: () => [...directories].filter((value) => !attempted.has(value)),
     list: tools.list,
     read: tools.read,
+    outputPlan: tools.outputPlan,
+    ...(role === 'ui' && tools.edit
+      ? {
+          async edit(relative: string, oldText: string, newText: string, expectedSha256: string) {
+            const normalized = writablePath(role, relative);
+            if (!allowed.has(normalized)) return denied(relative);
+            const result = await tools.edit!(normalized, oldText, newText, expectedSha256);
+            if (!readToolFeedback(result)) invalidate(normalized);
+            return result;
+          },
+        }
+      : {}),
     async write(relative, content) {
       const normalized = writablePath(role, relative);
       if (!allowed.has(normalized)) return denied(relative);

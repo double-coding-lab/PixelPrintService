@@ -445,6 +445,29 @@ export async function runAgent(input: AgentRunInput): Promise<{
       },
     ),
     tool(
+      ({ path, oldText, newText, expectedSha256 }) => {
+        if (path.startsWith(archivePrefix) || path.startsWith(resourcePrefix) || !input.tools.edit)
+          throw toolIssue(
+            'FILE_WRITE_NOT_ALLOWED',
+            'VALIDATION_FAILED',
+            { stage: 'tool', tool: 'edit_file' },
+            { path: path.slice(0, 1024) },
+          );
+        return track(input.tools.edit(path, oldText, newText, expectedSha256));
+      },
+      {
+        name: 'edit_file',
+        description:
+          '局部修改已读文本文件。先read_file取得完整文件sha256，oldText须精确且唯一匹配；使用expectedSha256防止覆盖并发变更。成功返回新的sha256，下次局部编辑使用新摘要。新文件用write_file；禁止借局部编辑改固定配置或证据。',
+        schema: z.object({
+          path: z.string(),
+          oldText: z.string().min(1),
+          newText: z.string(),
+          expectedSha256: z.string().regex(/^[a-f0-9]{64}$/),
+        }),
+      },
+    ),
+    tool(
       ({ path }) => {
         if (path.startsWith(archivePrefix) || path.startsWith(resourcePrefix))
           throw new Error('DEEP_READ_ONLY_PATH');
@@ -634,6 +657,17 @@ export async function runAgent(input: AgentRunInput): Promise<{
       }
       return result;
     };
+    if (childTools.edit) {
+      const edit = childTools.edit.bind(childTools);
+      childTools.edit = async (...args) => {
+        const result = await edit(...args);
+        if (!readToolFeedback(result)) {
+          saved.add(args[0]);
+          await progress?.wrote(args[0]);
+        }
+        return result;
+      };
+    }
     const event = {
       stage: 'subagent' as const,
       agentId: progress?.state.agentId ?? randomUUID(),
@@ -921,6 +955,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           ],
           instructions: [
             subagentInstructions(role, nativeScans.size > 0),
+            input.tools.outputPlan ?? '',
             input.userDecisions ?? '',
             ...(nativeScans.size ? [nativeScanInstructions(writePaths)] : []),
             `本次允许写入文件：${JSON.stringify(writePaths)}；只能写入这些精确路径，主Agent维护全局清单。`,
@@ -1332,9 +1367,12 @@ export async function runAgent(input: AgentRunInput): Promise<{
         ]
       : [];
   let visionRejected = false;
+  const supportedTools = coreTools.filter(
+    (value) => value.name !== 'edit_file' || input.tools.edit,
+  );
   const controlledTools = input.specialist
-    ? coreTools.filter((value) => subagentToolsForRole(input.specialist!).includes(value.name))
-    : [...coreTools, ...delegatedTools, ...waitingTools, ...questionTools, ...previewTools];
+    ? supportedTools.filter((value) => subagentToolsForRole(input.specialist!).includes(value.name))
+    : [...supportedTools, ...delegatedTools, ...waitingTools, ...questionTools, ...previewTools];
   const textStream =
     input.onText && !input.specialist
       ? createAgentTextStream({
@@ -1768,7 +1806,10 @@ export async function runAgent(input: AgentRunInput): Promise<{
               ),
               invoke,
             );
-          if (!input.specialist && ['write_file', 'delete_file', 'check_rules'].includes(name))
+          if (
+            !input.specialist &&
+            ['write_file', 'edit_file', 'delete_file', 'check_rules'].includes(name)
+          )
             return delegationScheduler.exclusive(
               [String(request.toolCall.args.path ?? '')],
               invoke,

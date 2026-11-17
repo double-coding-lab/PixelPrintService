@@ -73,6 +73,7 @@ export type FailureTool =
   | 'report_progress'
   | 'read_file'
   | 'write_file'
+  | 'edit_file'
   | 'delete_file'
   | 'figma'
   | 'ask_user'
@@ -112,6 +113,7 @@ const contextSchema = z.object({
       'report_progress',
       'read_file',
       'write_file',
+      'edit_file',
       'delete_file',
       'figma',
       'delegate_agent',

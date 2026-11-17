@@ -117,6 +117,7 @@ export function getEventFailure(entry: TimelineEntry) {
       'list_files',
       'read_file',
       'write_file',
+      'edit_file',
       'delete_file',
       'figma',
       'check_rules',
@@ -344,7 +345,7 @@ function describeSubagent(data: Record<string, unknown>): string {
       text(data.status),
     ) &&
     (data.role === 'ui'
-      ? ['list_files', 'read_file', 'write_file', 'figma', 'check_rules']
+      ? ['list_files', 'read_file', 'write_file', 'edit_file', 'figma', 'check_rules']
       : data.role === 'rule_scan'
         ? ['list_files', 'read_file', 'write_file', 'figma']
         : ['list_files', 'read_file']
@@ -363,6 +364,8 @@ function describeSubagent(data: Record<string, unknown>): string {
     BLOCK_DIRECTORY_INVALID: '区块目录需要英文别名',
     RULES_FAILED: '本区块规则检查未通过，修复后重新检查',
     FILE_NOT_FOUND: '文件不存在',
+    EDIT_REVISION_CONFLICT: '文件已更新，请重新读取后修改',
+    EDIT_MATCH_INVALID: '替换片段需重新定位',
     ADJUSTMENT_EXHAUSTED: '子任务纠错次数已用完，交回主 Agent',
     RETRY_EXHAUSTED: '子任务重试次数已用完，交回主 Agent',
   };

@@ -129,6 +129,7 @@ export type RunFailure = {
     | 'list_files'
     | 'read_file'
     | 'write_file'
+    | 'edit_file'
     | 'delete_file'
     | 'figma'
     | 'check_rules'
@@ -178,7 +179,7 @@ export type TimelineEntry = {
     failed?: number;
     reused?: number;
     agentId?: string;
-    tool?: 'list_files' | 'read_file' | 'write_file' | 'figma';
+    tool?: 'list_files' | 'read_file' | 'write_file' | 'edit_file' | 'figma';
     reason?: string;
     name?: string;
     detail?: string;

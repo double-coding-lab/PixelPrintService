@@ -18,9 +18,12 @@ export function completedWriteView(messages: BaseMessage[], budget: number) {
     let changed = false;
     const calls = message.tool_calls.map((call) => {
       const result = results.get(call.id ?? '');
-      const content = call.args.content;
+      const content =
+        call.name === 'edit_file'
+          ? `${call.args.oldText ?? ''}${call.args.newText ?? ''}`
+          : call.args.content;
       if (
-        call.name !== 'write_file' ||
+        !['write_file', 'edit_file'].includes(call.name) ||
         typeof content !== 'string' ||
         estimateTokens(content) <= Math.max(128, budget * 0.1) ||
         !result ||
@@ -41,7 +44,14 @@ export function completedWriteView(messages: BaseMessage[], budget: number) {
         ...call,
         args: {
           ...call.args,
-          content: `[本工具已完成保存。正文 ${Buffer.byteLength(content)} 字节，SHA-256 ${createHash('sha256').update(content).digest('hex')}；后续需要时用 read_file 读取 ${String(call.args.path)}，不必重写。]`,
+          ...(call.name === 'edit_file'
+            ? {
+                oldText: '[本局部替换已保存；原片段省略，需要时重新read_file读取。]',
+                newText: `[替换正文 ${Buffer.byteLength(content)} 字节已保存；需要时read_file读取 ${String(call.args.path)}。]`,
+              }
+            : {
+                content: `[本工具已完成保存。正文 ${Buffer.byteLength(content)} 字节，SHA-256 ${createHash('sha256').update(content).digest('hex')}；后续需要时用 read_file 读取 ${String(call.args.path)}，不必重写。]`,
+              }),
         },
       };
     });
