@@ -1,0 +1,26 @@
+test/graphRecovery.test.ts
+  s_a4e26e740c8ebc::t_708ccec393d925 2-154
+test/graphSubagentRecovery.test.ts
+  s_a4e26e740c8ebc::t_708ccec393d925 2-184
+src/functions/d2c/run/agent/graphRecovery.ts
+  s_a4e26e740c8ebc::t_708ccec393d925 1-48
+src/functions/d2c/run/agent/agent.ts
+  s_a4e26e740c8ebc::t_708ccec393d925 1,102-103,903-930,1212-1219,2072-2102,2104-2139
+  s_a4e26e740c8ebc::t_c9ade43ca26d05 448-469,660-670,958,1370-1372,1374-1375,1809-1812
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "bbb976a22526b350bfb7a81eadc6609f608cdf2c",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
