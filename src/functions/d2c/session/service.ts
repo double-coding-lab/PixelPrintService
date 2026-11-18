@@ -123,7 +123,7 @@ const runStatusSchema = z.object({
 });
 
 /** 按事件类型投影已实现字段，SDK 回放和检查点始终保持私有。 */
-function displayPayload(kind: string | null, value: unknown): Record<string, unknown> {
+export function displayPayload(kind: string | null, value: unknown): Record<string, unknown> {
   if (kind === 'session_changed') {
     const parsed = z.object({ name: z.string().trim().min(1).max(200) }).safeParse(value);
     if (!parsed.success) throw new SessionError(503, 'TIMELINE_CORRUPT', '会话名称事件无效');

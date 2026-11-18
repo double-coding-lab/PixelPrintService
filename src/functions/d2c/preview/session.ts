@@ -16,6 +16,15 @@ export type PreviewSnapshotFile = {
   size: number;
   sha256: string;
 };
+/** Frozen source contract shared by detached editors and personal works. */
+export type EditSourceSnapshot = {
+  fileRevision: number;
+  target: 'h5' | 'rn';
+  snapshot: PreviewSnapshotFile[];
+  configSnapshot: Record<string, unknown>;
+  entries: string[];
+  entryPath: string | null;
+};
 const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 
 /** 与隔离构建器保持相同模板边界，报告与内部配置不参与输入摘要。 */
@@ -62,9 +71,10 @@ export async function sessionPreviewInput(
   transaction: Transaction,
   limits: { textFileBytes: number; filesPerSession: number },
   write: boolean,
+  authorizer: typeof ownedSession = ownedSession,
 ) {
   validateSessionEntry(entryPath);
-  const { workspace: owned, session } = await ownedSession(
+  const { workspace: owned, session } = await authorizer(
     mysql,
     userId,
     sessionId,
@@ -80,7 +90,7 @@ export async function sessionPreviewInput(
   if (!session.target || !workspace?.activeResourceRevisionId)
     throw new SessionError(503, 'RESOURCE_UNAVAILABLE', '会话固定资源尚未就绪');
   const rows = await (mysql.models.D2cFile as typeof D2cFile).findAll({
-    where: { sessionId },
+    where: { sessionId: session.sessionId },
     transaction,
     order: [['pathHash', 'ASC']],
     ...(write ? { lock: transaction.LOCK.UPDATE } : {}),
