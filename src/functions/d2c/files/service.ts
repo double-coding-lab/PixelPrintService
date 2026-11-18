@@ -221,7 +221,8 @@ export function createFileService(
       try {
         cacheJson =
           normalizeRelativePath(file.path!) === file.path &&
-          /^\.d2c-cache\/[^/]+\/.+\.json$/.test(file.path!);
+          (file.path === '.d2c-cache/image-directories.json' ||
+            /^\.d2c-cache\/[^/]+\/.+\.json$/.test(file.path!));
       } catch {
         /** 不符合受控缓存路径的内部资料继续拒绝读取。 */
       }
