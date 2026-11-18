@@ -1,0 +1,39 @@
+.task/taolan/todo.json
+  s_a4e26e740c8ebc::t_d99926aae1de6c 1-15
+.task/taolan/active/session_plaza/user-todos.md
+  s_a4e26e740c8ebc::t_d99926aae1de6c 1-6
+.Knowledge/matchers/m-d2c-session-plaza.json
+  s_a4e26e740c8ebc::t_d99926aae1de6c 1-15
+.Knowledge/index.md
+  s_a4e26e740c8ebc::t_d99926aae1de6c 89-90
+.task/taolan/active/session_plaza/kb-delta.applied.json
+  s_a4e26e740c8ebc::t_d99926aae1de6c 1-45
+.Knowledge/topics/d2c-session-plaza.md
+  s_a4e26e740c8ebc::t_d99926aae1de6c 1-38
+.task/taolan/active/session_plaza/task.md
+  s_a4e26e740c8ebc::t_d99926aae1de6c 1-10
+.task/taolan/active/session_plaza/acceptance.md
+  s_a4e26e740c8ebc::t_d99926aae1de6c 1-16
+.task/taolan/active/session_plaza/context.md
+  s_a4e26e740c8ebc::t_d99926aae1de6c 1-7
+.Knowledge/manifest-routing.json
+  s_a4e26e740c8ebc::t_d99926aae1de6c 16-19,35-36,147-155,218-219
+.Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md
+  s_a4e26e740c8ebc::t_d99926aae1de6c 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "2ea44a5887efa593d2d985a507afdd8f8200bfea",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
