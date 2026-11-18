@@ -36,11 +36,13 @@
 | runtime.d2c.storage.enabled | 启用文件持久化，默认 true |
 | runtime.d2c.secrets.activeKeyId | 当前 Figma 凭据加密密钥版本 |
 | runtime.d2c.secrets.keys | 版本到真实密钥材料的映射，初始化生成，服务端直接使用；没有外部密钥解析器 |
-| runtime.d2c.limits.textFileBytes | 单个文本文件最大字节数 |
+| runtime.d2c.limits.textFileBytes | 单个文本文件写入上限，示例默认100MiB（104857600字节），包括源码和受控节点缓存 |
 | runtime.d2c.limits.filesPerSession | 单会话文件数量上限 |
 | runtime.d2c.limits.uploadBytes | 单次上传最大字节数，默认30MB |
 
 S3 模式需提前创建桶并配置对象读取方式。上传接口不会创建桶或更改访问策略。保存的文件记录包含真实公开 URL、大小和 SHA-256；历史文件下载会校验路径和内容。
+
+已有实例可将 `project.config.json` 的 `runtime.d2c.limits.textFileBytes` 改为 `104857600` 后重启。`npm run setup` 保留已有配置；文本写入限额与二进制上传限额分别配置，模型上下文预算也保持独立。应用限额不会修改反向代理的请求大小限制或数据库的包大小设置。
 
 ## 增加账号
 

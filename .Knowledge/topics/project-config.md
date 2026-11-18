@@ -1,6 +1,6 @@
 ---
 id: project-config
-revision: 1
+revision: 2
 summary: "本地配置字段、模型预算、存储与生效时机"
 primary: config
 confidence: inferred
@@ -32,3 +32,8 @@ project.config.json、配置填写、运行配置、modelConfigs、contextBudget
 ## 详细资料
 
 [项目配置](../stock-docs/project-config.md)
+
+## 文本写入上限
+
+- 示例runtime.d2c.limits.textFileBytes为104857600（100MiB），用于源码及受控缓存的单文件文本写入；uploadBytes与模型上下文预算独立。
+- 新实例通过setup继承示例值；已有project.config.json保持原配置，需要显式修改此字段并重启。应用限额不改写反向代理请求限额和数据库包大小。

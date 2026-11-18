@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 1
+revision: 2
 summary: "工作区、会话、文件修订、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -38,3 +38,10 @@ confidence: inferred
 ## 详细资料
 
 [D2C 工作区与文件](../stock-docs/d2c-workspace-foundation.md)
+
+## 节点缓存与模型字段精简
+
+- fetch-node与inspect-node使用同一模型视图，只沿children处理节点属性：删除locked/exportSettings/overrides，省略指定空元数据；effects/strokes/characterStyleOverrides仅去掉空数组，styleOverrideTable仅去掉空对象。
+- background只有与fills数组按顺序和完整属性完全一致时才省略；fills、全部节点、父子顺序、文字、零值、false、非空渲染/交互/变量绑定及未知字段保留。
+- 节点缓存仅去除JSON排版空白，全部原始字段和值保留；临时副本和稳定存储使用相同字节与摘要，规则检查、切图及原文回查继续读取完整数据。缓存先紧凑再执行文本写入限额，其余文件保持原样。
+- Token收益针对精简前后的紧凑节点结果估算，文件体积变化与整轮用量分别计量；回归验证输入隔离、节点/属性保留、重复背景边界及工具真实输出。
