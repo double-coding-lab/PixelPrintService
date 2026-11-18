@@ -1,0 +1,17 @@
+{
+  "id": "m-project-config",
+  "version": "1.0.0",
+  "schema": "flow2spec.matcher.v1",
+  "includeAny": [
+    "project.config.json",
+    "配置填写",
+    "运行配置",
+    "modelConfigs",
+    "contextBudgetTokens",
+    "maxTurns",
+    "runTimeoutMs",
+    "密钥",
+    "代理",
+    "配置生效"
+  ]
+}

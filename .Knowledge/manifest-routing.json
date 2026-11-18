@@ -10,6 +10,9 @@
     ],
     "f2s-req-plan": [
       "f2s-task"
+    ],
+    "deep-agents-execution": [
+      "d2c-workspace-foundation"
     ]
   },
   "topicPaths": {
@@ -19,7 +22,13 @@
     "config-precheck": ".Knowledge/topics/f2s-config-precheck.md",
     "f2s-task": ".Knowledge/topics/f2s-task.md",
     "f2s-req-plan": ".Knowledge/topics/f2s-req-plan.md",
-    "flow2spec-dsh-adapter": ".Knowledge/topics/flow2spec-dsh-adapter.md"
+    "flow2spec-dsh-adapter": ".Knowledge/topics/flow2spec-dsh-adapter.md",
+    "project-architecture": ".Knowledge/topics/project-architecture.md",
+    "project-config": ".Knowledge/topics/project-config.md",
+    "d2c-workspace-foundation": ".Knowledge/topics/d2c-workspace-foundation.md",
+    "deep-agents-execution": ".Knowledge/topics/deep-agents-execution.md",
+    "d2c-preview-editing": ".Knowledge/topics/d2c-preview-editing.md",
+    "d2c-team-collaboration": ".Knowledge/topics/d2c-team-collaboration.md"
   },
   "taskToTopicRules": [
     {
@@ -76,6 +85,60 @@
         "flow2spec-dsh-adapter"
       ],
       "summary": "DeepSeek Harness 项目级技能初始化与目录适配"
+    },
+    {
+      "task": "project-architecture",
+      "matcherId": "m-project-architecture",
+      "matcherPath": ".Knowledge/matchers/m-project-architecture.json",
+      "topics": [
+        "project-architecture"
+      ],
+      "summary": "Fastify全栈入口、登录、日志、数据连接与部署"
+    },
+    {
+      "task": "project-config",
+      "matcherId": "m-project-config",
+      "matcherPath": ".Knowledge/matchers/m-project-config.json",
+      "topics": [
+        "project-config"
+      ],
+      "summary": "本地配置字段、模型预算、存储与生效时机"
+    },
+    {
+      "task": "d2c-workspace-foundation",
+      "matcherId": "m-d2c-workspace-foundation",
+      "matcherPath": ".Knowledge/matchers/m-d2c-workspace-foundation.json",
+      "topics": [
+        "d2c-workspace-foundation"
+      ],
+      "summary": "工作区、会话、文件修订、切图、凭据和版本"
+    },
+    {
+      "task": "deep-agents-execution",
+      "matcherId": "m-deep-agents-execution",
+      "matcherPath": ".Knowledge/matchers/m-deep-agents-execution.json",
+      "topics": [
+        "deep-agents-execution"
+      ],
+      "summary": "模型循环、检查点、摘要、子Agent、预算和诊断"
+    },
+    {
+      "task": "d2c-preview-editing",
+      "matcherId": "m-d2c-preview-editing",
+      "matcherPath": ".Knowledge/matchers/m-d2c-preview-editing.json",
+      "topics": [
+        "d2c-preview-editing"
+      ],
+      "summary": "本地Vite预览、缓存、截图、元素审查和在线编辑"
+    },
+    {
+      "task": "d2c-team-collaboration",
+      "matcherId": "m-d2c-team-collaboration",
+      "matcherPath": ".Knowledge/matchers/m-d2c-team-collaboration.json",
+      "topics": [
+        "d2c-team-collaboration"
+      ],
+      "summary": "团队成员、共享工作区、操作者和凭据隔离"
     }
   ],
   "projectRev": 3,
@@ -114,6 +177,30 @@
       "tags": [
         "module"
       ]
+    },
+    "project-architecture": {
+      "primary": "module",
+      "confidence": "inferred"
+    },
+    "project-config": {
+      "primary": "config",
+      "confidence": "inferred"
+    },
+    "d2c-workspace-foundation": {
+      "primary": "module",
+      "confidence": "inferred"
+    },
+    "deep-agents-execution": {
+      "primary": "module",
+      "confidence": "inferred"
+    },
+    "d2c-preview-editing": {
+      "primary": "module",
+      "confidence": "inferred"
+    },
+    "d2c-team-collaboration": {
+      "primary": "feature",
+      "confidence": "inferred"
     }
   }
 }

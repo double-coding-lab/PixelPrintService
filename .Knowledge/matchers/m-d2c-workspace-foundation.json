@@ -1,0 +1,19 @@
+{
+  "id": "m-d2c-workspace-foundation",
+  "version": "1.0.0",
+  "schema": "flow2spec.matcher.v1",
+  "includeAny": [
+    "工作区",
+    "会话",
+    "文件修订",
+    "版本暂存",
+    "切图",
+    "Figma Token",
+    "工具纠错",
+    "工具失败",
+    "SCRIPT_FAILED",
+    "图片压缩",
+    "截图附件",
+    "作品库"
+  ]
+}

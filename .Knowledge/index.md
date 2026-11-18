@@ -22,16 +22,33 @@
 
 | 主题 | 路径 | 适用场景 | 关联文档（摘要） |
 | --- | --- | --- | --- |
-| implement-tech-design | `.Knowledge/topics/f2s-implement-tech-design.md` | 按技术方案实现代码 | req：[技术方案](.Knowledge/req-docs/<技术方案>.md)（必填） |
-| f2s-doc-routing | `.Knowledge/topics/f2s-stock-docs-vs-req-docs.md` | stock-docs / req-docs 目录分工 | stock：[目录边界说明](.Knowledge/stock-docs/<目录边界说明>.md)（可选） |
-| fallback-triage | `.Knowledge/topics/f2s-fallback-triage.md` | 未命中或低置信度：分诊与澄清 | stock：[路由分诊说明](.Knowledge/stock-docs/<分诊说明>.md)（可选） |
+| implement-tech-design | `.Knowledge/topics/f2s-implement-tech-design.md` | 按技术方案实现代码 | 待补充：按实际任务提供技术方案 |
+| f2s-doc-routing | `.Knowledge/topics/f2s-stock-docs-vs-req-docs.md` | stock-docs / req-docs 目录分工 | 无；目录分工见主题摘要 |
+| fallback-triage | `.Knowledge/topics/f2s-fallback-triage.md` | 未命中或低置信度：分诊与澄清 | 无；分诊流程见主题摘要 |
 | config-precheck | `.Knowledge/topics/f2s-config-precheck.md` | 执行 `f2s-*` 前读 `flow2spec.config.json` / 编排开关 | Codex 长文：仓库根 `.codex/topics/f2s-config-check.md`；[路由摘要](topics/f2s-config-precheck.md) |
 | f2s-task | `.Knowledge/topics/f2s-task.md` | 变更追踪、`.task/` 任务清单与跨会话续作 | 长文：配置根 `rules/f2s-task.*`；Codex：`.codex/topics/f2s-task.md` |
 | f2s-req-plan | `.Knowledge/topics/f2s-req-plan.md` | 需求/方案规划与实现；始终维护 `.task/` | 技能：`skills/f2s-req-plan/SKILL.md`；依赖 `f2s-task` |
-| flow2spec-dsh-adapter | `.Knowledge/topics/flow2spec-dsh-adapter.md` | `flow2spec init dsh` 与 DeepSeek Harness 项目技能发现 | 用户文档：`docs/使用说明.md`；实现：`lib/dshAgentsAdapter.js` |
+| flow2spec-dsh-adapter | `.Knowledge/topics/flow2spec-dsh-adapter.md` | `flow2spec init dsh` 与 DeepSeek Harness 项目技能发现 | Flow2Spec 上游能力；本仓库入口见主题摘要 |
 
 每主题保留 **1–3 条** 可点击摘要链接；全量路径对照写入 `.Knowledge/migration-report.md`（迁移场景）。  
 其中 **`implement-tech-design`**、**`f2s-doc-routing`**、**`config-precheck`**、**`f2s-task`** 在 `topics/` 内为**路由摘要**；执行长文见配置根 **`rules/f2s-*.md(c)`**；使用 Codex 时见 **`.codex/AGENTS.md`**、**`.codex/topics/f2s-*.md`**（`f2s-config-check` 与 `AGENTS` 前置同源，按需打开）。**`f2s-knowledge-preflight`** 与 **`f2s-kb-feedback-closing`** 是普通问答首读 / 源码补答收口门禁，作为配置根规则 / Codex 专题长文生效，不写入 `topicPaths` 或 `taskToTopicRules`。
+
+---
+
+## 社区版业务主题
+
+以下内容按当前社区版源码整理，已移除内部地址、账号、真实配置与历史运行记录。
+
+| 主题 | 路径 | 适用场景 | 关联文档（摘要） |
+| --- | --- | --- | --- |
+| 项目架构 | [主题摘要](topics/project-architecture.md) | Fastify全栈入口、登录、日志、数据连接与部署 | [实现终稿](stock-docs/项目架构终稿.md) |
+| 项目配置 | [主题摘要](topics/project-config.md) | 本地配置字段、模型预算、存储与生效时机 | [实现终稿](stock-docs/project-config.md) |
+| D2C 工作区与文件 | [主题摘要](topics/d2c-workspace-foundation.md) | 工作区、会话、文件修订、切图、凭据和版本 | [实现终稿](stock-docs/d2c-workspace-foundation.md) |
+| Deep Agents 执行与恢复 | [主题摘要](topics/deep-agents-execution.md) | 模型循环、检查点、摘要、子Agent、预算和诊断 | [实现终稿](stock-docs/deep-agents-execution.md) |
+| 预览、截图与在线编辑 | [主题摘要](topics/d2c-preview-editing.md) | 本地Vite预览、缓存、截图、元素审查和在线编辑 | [实现终稿](stock-docs/d2c-preview-editing.md) |
+| 团队与共享权限 | [主题摘要](topics/d2c-team-collaboration.md) | 团队成员、共享工作区、操作者和凭据隔离 | [实现终稿](stock-docs/d2c-team-collaboration.md) |
+
+同步范围与脱敏约定见 [知识库说明](README.md)。
 
 ---
 
