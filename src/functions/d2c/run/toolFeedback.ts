@@ -39,6 +39,14 @@ const definitions = {
     '仅允许删除源码；图片、附件和内部资源受保护。请读取最新图片地址表并修正引用，不要因旧读取结果而删除、重切已保存图片。',
   ],
   FILE_NOT_FOUND: ['adjust', '文件不存在，请核对 resource 和实际文件列表，不要重复猜测路径。'],
+  FIGMA_NODE_NOT_FOUND: [
+    'adjust',
+    'Figma 未返回此节点。请核对 nodeId，用已保存的根节点缓存查找真实子节点后调整参数；若根节点已删除，请用户更新设计稿地址。',
+  ],
+  FIGMA_IMAGE_NOT_FOUND: [
+    'adjust',
+    'Figma 未返回此节点的图片地址。请核对真实节点、导出格式及切图清单后调整，不要反复请求同一无效节点。',
+  ],
   FIGMA_CACHE_INCOMPLETE: [
     'adjust',
     '根节点缓存不完整，请先 figma fetch-node 获取会话绑定的完整根节点（不要传 depth），再 inspect-node 或检查规则；不能把被截断节点当作空节点。',
@@ -116,9 +124,10 @@ export function toolIssue(
   failureCode: FailureCode,
   context: FailureContext,
   extra: { retryAfterMs?: number; path?: string; resource?: boolean; detail?: string } = {},
+  cause?: unknown,
 ) {
   return new ToolIssue(
     toolFeedback(code, extra),
-    new RunExecutionError(failureCode, { ...context, requiresUser: true }),
+    new RunExecutionError(failureCode, { ...context, requiresUser: true }, cause),
   );
 }
