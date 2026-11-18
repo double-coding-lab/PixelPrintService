@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { Op, literal, type Sequelize } from 'sequelize';
+import { Op, col, fn, literal, type Sequelize } from 'sequelize';
 import type { D2cWorkspace } from '../../../models/D2cWorkspace';
 import type { D2cSession } from '../../../models/D2cSession';
 import type { D2cSessionShare } from '../../../models/D2cSessionShare';
+import type { D2cRun } from '../../../models/D2cRun';
 import type { D2cFile } from '../../../models/D2cFile';
 import type { D2cTimeline } from '../../../models/D2cTimeline';
 import type { D2cMessageAttachment } from '../../../models/D2cMessageAttachment';
@@ -12,6 +13,13 @@ import { displayPayload } from '../session/service';
 import { attachmentMaxBytes, inspectAttachmentImage } from '../session/attachments';
 import { assertArtifactPath } from '../utils/paths';
 import { publishedSession, requireSharingIdentity } from './access';
+
+/** 与诊断时间规则一致，缺失和非法值保持未知。 */
+function usageTime(value: unknown): number | null {
+  if (!(value instanceof Date) && typeof value !== 'string') return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
 
 export type SharingBinary = { downloadFile(locator: Record<string, unknown>): Promise<Buffer> };
 
@@ -284,6 +292,85 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
     async get(eid: string, shareId: string) {
       const { session } = await publishedSession(mysql, eid, shareId);
       return summary(session, shareId);
+    },
+    /** 汇总已去重持久化的主/子模型用量；不重放模型事件、不读取私有诊断。 */
+    async usage(eid: string, shareId: string) {
+      const { session } = await publishedSession(mysql, eid, shareId);
+      const runs = mysql.models.D2cRun as typeof D2cRun | undefined;
+      if (!runs) throw new SessionError(503, 'DIAGNOSTICS_UNAVAILABLE', '执行用量暂不可用');
+      const rows = await runs.findAll({
+        where: { sessionId: session.sessionId },
+        attributes: ['runId', 'status', 'usage', 'createdAt', 'updatedAt'],
+      });
+      /** SQL 仅提取停止状态，不加载时间线大字段、SDK 历史或检查点。 */
+      const events = (await timeline.findAll({
+        where: { sessionId: session.sessionId, kind: 'run_status' },
+        attributes: [
+          'runId',
+          'createdAt',
+          [fn('JSON_UNQUOTE', fn('JSON_EXTRACT', col('displayPayload'), '$.status')), 'status'],
+        ],
+        raw: true,
+      })) as unknown as Array<{ runId: string | null; createdAt: unknown; status: string }>;
+      const observedAt = new Date().toISOString();
+      const stopped = new Set(['succeeded', 'failed', 'cancelled', 'interrupted', 'paused']);
+      const ends = new Map<string, number>();
+      for (const event of events) {
+        const at = usageTime(event.createdAt);
+        if (event.runId && at !== null && stopped.has(event.status))
+          ends.set(event.runId, Math.min(ends.get(event.runId) ?? at, at));
+      }
+      let sessionElapsedMs: number | null = 0;
+      for (const run of rows) {
+        const start = usageTime(run.createdAt);
+        const end =
+          (run.runId ? ends.get(run.runId) : undefined) ??
+          (stopped.has(run.status) ? usageTime(run.updatedAt) : Date.parse(observedAt));
+        if (start === null || end === null) {
+          sessionElapsedMs = null;
+          break;
+        }
+        sessionElapsedMs += Math.max(0, end - start);
+        if (!Number.isSafeInteger(sessionElapsedMs)) {
+          sessionElapsedMs = null;
+          break;
+        }
+      }
+      /** 与 SessionDiagnostics 一致：非法计数为 null，Token 仅来自已报告请求。 */
+      const count = (usage: Record<string, unknown> | null, key: string) => {
+        const value = usage?.[key];
+        return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+          ? value
+          : null;
+      };
+      const sum = (key: string, token = false) => {
+        const values = rows
+          .filter((run) => !token || !!count(run.usage, 'reportedRequests'))
+          .map((run) => count(run.usage, key));
+        if (!values.length || values.some((value) => value === null)) return null;
+        const total = values.reduce<number>((total, value) => total + value!, 0);
+        return Number.isSafeInteger(total) ? total : null;
+      };
+      const completeness = rows.map((run) => run.usage?.usageComplete);
+      const usage = {
+        requests: sum('requests'),
+        reportedRequests: sum('reportedRequests'),
+        completedRequests: sum('completedRequests'),
+        failedRequests: sum('failedRequests'),
+        interruptedRequests: sum('interruptedRequests'),
+        pendingRequests: sum('pendingRequests'),
+        unreportedRequests: sum('unreportedRequests'),
+        usageComplete: completeness.includes(false)
+          ? false
+          : completeness.length && completeness.every((value) => value === true)
+            ? true
+            : null,
+        inputTokens: sum('inputTokens', true),
+        outputTokens: sum('outputTokens', true),
+        totalTokens: sum('totalTokens', true),
+      };
+      await publishedSession(mysql, eid, shareId);
+      return { usage, sessionElapsedMs, observedAt };
     },
     /** 双向游标以扫描行推进，过滤草稿的整页仍能继续，子 Agent 同样经过 displayPayload。 */
     async timeline(

@@ -98,6 +98,12 @@ export default async function sharingRoutes(app: FastifyInstance, options: Parti
       data: await (await services.sharing()).get((await request.getUser()).userId, id),
     });
   });
+  app.get('/plaza/sessions/:id/usage', async (request) => {
+    const { id } = parameters.omit({ editId: true }).parse(request.params);
+    return responseData.success({
+      data: await (await services.sharing()).usage((await request.getUser()).userId, id),
+    });
+  });
   app.get('/plaza/sessions/:id/timeline', async (request) => {
     const { id } = parameters.omit({ editId: true }).parse(request.params);
     const { afterSeq, beforeSeq, limit } = timelineQuery.parse(request.query);
