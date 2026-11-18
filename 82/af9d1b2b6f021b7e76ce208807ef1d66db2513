@@ -1,0 +1,21 @@
+test/sharing.test.ts
+  s_a4e26e740c8ebc::t_eb6b6a77c40c37 695-712
+src/functions/d2c/sharing/service.ts
+  s_a4e26e740c8ebc::t_eb6b6a77c40c37 140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "82af9d1b2b6f021b7e76ce208807ef1d66db2513",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
