@@ -1,0 +1,17 @@
+{
+  "id": "m-project-architecture",
+  "version": "1.0.0",
+  "schema": "flow2spec.matcher.v1",
+  "includeAny": [
+    "项目架构",
+    "Fastify",
+    "前后端一体",
+    "登录",
+    "Pino",
+    "MySQL",
+    "Redis",
+    "部署",
+    "启动",
+    "建表"
+  ]
+}

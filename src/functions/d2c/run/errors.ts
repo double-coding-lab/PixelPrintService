@@ -237,31 +237,92 @@ export class SubagentExecutionError extends Error {
   }
 }
 
+const scriptDiagnosticSchema = z.object({
+  scriptReason: z.enum([
+    'NODE_NOT_FOUND',
+    'IMAGE_NOT_FOUND',
+    'INVALID_ARGUMENT',
+    'CREDENTIAL_MISSING',
+    'HTTP_ERROR',
+    'NETWORK_ERROR',
+    'HOST_NOT_ALLOWED',
+    'RESPONSE_TOO_LARGE',
+    'REDIRECT_BLOCKED',
+    'INVALID_JSON',
+    'FILE_SYSTEM_ERROR',
+    'REPORTED_ERROR',
+    'INVALID_OUTPUT',
+    'PROCESS_FAILED',
+  ]),
+  scriptPhase: z.enum(['request', 'response', 'body', 'node_lookup', 'cache', 'output', 'process']),
+  nodeId: z
+    .string()
+    .regex(/^\d{1,20}:\d{1,20}$/)
+    .optional(),
+  statusCode: z.number().int().min(100).max(599).optional(),
+  causeCode: z
+    .enum([
+      'ENOENT',
+      'EACCES',
+      'EPERM',
+      'ENOSPC',
+      'EROFS',
+      'EMFILE',
+      'AbortError',
+      'TimeoutError',
+      'ETIMEDOUT',
+      'UND_ERR_CONNECT_TIMEOUT',
+      'UND_ERR_HEADERS_TIMEOUT',
+      'ECONNRESET',
+      'ECONNREFUSED',
+      'ENOTFOUND',
+      'EAI_AGAIN',
+      'UND_ERR_SOCKET',
+      'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      'SELF_SIGNED_CERT_IN_CHAIN',
+      'CERT_HAS_EXPIRED',
+      'DEPTH_ZERO_SELF_SIGNED_CERT',
+      'ERR_TLS_CERT_ALTNAME_INVALID',
+    ])
+    .optional(),
+});
+export type ScriptDiagnostics = z.infer<typeof scriptDiagnosticSchema>;
+
+/** 固定脚本失败仅投影枚举、状态和节点编号，原始输出留在私有 cause 链。 */
+export class ScriptFailureError extends Error {
+  readonly diagnostics: ScriptDiagnostics;
+  constructor(diagnostics: ScriptDiagnostics, cause?: unknown) {
+    super('固定脚本失败诊断', { cause });
+    this.diagnostics = scriptDiagnosticSchema.parse(diagnostics);
+  }
+}
+
 export type RunFailureReport = {
   failure: RunFailure;
   runId?: string;
   sessionId?: string;
-  diagnostics: GatewayDiagnostics & {
-    frameworkCode?: FrameworkCode;
-    errorType?: DiagnosticErrorType;
-    subagentId?: string;
-    subagentRole?: SubagentExecutionContext['role'];
-    subagentPhase?: SubagentExecutionContext['phase'];
-    causeCode?: string;
-    statusCode?: number;
-    exitCode?: number;
-    location?: string;
-    storageOperation?: 'upload' | 'write_binary' | 'write_text';
-    artifactPath?: string;
-    bytes?: number;
-    storageStage?: string;
-    storageReason?: string;
-    storageCode?: number;
-    feedbackCode?: string;
-    originalFeedbackCode?: string;
-    readPath?: string;
-    resource?: boolean;
-  };
+  diagnostics: GatewayDiagnostics &
+    Partial<Omit<ScriptDiagnostics, 'causeCode'>> & {
+      frameworkCode?: FrameworkCode;
+      errorType?: DiagnosticErrorType;
+      subagentId?: string;
+      subagentRole?: SubagentExecutionContext['role'];
+      subagentPhase?: SubagentExecutionContext['phase'];
+      causeCode?: string;
+      statusCode?: number;
+      exitCode?: number;
+      location?: string;
+      storageOperation?: 'upload' | 'write_binary' | 'write_text';
+      artifactPath?: string;
+      bytes?: number;
+      storageStage?: string;
+      storageReason?: string;
+      storageCode?: number;
+      feedbackCode?: string;
+      originalFeedbackCode?: string;
+      readPath?: string;
+      resource?: boolean;
+    };
 };
 
 /** 存储调用上下文仅供后台日志诊断，不进入公开失败事件。 */
@@ -387,7 +448,7 @@ export function diagnoseRunFailure(
     if (current instanceof RunExecutionError && current.context.feedback) {
       const feedback = current.context.feedback;
       const allowedFeedback =
-        /^(?:FILE_NOT_FOUND|NON_TEXT_FILE|FILE_DELETE_NOT_ALLOWED|FIGMA_CACHE_INCOMPLETE|INVALID_ARGUMENT|RULES_FAILED|NETWORK_RETRY|RATE_LIMITED|RATE_LIMIT_WAIT|ACCESS_REQUIRED|RESOURCE_UNAVAILABLE|TLS_REQUIRED|CONFIRMATION_REQUIRED|RETRY_EXHAUSTED|ADJUSTMENT_EXHAUSTED)$/;
+        /^(?:FILE_NOT_FOUND|NON_TEXT_FILE|FILE_DELETE_NOT_ALLOWED|FIGMA_CACHE_INCOMPLETE|FIGMA_NODE_NOT_FOUND|FIGMA_IMAGE_NOT_FOUND|INVALID_ARGUMENT|RULES_FAILED|NETWORK_RETRY|RATE_LIMITED|RATE_LIMIT_WAIT|ACCESS_REQUIRED|RESOURCE_UNAVAILABLE|TLS_REQUIRED|CONFIRMATION_REQUIRED|RETRY_EXHAUSTED|ADJUSTMENT_EXHAUSTED)$/;
       if (allowedFeedback.test(feedback.code)) diagnostics.feedbackCode ??= feedback.code;
       if (allowedFeedback.test(feedback.originalCode))
         diagnostics.originalFeedbackCode ??= feedback.originalCode;
@@ -403,6 +464,10 @@ export function diagnoseRunFailure(
         diagnostics.readPath ??= feedback.path;
         if (typeof feedback.resource === 'boolean') diagnostics.resource ??= feedback.resource;
       }
+    }
+    if (current instanceof ScriptFailureError) {
+      const parsed = scriptDiagnosticSchema.safeParse(current.diagnostics);
+      if (parsed.success) Object.assign(diagnostics, parsed.data);
     }
     if (current instanceof StorageOperationError) {
       diagnostics.storageOperation ??= current.operation;

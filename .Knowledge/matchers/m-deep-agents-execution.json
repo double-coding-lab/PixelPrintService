@@ -1,0 +1,19 @@
+{
+  "id": "m-deep-agents-execution",
+  "version": "1.0.0",
+  "schema": "flow2spec.matcher.v1",
+  "includeAny": [
+    "Deep Agents",
+    "Worker",
+    "检查点",
+    "LangGraph",
+    "自动摘要",
+    "子Agent",
+    "暂停",
+    "继续",
+    "租约",
+    "maxTurns",
+    "模型用量",
+    "执行诊断"
+  ]
+}

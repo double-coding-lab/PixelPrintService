@@ -1,0 +1,19 @@
+{
+  "id": "m-d2c-preview-editing",
+  "version": "1.0.0",
+  "schema": "flow2spec.matcher.v1",
+  "includeAny": [
+    "预览",
+    "在线编辑",
+    "Monaco",
+    "Vite",
+    "Playwright",
+    "增量编译",
+    "元素审查",
+    "截图",
+    "px2vw",
+    "RN Web",
+    "全文搜索",
+    "waiting_files"
+  ]
+}

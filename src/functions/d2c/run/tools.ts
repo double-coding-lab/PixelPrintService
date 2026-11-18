@@ -12,6 +12,7 @@ import {
   type SliceFile,
 } from './sliceCache';
 import { scriptProcessPrelude } from './scriptProcess';
+import { throwFigmaScriptFailure, type ScriptNetworkFailure } from './scriptFailure';
 import type { SliceProgress } from './sliceProgress';
 import { prepareSlices } from './slices';
 import { createSliceNetwork } from './sliceNetwork';
@@ -641,7 +642,7 @@ export async function createGenerationTools(input: {
   /**
    * 核对租约及固定脚本摘要后，用最小环境运行 Node 子进程，前后均检查执行权限。
    * 按需注入 Token，限制代理、超时和输出量；取消会终止实际子进程。
-   * @returns 脱敏 stdout 和退出码；仅规则脚本退出码 1 作为违规结果保留，其余失败抛错。
+   * @returns 脱敏 stdout 和退出码；规则退出码 1 保留报告，Figma 失败信封转换为分类反馈。
    */
   async function script(
     name: string,
@@ -673,50 +674,18 @@ export async function createGenerationTools(input: {
     const token = needsToken ? await input.token() : '';
     const diagnosticFile = path.join(restored.directory, `network-${randomUUID()}.json`);
     await fs.rm(diagnosticFile, { force: true });
-    /** 诊断仅由可信网络前置写入状态码/网络码，不能从脚本或上游正文猜测错误。 */
-    async function networkIssue() {
-      let value: { statusCode?: number; code?: string; retryAfterMs?: number };
+    /** 读取本次独立网络诊断；原始响应和地址不进入故障投影。 */
+    async function readNetworkFailure(): Promise<ScriptNetworkFailure | undefined> {
       try {
-        value = JSON.parse(await fs.readFile(diagnosticFile, 'utf8'));
+        return JSON.parse(await fs.readFile(diagnosticFile, 'utf8'));
       } catch {
-        return;
+        return undefined;
       }
-      const status = value.statusCode;
-      if (status === 401 || status === 403)
-        throw toolIssue('ACCESS_REQUIRED', 'CREDENTIAL_UNAVAILABLE', context);
-      if (status === 404) throw toolIssue('RESOURCE_UNAVAILABLE', 'FIGMA_REQUEST_FAILED', context);
-      if (status === 429 && (value.retryAfterMs ?? 0) > 300000)
-        throw toolIssue('RATE_LIMIT_WAIT', 'FIGMA_REQUEST_FAILED', context);
-      if (status === 429)
-        throw toolIssue('RATE_LIMITED', 'FIGMA_REQUEST_FAILED', context, {
-          retryAfterMs: value.retryAfterMs ?? 0,
-        });
-      if (typeof status === 'number' && status >= 500 && status <= 599)
-        throw toolIssue('NETWORK_RETRY', 'NETWORK_UNAVAILABLE', context);
-      if (
-        [
-          'AbortError',
-          'TimeoutError',
-          'ETIMEDOUT',
-          'UND_ERR_CONNECT_TIMEOUT',
-          'UND_ERR_HEADERS_TIMEOUT',
-          'ECONNRESET',
-          'ECONNREFUSED',
-          'ENOTFOUND',
-          'EAI_AGAIN',
-        ].includes(value.code ?? '')
-      )
-        throw toolIssue('NETWORK_RETRY', 'NETWORK_TIMEOUT', context);
-      if (
-        [
-          'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-          'SELF_SIGNED_CERT_IN_CHAIN',
-          'CERT_HAS_EXPIRED',
-          'DEPTH_ZERO_SELF_SIGNED_CERT',
-          'ERR_TLS_CERT_ALTNAME_INVALID',
-        ].includes(value.code ?? '')
-      )
-        throw toolIssue('TLS_REQUIRED', 'TLS_CERTIFICATE_FAILED', context);
+    }
+    /** 网络前置的失败优先于脚本正文，成功后的其他请求不会抹掉未解决故障。 */
+    async function networkIssue(cause?: unknown) {
+      const network = await readNetworkFailure();
+      if (network) throwFigmaScriptFailure({ args, output: '', context, network, cause });
     }
     let stdout = '',
       code = 0;
@@ -766,15 +735,17 @@ export async function createGenerationTools(input: {
         );
       }
       if (error instanceof RunExecutionError && error.code === 'STORAGE_FAILED') throw error;
-      await networkIssue();
+      await input.assertLease();
+      input.signal.throwIfAborted();
+      if (failure.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER')
+        throw executionError(error, 'SCRIPT_FAILED', context);
+      if (failure.code === null && failure.killed === true && failure.signal === 'SIGKILL')
+        throw executionError(error, 'SCRIPT_TIMEOUT', context);
+      await networkIssue(error);
+      if (name === 'figma.mjs' && failure.code === 1 && !failure.killed && !failure.signal)
+        throwFigmaScriptFailure({ args, output: failure.stdout ?? '', context, cause: error });
       if (name !== 'check-rules.mjs' || failure.code !== 1)
-        throw executionError(
-          error,
-          failure.code === null && failure.killed === true && failure.signal === 'SIGKILL'
-            ? 'SCRIPT_TIMEOUT'
-            : 'SCRIPT_FAILED',
-          context,
-        );
+        throw executionError(error, 'SCRIPT_FAILED', context);
       stdout = failure.stdout ?? '';
       code = 1;
     }
@@ -1240,15 +1211,19 @@ export async function createGenerationTools(input: {
         payload = JSON.parse(result.output);
         invalidated = command === 'cache-check' && payload?.data?.status === 'miss';
         if (payload?.ok === false)
-          throw toolIssue('RESOURCE_UNAVAILABLE', 'FIGMA_REQUEST_FAILED', {
-            stage: 'tool',
-            tool: 'figma',
-            command: figmaCommands.find((value) => value === command),
+          throwFigmaScriptFailure({
+            args: argv,
+            output: result.output,
+            context: {
+              stage: 'tool',
+              tool: 'figma',
+              command: figmaCommands.find((value) => value === command),
+            },
           });
         if (!payload || payload.ok !== true)
           throw new RunExecutionError('SCRIPT_OUTPUT_INVALID', { stage: 'tool' });
       } catch (error) {
-        if (error instanceof ToolIssue) throw error;
+        if (error instanceof ToolIssue || error instanceof RunExecutionError) throw error;
         throw executionError(error, 'SCRIPT_OUTPUT_INVALID', { stage: 'tool' });
       }
       if (invalidated) {
