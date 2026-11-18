@@ -1,0 +1,22 @@
+src/functions/d2c/sharing/service.ts
+  s_a4e26e740c8ebc::t_d9edaedbef7782 326-367
+test/plazaUsage.test.ts
+  s_a4e26e740c8ebc::t_65b10a636cd1c8 262-267
+  s_a4e26e740c8ebc::t_d9edaedbef7782 28-217,268-279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "7bfb032d921ddeb5eba46d813d0bf4ef6790f64b",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
