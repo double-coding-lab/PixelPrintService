@@ -1,6 +1,6 @@
 {
   "id": "m-project-config",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "schema": "flow2spec.matcher.v1",
   "includeAny": [
     "project.config.json",
@@ -12,6 +12,9 @@
     "runTimeoutMs",
     "密钥",
     "代理",
-    "配置生效"
+    "配置生效",
+    "textFileBytes",
+    "写入上限",
+    "100MiB"
   ]
 }

@@ -21,7 +21,7 @@
 | `network.proxyUrl` | 通用 HTTP 代理，直连时为空；不把模型和存储请求自动改走 Figma 代理 |
 | `runtime.modelConfigs` | 至少一个支持工具调用的模型配置，地址填兼容接口的根路径 |
 | `runtime.d2c.network.allowedExternalHosts` | 主机名或明确通配后缀，不填写完整 URL、端口或路径 |
-| `runtime.d2c.limits` | 文本大小、会话文件数、上传字节限额 |
+| `runtime.d2c.limits` | 单文件文本上限示例为100MiB（104857600字节），会话文件数和二进制上传限额独立 |
 
 完整字段表见 [项目配置](../../doc/configuration.md)。
 

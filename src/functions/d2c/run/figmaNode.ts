@@ -81,6 +81,71 @@ function isRecord(value: JsonValue): value is JsonObject {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** 编辑器操作及来源记录；当前节点的实际覆盖值仍保留在对应渲染属性中。 */
+const editorMetadata = ['locked', 'exportSettings', 'overrides'];
+
+/** 已知的可选元数据；仅省略空值，有内容的交互及绑定仍交给模型。 */
+const optionalMetadata = new Set([
+  'interactions',
+  'transitionNodeID',
+  'transitionDuration',
+  'transitionEasing',
+  'prototypeStartNodeID',
+  'flowStartingPoints',
+  'boundVariables',
+  'explicitVariableModes',
+  'componentPropertyReferences',
+]);
+
+/**
+ * 为模型复制节点并省略编辑器字段及已知空元数据，只沿 children 处理节点属性。
+ * 保留全部节点、非空渲染字段、有效交互/绑定和未知字段；完整缓存供脚本及规则检查使用。
+ */
+export function compactFigmaNodeForModel(value: unknown): JsonObject {
+  const root = cloneJson(value);
+  if (!isRecord(root)) throw new Error('Invalid Figma node');
+  const pending = [root];
+  while (pending.length) {
+    const node = pending.pop()!;
+    for (const key of editorMetadata) delete node[key];
+    for (const key of optionalMetadata) {
+      const value = node[key];
+      if (
+        value === null ||
+        (Array.isArray(value) && value.length === 0) ||
+        (isRecord(value) && Object.keys(value).length === 0)
+      )
+        delete node[key];
+    }
+    for (const key of ['effects', 'strokes', 'characterStyleOverrides']) {
+      if (Array.isArray(node[key]) && node[key].length === 0) delete node[key];
+    }
+    if (isRecord(node.styleOverrideTable) && Object.keys(node.styleOverrideTable).length === 0)
+      delete node.styleOverrideTable;
+    if (
+      Array.isArray(node.background) &&
+      Array.isArray(node.fills) &&
+      JSON.stringify(node.background) === JSON.stringify(node.fills)
+    )
+      delete node.background;
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) if (isRecord(child)) pending.push(child);
+    }
+  }
+  return root;
+}
+
+/** 仅去除节点缓存的JSON排版空白；全部数据保留，无效缓存沿用原工具的校验流程。 */
+export function compactFigmaCacheForStorage(text: string): string {
+  try {
+    const cache: JsonValue = JSON.parse(text);
+    if (!isRecord(cache) || !isRecord(cache.node)) return text;
+    return JSON.stringify(cache);
+  } catch {
+    return text;
+  }
+}
+
 /**
  * Inspect a complete fixed-script Figma cache without changing or sharing its data.
  * Returns the selected node and up to depth (0..2) descendant levels in breadth-first order.

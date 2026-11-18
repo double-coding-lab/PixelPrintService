@@ -29,6 +29,8 @@ test('setup generates usable private configuration and never overwrites it', asy
     const config = JSON.parse(initial);
     const { parseD2cRuntimeConfig } = await import('../src/config/d2c');
     assert.equal(parseD2cRuntimeConfig(config.runtime).modelConfigs.length, 1);
+    assert.equal(config.runtime.d2c.limits.textFileBytes, 100 * 1024 * 1024);
+    assert.equal(config.runtime.d2c.limits.uploadBytes, 30000000);
     assert.equal(config.database.host, 'mysql');
     assert.equal(config.redis.url, 'redis://redis:6379');
     assert.equal(config.auth.users[0].id, 'alice');
