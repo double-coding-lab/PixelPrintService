@@ -105,7 +105,7 @@ function App() {
       dirty &&
       !(await confirm({
         title: '放弃未保存的修改？',
-        content: '进入作品库后当前未保存的修改将丢失。',
+        content: '离开当前页面后，尚未应用或保存到我的作品的修改将丢失。',
         okText: '放弃并进入',
         danger: true,
       }))
@@ -178,6 +178,8 @@ function App() {
             <CommunityPanel
               key={works.view}
               kind={works.view}
+              onDirty={setDirty}
+              onBusy={setBusy}
               resourceId={works.resourceId}
               onSelect={(value) => void openWorks('', works.view, value)}
               onVersions={() => void openWorks()}

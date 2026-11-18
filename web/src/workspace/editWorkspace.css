@@ -206,3 +206,66 @@
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+/* 广场嵌入视图复用目录、Monaco 与预览，不创建第二套编辑状态。 */
+.edit-workspace-inline {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid #e1e5e9;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.edit-workspace-inline-actions {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e1e5e9;
+  background: #fafbfc;
+}
+.edit-workspace-inline-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+}
+.edit-workspace-inline .edit-workspace-layout {
+  grid-template-columns: 190px minmax(280px, 1fr) minmax(340px, 1fr);
+  height: calc(100dvh - 270px);
+  min-height: 480px;
+}
+.edit-workspace-inline .edit-workspace-stage {
+  background: #f1f3f6;
+}
+.edit-workspace-inline .edit-workspace-preview {
+  border-left: 1px solid #e1e5e9;
+  padding-left: 12px;
+}
+.edit-workspace-inline .edit-workspace-change-list {
+  bottom: auto;
+  top: calc(100% + 12px);
+}
+@media (max-width: 1100px) {
+  .edit-workspace-inline .edit-workspace-layout {
+    grid-template-columns: 160px minmax(0, 1fr);
+    height: auto;
+  }
+  .edit-workspace-inline .edit-workspace-editor {
+    height: 55dvh;
+  }
+  .edit-workspace-inline .edit-workspace-preview {
+    grid-column: 1 / -1;
+    height: 65dvh;
+    border-left: 0;
+    border-top: 1px solid #e1e5e9;
+    padding: 12px 0 0;
+  }
+}
+@media (max-width: 600px) {
+  .edit-workspace-inline .edit-workspace-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .edit-workspace-inline .edit-workspace-sidebar {
+    max-height: 180px;
+    overflow: auto;
+  }
+}
