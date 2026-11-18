@@ -1,3 +1,4 @@
+import CommunityPanel from './workspace/CommunityPanel';
 import './components/fileTypeIcon.css';
 import './workspace/editorSearch.css';
 import './workspace/editableFileTree.css';
@@ -40,7 +41,11 @@ function App() {
   const [works, setWorks] = useState(() => {
     const query = new URLSearchParams(window.location.search);
     return {
-      active: query.get('view') === 'works' || !!query.get('version'),
+      active:
+        ['works', 'plaza', 'my-works'].includes(query.get('view') ?? '') || !!query.get('version'),
+      view: query.get('view') ?? 'works',
+      resourceId:
+        query.get('view') === 'plaza' ? (query.get('share') ?? '') : (query.get('work') ?? ''),
       versionId: query.get('version') ?? '',
     };
   });
@@ -78,12 +83,14 @@ function App() {
 
   /** 删除确认已包含草稿提醒，成功后直接清理失效定位，不重复弹窗。 */
   function navigate(workspaceId: string, sessionId = '') {
-    setWorks({ active: false, versionId: '' });
+    setWorks({ active: false, versionId: '', view: 'works', resourceId: '' });
     setDirty(false);
     setSelection({ workspaceId, sessionId });
     const url = new URL(window.location.href);
     url.searchParams.delete('view');
     url.searchParams.delete('version');
+    url.searchParams.delete('share');
+    url.searchParams.delete('work');
     if (workspaceId) url.searchParams.set('workspace', workspaceId);
     else url.searchParams.delete('workspace');
     if (sessionId) url.searchParams.set('session', sessionId);
@@ -92,7 +99,7 @@ function App() {
   }
 
   /** 切入作品页前沿用未保存草稿保护，独立链接只保存版本ID。 */
-  async function openWorks(versionId = '') {
+  async function openWorks(versionId = '', view = 'works', resourceId = '') {
     if (busy) return;
     if (
       dirty &&
@@ -105,11 +112,14 @@ function App() {
     )
       return;
     setDirty(false);
-    setWorks({ active: true, versionId });
+    setWorks({ active: true, versionId, view, resourceId });
     const url = new URL(window.location.href);
     url.searchParams.delete('workspace');
     url.searchParams.delete('session');
-    url.searchParams.set('view', 'works');
+    url.searchParams.set('view', view);
+    url.searchParams.delete('share');
+    url.searchParams.delete('work');
+    if (resourceId) url.searchParams.set(view === 'plaza' ? 'share' : 'work', resourceId);
     if (versionId) url.searchParams.set('version', versionId);
     else url.searchParams.delete('version');
     window.history.replaceState(null, '', url);
@@ -144,11 +154,16 @@ function App() {
           />
         </div>
         <div className="header-actions">
+          <button className="quiet" disabled={busy} onClick={() => void openWorks('', 'plaza')}>
+            广场
+          </button>
           <button
             className="quiet"
             disabled={busy}
             onClick={() =>
-              works.active ? select(selection.workspaceId, selection.sessionId) : openWorks()
+              works.active
+                ? select(selection.workspaceId, selection.sessionId)
+                : openWorks('', 'my-works')
             }
           >
             {works.active ? '返回工作台' : '作品库'}
@@ -159,7 +174,21 @@ function App() {
       </header>
       <div className="app-layout">
         {works.active ? (
-          <WorksPanel versionId={works.versionId} onSelect={openWorks} />
+          works.view === 'plaza' || works.view === 'my-works' ? (
+            <CommunityPanel
+              key={works.view}
+              kind={works.view}
+              resourceId={works.resourceId}
+              onSelect={(value) => void openWorks('', works.view, value)}
+              onVersions={() => void openWorks()}
+            />
+          ) : (
+            <WorksPanel
+              versionId={works.versionId}
+              onSelect={openWorks}
+              onPersonal={() => void openWorks('', 'my-works')}
+            />
+          )
         ) : selection.workspaceId ? (
           <WorkspacePanel
             key={selection.workspaceId}

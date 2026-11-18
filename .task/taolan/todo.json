@@ -1,0 +1,15 @@
+[
+  {
+    "name": "session_plaza",
+    "folder": ".task/taolan/active/session_plaza/",
+    "keywords": [
+      "广场",
+      "公开会话",
+      "个人作品",
+      "再次编辑"
+    ],
+    "linkedSkill": "f2s-kb-feat",
+    "createdAt": "2026-11-18",
+    "assignee": "taolan"
+  }
+]

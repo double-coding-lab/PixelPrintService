@@ -1,3 +1,4 @@
+import SessionSharing from './SessionSharing';
 import { findPagedEntry, revealPagedContent } from './pagedContent';
 import React, { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { Alert, Button, Input, Skeleton } from 'antd';
@@ -678,6 +679,7 @@ export default function SessionPanel({
           </span>
         </div>
         <div className="session-heading-actions">
+          <SessionSharing key={sessionId} sessionId={sessionId} />
           <Button
             type="text"
             size="small"

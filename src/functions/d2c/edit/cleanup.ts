@@ -9,6 +9,8 @@ export function startEditCleanup(
     async cleanup() {
       await Promise.all([
         createPreviewCache('.runtime/edit-previews', { ttlMs: EDIT_TTL_MS }).cleanup(),
+        createPreviewCache('.runtime/plaza-edit-previews', { ttlMs: EDIT_TTL_MS }).cleanup(),
+        createPreviewCache('.runtime/work-edit-previews', { ttlMs: EDIT_TTL_MS }).cleanup(),
         createEditAssetCache().cleanup(),
       ]);
     },

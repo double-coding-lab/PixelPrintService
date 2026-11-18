@@ -1,3 +1,4 @@
+import sharingRoutes from './sharing/routes';
 import { registerAuthGuard } from '@/hooks/http/auth';
 import type { FastifyInstance } from 'fastify';
 import uploadRoutes from './upload';
@@ -28,4 +29,5 @@ export default async function d2cRoutes(
   /** 会话入口：消息入队、后台执行、文件管理及时间线 SSE。 */
   app.register(sessionRoutes);
   app.register(pluginRoutes);
+  app.register(sharingRoutes);
 }

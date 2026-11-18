@@ -12,6 +12,7 @@ export type EditPreview = {
 };
 export type EditRecord = {
   editId: string;
+  /** Source id, never the detached owner-scoped storage key. */
   sessionId: string;
   ownerUserId: string;
   revision: number;
@@ -28,6 +29,7 @@ export type EditRecord = {
 };
 export type EditTicket = {
   editId: string;
+  /** Source id, never the detached owner-scoped storage key. */
   sessionId: string;
   target: 'h5' | 'rn';
   key: string;
@@ -36,6 +38,7 @@ export type EditTicket = {
 
 /** Redis 是唯一副本事实源；CAS 比较完整状态，包含 active editId、修订和构建 owner。 */
 export interface EditStore {
+  /** Storage keys may be scoped to owner + source; locate/index use this same opaque key. */
   load(sessionId: string): Promise<EditRecord | null>;
   locate(editId: string): Promise<string | null>;
   index(editId: string, sessionId: string, expiresAt: string): Promise<void>;

@@ -13,6 +13,10 @@
     ],
     "deep-agents-execution": [
       "d2c-workspace-foundation"
+    ],
+    "d2c-session-plaza": [
+      "d2c-workspace-foundation",
+      "d2c-preview-editing"
     ]
   },
   "topicPaths": {
@@ -28,7 +32,8 @@
     "d2c-workspace-foundation": ".Knowledge/topics/d2c-workspace-foundation.md",
     "deep-agents-execution": ".Knowledge/topics/deep-agents-execution.md",
     "d2c-preview-editing": ".Knowledge/topics/d2c-preview-editing.md",
-    "d2c-team-collaboration": ".Knowledge/topics/d2c-team-collaboration.md"
+    "d2c-team-collaboration": ".Knowledge/topics/d2c-team-collaboration.md",
+    "d2c-session-plaza": ".Knowledge/topics/d2c-session-plaza.md"
   },
   "taskToTopicRules": [
     {
@@ -139,6 +144,15 @@
         "d2c-team-collaboration"
       ],
       "summary": "团队成员、共享工作区、操作者和凭据隔离"
+    },
+    {
+      "task": "d2c-session-plaza",
+      "matcherId": "m-d2c-session-plaza",
+      "matcherPath": ".Knowledge/matchers/m-d2c-session-plaza.json",
+      "topics": [
+        "d2c-session-plaza"
+      ],
+      "summary": "登录用户会话广场、独立编辑副本与个人作品再次编辑"
     }
   ],
   "projectRev": 3,
@@ -199,6 +213,10 @@
       "confidence": "inferred"
     },
     "d2c-team-collaboration": {
+      "primary": "feature",
+      "confidence": "inferred"
+    },
+    "d2c-session-plaza": {
       "primary": "feature",
       "confidence": "inferred"
     }

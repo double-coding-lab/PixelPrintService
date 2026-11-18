@@ -1,0 +1,35 @@
+.community-panel {
+  overflow: auto;
+}
+.community-actions,
+.community-detail-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.community-detail-heading {
+  justify-content: space-between;
+  margin: 16px 0;
+}
+.community-detail-heading h2 {
+  margin: 0 0 6px;
+}
+.community-conversation {
+  max-width: 1000px;
+  margin: auto;
+}
+.community-conversation .timeline {
+  height: auto;
+  overflow: visible;
+}
+.community-file-select {
+  width: min(100%, 640px);
+  margin-bottom: 12px;
+}
+.community-panel .file-editor {
+  min-height: 320px;
+}
+.community-panel .work-card {
+  gap: 10px;
+}

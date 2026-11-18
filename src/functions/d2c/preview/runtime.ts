@@ -1,3 +1,4 @@
+import { installSharingEditors } from '../sharing/runtime';
 import { previewAssetBase } from './assetPolicy';
 import { createD2cConfigReader } from '@/config/d2c';
 import type { FastifyInstance } from 'fastify';
@@ -26,6 +27,7 @@ export function installPreview(
     notify?: (sessionId: string) => void;
   } = {},
 ) {
+  installSharingEditors(app);
   let service: Promise<PreviewService> | undefined;
   let edits: Promise<EditService> | undefined;
   let notifyEditedFiles: ((sessionId: string, seq: number) => void) | undefined;
@@ -137,9 +139,13 @@ export function installPreview(
           );
           const debuggerAsset = path === previewDebuggerAsset;
           const asset = await (
-            previewId.startsWith('edit-')
-              ? await app.getEditService()
-              : await app.getPreviewService()
+            previewId.startsWith('plazaedit-')
+              ? await app.getPlazaEditService()
+              : previewId.startsWith('workedit-')
+                ? await app.getSavedWorkEditService()
+                : previewId.startsWith('edit-')
+                  ? await app.getEditService()
+                  : await app.getPreviewService()
           ).asset(target, previewId, ticket, debuggerAsset ? 'index.html' : path);
           /** 调试资源同样核对预览票据；固定 JS 不作为生成文件或上传产物保存。 */
           if (debuggerAsset)

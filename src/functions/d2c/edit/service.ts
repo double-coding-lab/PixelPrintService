@@ -4,11 +4,17 @@ import type { StorageFileClient } from '@/hooks/tools/storage';
 import { createFileService } from '../files/service';
 import { createPreviewCache, type CachedPreviewFile, type PreviewCache } from '../preview/cache';
 import { runPreviewBuild } from '../preview/runner';
-import { sessionPreviewInput, validateSessionEntry } from '../preview/session';
+import {
+  type EditSourceSnapshot,
+  sessionPreviewInput,
+  validateSessionEntry,
+} from '../preview/session';
 import { ownedSession, requireIdentifier, requireRevision, SessionError } from '../session/access';
 import { EDIT_TTL_MS, type EditRecord, type EditStore } from './store';
 import { createEditAssetCache } from './assetCache';
 import { createWarmPreviewRunner } from '../preview/warmRunner';
+
+export type { EditSourceSnapshot } from '../preview/session';
 
 const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 type Limits = { textFileBytes: number; filesPerSession: number; uploadBytes: number };
@@ -34,6 +40,24 @@ export type SaveEditInput = {
   baseRevision: number;
   files: Array<{ path: string; content: string }>;
   entryPath?: string;
+};
+
+export type DetachedEditOptions = {
+  authorize(eid: string, sourceId: string): Promise<void>;
+  source(
+    eid: string,
+    sourceId: string,
+    entryPath: string | undefined,
+    transaction: Transaction,
+    limits: Limits,
+  ): Promise<EditSourceSnapshot>;
+  previewPrefix: string;
+};
+export type EditSnapshotExport = Omit<EditSourceSnapshot, 'fileRevision'> & {
+  editId: string;
+  revision: number;
+  sourceId: string;
+  baseFileRevision: number;
 };
 
 /** 固定错误不含源码、token、对象定位或构建器 stderr。 */
@@ -65,6 +89,7 @@ export function createEditService(
   mysql: Sequelize,
   options: {
     store: EditStore;
+    detached?: DetachedEditOptions;
     binary: () => Pick<StorageFileClient, 'downloadFile'>;
     run?: typeof runPreviewBuild;
     readLimits: () => Limits;
@@ -73,12 +98,30 @@ export function createEditService(
     assetCache?: ReturnType<typeof createEditAssetCache>;
   },
 ) {
-  const { store } = options;
+  const { store, detached } = options;
+  const previewPrefix = detached?.previewPrefix ?? 'edit-';
+  if (!/^[a-z][a-z0-9-]{0,31}-$/.test(previewPrefix) || !previewPrefix.endsWith('-'))
+    throw new Error('EDIT_PREVIEW_PREFIX_INVALID');
+  /** Detached namespaces isolate owners and source kinds without changing record.sessionId. */
+  function storeKey(owner: string, sourceId: string) {
+    return detached
+      ? `detached:${sha(JSON.stringify([previewPrefix, owner, sourceId]))}`
+      : sourceId;
+  }
+  function recordKey(record: EditRecord) {
+    return storeKey(record.ownerUserId, record.sessionId);
+  }
+  async function authorize(owner: string, sourceId: string) {
+    requireIdentifier(owner);
+    requireIdentifier(sourceId);
+    if (detached) await detached.authorize(owner, sourceId);
+    else await ownedSession(mysql, owner, sourceId, undefined, 'read');
+  }
   const cache =
     options.cache ?? createPreviewCache('.runtime/edit-previews', { ttlMs: EDIT_TTL_MS });
   const warm = options.run ? undefined : createWarmPreviewRunner();
   const assetCache = options.assetCache ?? (options.run ? undefined : createEditAssetCache());
-  const files = createFileService(mysql, options.readLimits, options.notify);
+  const files = detached ? undefined : createFileService(mysql, options.readLimits, options.notify);
   const jobs = new Map<string, { controller: AbortController; done: Promise<void> }>();
   let closed = false;
 
@@ -114,8 +157,8 @@ export function createEditService(
   /** active editId、账号认证 归属和固定期限每次重新检查，旧请求不能越过重入。 */
   async function load(userId: string, sessionId: string, editId: string) {
     requireIdentifier(editId);
-    await ownedSession(mysql, userId, sessionId, undefined, 'read');
-    const record = await store.load(sessionId);
+    await authorize(userId, sessionId);
+    const record = await store.load(storeKey(userId, sessionId));
     if (
       !record ||
       record.editId !== editId ||
@@ -178,7 +221,7 @@ export function createEditService(
   /** 仅当前 active draft/revision/job 可发布；票据不写副本，避免 GET 争抢保存 CAS。 */
   async function settle(record: EditRecord, preview: EditRecord['preview']) {
     for (let attempt = 0; attempt < 8; attempt++) {
-      const current = await store.load(record.sessionId);
+      const current = await store.load(recordKey(record));
       if (
         !current ||
         current.editId !== record.editId ||
@@ -187,7 +230,7 @@ export function createEditService(
         Date.parse(current.expiresAt) <= Date.now()
       )
         return;
-      if (await store.cas(record.sessionId, current, { ...current, preview })) {
+      if (await store.cas(recordKey(record), current, { ...current, preview })) {
         notify(record.sessionId);
         return;
       }
@@ -282,7 +325,7 @@ export function createEditService(
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]);
     const done = Promise.resolve()
       .then(async () => {
-        const current = await store.load(record.sessionId);
+        const current = await store.load(recordKey(record));
         signal.throwIfAborted();
         if (
           !current ||
@@ -295,7 +338,7 @@ export function createEditService(
         const built = await build(record, signal);
         signal.throwIfAborted();
         validateBuilt(built);
-        const latest = await store.load(record.sessionId);
+        const latest = await store.load(recordKey(record));
         if (
           !latest ||
           latest.editId !== record.editId ||
@@ -346,7 +389,7 @@ export function createEditService(
         key: record.preview.key,
         expiresAt: ticketExpiry,
       });
-      result.preview.url = `/${target === 'h5' ? 'H5_Preview' : 'RN_Preview'}/edit-${editId}/${token}/index.html`;
+      result.preview.url = `/${target === 'h5' ? 'H5_Preview' : 'RN_Preview'}/${previewPrefix}${editId}/${token}/index.html`;
       result.preview.expiresAt = ticketExpiry;
     }
     return result;
@@ -358,20 +401,38 @@ export function createEditService(
       const { record, priorJob, priorEditId } = await mysql.transaction(
         { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
         async (transaction) => {
-          const frozen = await sessionPreviewInput(
-            mysql,
-            userId,
-            sessionId,
-            input.entryPath,
-            transaction,
-            limits(),
-            true,
-          );
+          validateSessionEntry(input.entryPath);
+          if (detached) await authorize(userId, sessionId);
+          const detachedSource = detached
+            ? await detached.source(userId, sessionId, input.entryPath, transaction, limits())
+            : undefined;
+          const frozen = detachedSource
+            ? {
+                ...detachedSource,
+                session: {
+                  fileRevision: detachedSource.fileRevision,
+                  target: detachedSource.target,
+                },
+              }
+            : await sessionPreviewInput(
+                mysql,
+                userId,
+                sessionId,
+                input.entryPath,
+                transaction,
+                limits(),
+                true,
+              );
           if (input.entryPath && !frozen.entryPath)
             throw new SessionError(422, 'INVALID_ENTRY', '请选择已有页面入口');
-          const prior = await store.load(sessionId);
+          const prior = await store.load(storeKey(userId, sessionId));
           /** 有权成员的未过期副本继续互斥；仅明确 404 失权才允许 CAS 回收旧副本。 */
-          if (prior && prior.ownerUserId !== userId && Date.parse(prior.expiresAt) > Date.now()) {
+          if (
+            !detached &&
+            prior &&
+            prior.ownerUserId !== userId &&
+            Date.parse(prior.expiresAt) > Date.now()
+          ) {
             let accessible = true;
             try {
               await ownedSession(mysql, prior.ownerUserId, sessionId, transaction, 'read');
@@ -400,8 +461,8 @@ export function createEditService(
             expiresAt: new Date(Date.now() + EDIT_TTL_MS).toISOString(),
             preview: frozen.entryPath ? building() : { status: 'idle' },
           };
-          await store.index(next.editId, sessionId, next.expiresAt);
-          if (!(await store.cas(sessionId, prior, next))) conflict();
+          await store.index(next.editId, recordKey(next), next.expiresAt);
+          if (!(await store.cas(storeKey(userId, sessionId), prior, next))) conflict();
           return { record: next, priorJob: prior?.preview.job, priorEditId: prior?.editId };
         },
       );
@@ -425,7 +486,7 @@ export function createEditService(
             Date.now() - (record.preview.startedAt ?? 0) > 150000))
       ) {
         const next = { ...record, preview: building() };
-        if (await store.cas(sessionId, record, next)) {
+        if (await store.cas(storeKey(userId, sessionId), record, next)) {
           abortJob(record.preview.job);
           record = next;
           acquired = true;
@@ -445,7 +506,7 @@ export function createEditService(
         revision: record.revision + 1,
         preview: updates.entryPath ? building() : { status: 'idle' },
       };
-      if (!(await store.cas(sessionId, record, next))) conflict();
+      if (!(await store.cas(storeKey(userId, sessionId), record, next))) conflict();
       abortJob(record.preview.job);
       schedule(next);
       notify(sessionId);
@@ -458,14 +519,15 @@ export function createEditService(
       editId: string,
       input: { baseRevision: number },
     ) {
+      if (detached) throw new SessionError(403, 'EDIT_APPLY_FORBIDDEN', '独立副本不能写回来源');
       const record = await load(userId, sessionId, editId);
       writable(record, input.baseRevision);
       const token = randomUUID();
       const reserved = { ...record, applying: token };
-      if (!(await store.cas(sessionId, record, reserved))) conflict();
+      if (!(await store.cas(storeKey(userId, sessionId), record, reserved))) conflict();
       /** save/remove 不能越过 apply reservation；create 持有同一 MySQL 会话锁可替换崩溃预留，旧 owner 提交前重验。 */
       async function owned() {
-        const current = await store.load(sessionId);
+        const current = await store.load(storeKey(userId, sessionId));
         if (
           !current ||
           current.editId !== editId ||
@@ -482,7 +544,7 @@ export function createEditService(
         const changes = record.files.filter(
           (file) => record.snapshot.find((old) => old.path === file.path)?.content !== file.content,
         );
-        const result = await files.apply(
+        const result = await files!.apply(
           userId,
           sessionId,
           {
@@ -499,11 +561,11 @@ export function createEditService(
         fileRevision = result.fileRevision;
       } catch (error) {
         for (let attempt = 0; attempt < 8; attempt++) {
-          const current = await store.load(sessionId);
+          const current = await store.load(storeKey(userId, sessionId));
           if (!current || current.editId !== editId || current.applying !== token) break;
           const next = { ...current };
           delete next.applying;
-          if (await store.cas(sessionId, current, next)) break;
+          if (await store.cas(storeKey(userId, sessionId), current, next)) break;
         }
         throw error;
       }
@@ -517,7 +579,7 @@ export function createEditService(
       for (let attempt = 0; attempt < 8; attempt++) {
         let current: EditRecord | null;
         try {
-          current = await store.load(sessionId);
+          current = await store.load(storeKey(userId, sessionId));
         } catch {
           return visible(committed);
         }
@@ -544,7 +606,7 @@ export function createEditService(
           preview: current.preview.status === 'building' ? building() : current.preview,
         };
         delete next.applying;
-        if (await store.cas(sessionId, current, next).catch(() => false)) {
+        if (await store.cas(storeKey(userId, sessionId), current, next).catch(() => false)) {
           abortJob(current.preview.job);
           schedule(next);
           notify(sessionId);
@@ -553,11 +615,66 @@ export function createEditService(
       }
       return visible(committed);
     },
+    /** Acknowledge a persisted personal-work revision without changing draft content or revision. */
+    async advanceBaseline(
+      userId: string,
+      sourceId: string,
+      editId: string,
+      baseRevision: number,
+      newFileRevision: number,
+    ): Promise<EditDraft> {
+      if (!detached)
+        throw new SessionError(403, 'EDIT_BASELINE_FORBIDDEN', '仅独立副本可推进作品基线');
+      requireRevision(newFileRevision, false);
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const record = await load(userId, sourceId, editId);
+        writable(record, baseRevision);
+        if (newFileRevision < record.baseFileRevision) conflict();
+        if (newFileRevision === record.baseFileRevision) return visible(record);
+        const next = { ...record, baseFileRevision: newFileRevision };
+        if (await store.cas(recordKey(record), record, next)) return visible(next);
+      }
+      conflict();
+    },
+    /** Export trusted frozen inputs for the personal-works worker, never the latest source. */
+    async exportSnapshot(
+      userId: string,
+      sourceId: string,
+      editId: string,
+      baseRevision: number,
+    ): Promise<EditSnapshotExport> {
+      const record = await load(userId, sourceId, editId);
+      writable(record, baseRevision);
+      const verified = patch(record, { baseRevision, files: record.files });
+      const snapshot = record.snapshot.map((file) => {
+        if (file.kind !== 'source') return structuredClone(file);
+        const source = verified.files.find((item) => item.path === file.path);
+        if (!source) throw new SessionError(503, 'FILE_CORRUPT', '副本源码校验失败');
+        return {
+          ...structuredClone(file),
+          content: source.content,
+          objectLocator: null,
+          size: Buffer.byteLength(source.content),
+          sha256: sha(source.content),
+        };
+      });
+      return {
+        editId,
+        revision: record.revision,
+        sourceId,
+        target: record.target,
+        baseFileRevision: record.baseFileRevision,
+        snapshot,
+        configSnapshot: structuredClone(record.configSnapshot),
+        entries: [...record.entries],
+        entryPath: record.entryPath,
+      };
+    },
     /** 退出只删除仍然 active 的 editId，旧 DELETE 不能丢弃重入后的新副本。 */
     async remove(userId: string, sessionId: string, editId: string) {
       const record = await load(userId, sessionId, editId);
       writable(record);
-      if (!(await store.cas(sessionId, record, null))) conflict();
+      if (!(await store.cas(storeKey(userId, sessionId), record, null))) conflict();
       abortJob(record.preview.job);
       await warm?.release(record.editId);
       notify(sessionId);
@@ -566,15 +683,19 @@ export function createEditService(
     /** 既有静态网关调用；匿名票据绑定 target/editId/不可变缓存键，旧副本票据立即失效。 */
     async asset(target: 'h5' | 'rn', previewId: string, token: string, path: string) {
       if (
-        !/^edit-[a-f0-9-]{36}$/.test(previewId) ||
+        previewId.length !== previewPrefix.length + 36 ||
+        !previewId.startsWith(previewPrefix) ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
+          previewId.slice(previewPrefix.length),
+        ) ||
         !/^[a-f0-9]{64}$/.test(token) ||
         !assetPath(path)
       )
         missing();
-      const editId = previewId.slice(5);
-      const sessionId = await store.locate(editId);
-      if (!sessionId) missing();
-      const record = await store.load(sessionId);
+      const editId = previewId.slice(previewPrefix.length);
+      const storageKey = await store.locate(editId);
+      if (!storageKey) missing();
+      const record = await store.load(storageKey);
       const ticket = await store.readTicket(sha(token));
       if (
         !record ||
@@ -583,12 +704,13 @@ export function createEditService(
         Date.parse(record.expiresAt) <= Date.now() ||
         !ticket ||
         ticket.editId !== editId ||
-        ticket.sessionId !== sessionId ||
+        ticket.sessionId !== record.sessionId ||
+        recordKey(record) !== storageKey ||
         ticket.target !== target ||
         Date.parse(ticket.expiresAt) <= Date.now()
       )
         missing();
-      await ownedSession(mysql, record.ownerUserId, sessionId, undefined, 'read');
+      await authorize(record.ownerUserId, record.sessionId);
       try {
         return await cache.read(ticket.key, path);
       } catch {

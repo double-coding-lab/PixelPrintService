@@ -1,3 +1,6 @@
+import { initD2cSavedWorkFile } from './D2cSavedWorkFile';
+import { initD2cSavedWork } from './D2cSavedWork';
+import { initD2cSessionShare } from './D2cSessionShare';
 import type { Sequelize } from 'sequelize';
 import { initD2cTeam } from './D2cTeam';
 import { initD2cTeamMember } from './D2cTeamMember';
@@ -18,6 +21,9 @@ import { initD2cMessageAttachment } from './D2cMessageAttachment';
 /** 模型注册器：连库后由 应用连接器 调用，把每个模型 init 到 sequelize.models。 */
 /** 新增表时，在此 import 对应的 init 函数并加入 registry。 */
 const registry = [
+  initD2cSavedWorkFile,
+  initD2cSavedWork,
+  initD2cSessionShare,
   initD2cTeam,
   initD2cTeamMember,
   initD2cWorkspace,
