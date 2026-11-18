@@ -1,0 +1,15 @@
+{
+  "id": "m-d2c-session-plaza",
+  "version": "1.0.0",
+  "schema": "flow2spec.matcher.v1",
+  "includeAny": [
+    "广场",
+    "公开会话",
+    "发布撤回",
+    "个人副本",
+    "再次编辑",
+    "保存到我的作品",
+    "SessionShare",
+    "SavedWork"
+  ]
+}

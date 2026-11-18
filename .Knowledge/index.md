@@ -86,3 +86,5 @@
 | 反复读 manifest 费 token（2a） | 同一任务线内 routing 只当快照；只读命中项的单个 matcher；不遍历整个 `matchers/` 目录枚举；`index.md` 勿与 routing 循环互刷。 |
 
 **说明**：「路由/知识已更新」指 `f2s-*`（如 `f2s-kb-build`、`f2s-kb-sync`、`f2s-kb-add`、`f2s-kb-fix` 等）产出或手改 `manifest-routing` / `matchers` 分片；**`flow2spec init` 不撰写业务文档**，以模板补齐与配置根落盘为主，勿与知识库内容更新混为一谈。
+
+| 会话广场与个人作品 | `.Knowledge/topics/d2c-session-plaza.md` | 登录用户公开浏览、隔离编辑、个人保存与再次编辑 | [能力说明](stock-docs/D2C会话广场与个人作品_终稿.md)、[三表迁移](req-docs/d2c-session-plaza_迁移.sql) |
