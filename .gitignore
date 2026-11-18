@@ -10,3 +10,8 @@ __pycache__/
 *.log
 .DS_Store
 *.private.json
+
+# Flow2Spec local state
+.task/completed/
+.task/*/completed/
+.Knowledge/update-check.json
