@@ -1,0 +1,67 @@
+.Knowledge/topics/d2c-workspace-foundation.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-40
+.Knowledge/matchers/m-project-architecture.json
+  s_e16f52fd1de115::t_964bb562f505fa 1-17
+.Knowledge/matchers/m-d2c-team-collaboration.json
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-15
+.Knowledge/stock-docs/deep-agents-execution.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-65
+.Knowledge/manifest-routing.json
+  s_e16f52fd1de115::t_7f6f3e0970da21 14-15,27-30,96-141,182-203
+  s_e16f52fd1de115::t_964bb562f505fa 13,25-26,31,88-95,180-181
+.Knowledge/topics/d2c-preview-editing.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-2,4,6-10,12,14,16,18,22,24,30,32,52-54
+  s_e16f52fd1de115::t_fdca996e79a783 3,5,11,13,15,17,19-21,23,25-29,31,33-51,55
+.Knowledge/matchers/m-deep-agents-execution.json
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-19
+.Knowledge/stock-docs/d2c-workspace-foundation.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-49
+.Knowledge/topics/deep-agents-execution.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-38
+.Knowledge/stock-docs/项目架构终稿.md
+  s_e16f52fd1de115::t_964bb562f505fa 2-56
+  s_e16f52fd1de115::t_dd699db1b8cae0 1
+.Knowledge/topics/project-architecture.md
+  s_e16f52fd1de115::t_964bb562f505fa 1-34
+.Knowledge/stock-docs/d2c-preview-editing.md
+  s_e16f52fd1de115::t_dd699db1b8cae0 27,29,44
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-26,28,30-43,45-54
+README.md
+  s_e16f52fd1de115::t_32257e63b52334 84-87,90
+.Knowledge/stock-docs/project-config.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-45
+.Knowledge/topics/project-config.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-34
+.Knowledge/stock-docs/d2c-team-collaboration.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-41
+.Knowledge/matchers/m-project-config.json
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-17
+.Knowledge/index.md
+  s_e16f52fd1de115::t_964bb562f505fa 25-27,31,38-54
+.Knowledge/matchers/m-d2c-workspace-foundation.json
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-19
+.Knowledge/matchers/m-d2c-preview-editing.json
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-8,12-19
+  s_e16f52fd1de115::t_2bde5816dcb3b6 9-11
+.Knowledge/README.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-23
+  s_e16f52fd1de115::t_964bb562f505fa 24
+.Knowledge/topics/d2c-team-collaboration.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "bc4f33c57b96c9dbbc9bec5a340788d584016714",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
