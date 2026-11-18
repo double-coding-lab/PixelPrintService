@@ -4,32 +4,105 @@
 .community-actions,
 .community-detail-heading {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
 }
 .community-detail-heading {
   justify-content: space-between;
-  margin: 16px 0;
+  margin: 8px 0 16px;
 }
 .community-detail-heading h2 {
-  margin: 0 0 6px;
+  margin: 0;
+  color: #242c3a;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.community-detail-identity {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+.community-detail-identity > span {
+  color: #7a8494;
+  font-size: 12px;
 }
 .community-conversation {
   max-width: 1000px;
   margin: auto;
 }
+.community-conversation-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
 .community-conversation .timeline {
   height: auto;
   overflow: visible;
-}
-.community-file-select {
-  width: min(100%, 640px);
-  margin-bottom: 12px;
-}
-.community-panel .file-editor {
-  min-height: 320px;
+  padding: 0;
 }
 .community-panel .work-card {
   gap: 10px;
+}
+.works-panel.community-panel-detail {
+  background: #fff;
+  padding: 16px 24px;
+}
+.works-panel.community-panel-detail > * {
+  max-width: none;
+}
+.community-panel-detail > .works-heading {
+  display: none;
+}
+.community-usage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 24px;
+  gap: 28px 24px;
+}
+.community-usage-grid dt {
+  color: #7a8494;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.community-usage-grid dd {
+  margin: 0;
+  color: #344054;
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+}
+.community-detail-drawer .ant-drawer-body {
+  padding: 24px;
+}
+@media (max-width: 720px) {
+  .works-panel.community-panel-detail {
+    padding: 12px;
+  }
+  .community-detail-heading {
+    align-items: flex-start;
+  }
+  .community-detail-drawer .ant-drawer-body {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell:has(.community-panel-detail) .app-header {
+    height: auto;
+    min-height: 56px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .app-shell:has(.community-panel-detail) .header-actions {
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .app-shell:has(.community-panel-detail) .header-actions > * {
+    flex-shrink: 0;
+  }
 }

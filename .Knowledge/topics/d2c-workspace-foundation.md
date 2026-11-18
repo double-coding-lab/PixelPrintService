@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 2
+revision: 3
 summary: "工作区、会话、文件修订、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -45,3 +45,7 @@ confidence: inferred
 - background只有与fills数组按顺序和完整属性完全一致时才省略；fills、全部节点、父子顺序、文字、零值、false、非空渲染/交互/变量绑定及未知字段保留。
 - 节点缓存仅去除JSON排版空白，全部原始字段和值保留；临时副本和稳定存储使用相同字节与摘要，规则检查、切图及原文回查继续读取完整数据。缓存先紧凑再执行文本写入限额，其余文件保持原样。
 - Token收益针对精简前后的紧凑节点结果估算，文件体积变化与整轮用量分别计量；回归验证输入隔离、节点/属性保留、重复背景边界及工具真实输出。
+
+## 图片目录映射只读查看
+
+`.d2c-cache/image-directories.json` 保存主题与上传目录的稳定映射，源码文件接口仅对这个准确的根级缓存路径额外开放只读查看。读取仍校验工作区权限、会话归属、路径及内容摘要；禁止编辑和删除，其他根级内部缓存继续受保护。验证见 `test/imageDirectoryRead.test.ts`。

@@ -63,7 +63,7 @@ export default function EditWorkspace({
         {label}
       </Button>
       {open && (
-        <EditWorkspaceDialog
+        <EditWorkspaceSurface
           key={`${sessionId}:${options?.root ?? 'private'}`}
           options={options}
           sessionId={sessionId}
@@ -156,13 +156,19 @@ export function EditWorkspacePreviewFrames({
 }
 
 /** 编辑器与独立沙盒并排；仅保存副本，应用动作显式提交当前已保存修订。 */
-function EditWorkspaceDialog({
+export function EditWorkspaceSurface({
   sessionId,
   sourceSearch,
   onClose,
   onApplied,
   options,
+  embedded = false,
+  onDirty,
+  onBusy,
 }: {
+  embedded?: boolean;
+  onDirty?: (value: boolean) => void;
+  onBusy?: (value: boolean) => void;
   options?: EditWorkspaceOptions;
   sessionId: string;
   onClose: () => void;
@@ -209,7 +215,8 @@ function EditWorkspaceDialog({
   }, []);
   const [width, setWidth] = useState<string | number>(375);
   const editable = useMemo(() => filterEditableFiles(files), [files]);
-  const selected = editable.find((file) => file.path === selectedPath) ?? editable[0];
+  const selected =
+    editable.find((file) => file.path === (selectedPath || entryPath)) ?? editable[0];
   const dirtyPaths = editable
     .filter((file) => copy?.files.find((old) => old.path === file.path)?.content !== file.content)
     .map((file) => file.path);
@@ -226,6 +233,19 @@ function EditWorkspaceDialog({
     if (needsExitConfirmation) setConfirmClose(true);
     else onClose();
   };
+  useEffect(() => {
+    onDirty?.(needsExitConfirmation);
+  }, [needsExitConfirmation, onDirty]);
+  useEffect(() => {
+    onBusy?.(pending === 'library');
+  }, [pending, onBusy]);
+  useEffect(
+    () => () => {
+      onDirty?.(false);
+      onBusy?.(false);
+    },
+    [onDirty, onBusy],
+  );
   const url = copy ? editPreviewUrl(copy) : null;
   const [displayedUrl, setDisplayedUrl] = useState<string | null>(null);
   const onPreviewShown = useCallback((value: string) => setDisplayedUrl(value), []);
@@ -252,7 +272,8 @@ function EditWorkspaceDialog({
   }, [needsExitConfirmation]);
 
   return (
-    <Modal
+    <EditWorkspaceShell
+      embedded={embedded}
       open
       title="在线编辑"
       className="edit-workspace-modal"
@@ -314,9 +335,14 @@ function EditWorkspaceDialog({
                             : '正在创建副本…'}
             </span>
           </div>
-          <Button disabled={pending === 'applying' || pending === 'library'} onClick={requestClose}>
-            退出
-          </Button>
+          {!embedded && (
+            <Button
+              disabled={pending === 'applying' || pending === 'library'}
+              onClick={requestClose}
+            >
+              退出
+            </Button>
+          )}
           <Button
             disabled={!copy || !!pending || state.resumePending}
             loading={pending === 'saving'}
@@ -362,7 +388,18 @@ function EditWorkspaceDialog({
       )}
       {!copy ? (
         <div className="edit-workspace-empty" role="status">
-          {pending === 'opening' ? '正在从最新产物创建副本…' : '创建失败，请退出后重试'}
+          {pending === 'opening' ? (
+            '正在准备代码与预览…'
+          ) : (
+            <Button
+              onClick={() => {
+                controller.dispose();
+                void controller.open();
+              }}
+            >
+              重新加载
+            </Button>
+          )}
         </div>
       ) : (
         <div className="edit-workspace-layout">
@@ -524,6 +561,30 @@ function EditWorkspaceDialog({
           </ul>
         )}
       </Modal>
-    </Modal>
+    </EditWorkspaceShell>
+  );
+}
+
+/** 广场直接嵌入同一编辑器，私有工作区沿用弹窗及原有退出保护。 */
+function EditWorkspaceShell({
+  embedded,
+  children,
+  footer,
+  ...modal
+}: Omit<React.ComponentProps<typeof Modal>, 'footer'> & {
+  embedded: boolean;
+  footer?: React.ReactNode;
+}) {
+  if (!embedded)
+    return (
+      <Modal {...modal} footer={footer}>
+        {children}
+      </Modal>
+    );
+  return (
+    <div className="edit-workspace-inline">
+      <div className="edit-workspace-inline-actions">{footer}</div>
+      <div className="edit-workspace-inline-body">{children}</div>
+    </div>
   );
 }
