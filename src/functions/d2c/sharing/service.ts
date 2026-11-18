@@ -132,7 +132,16 @@ function publicEvent(row: D2cTimeline, sessionId: string, shareId: string) {
   };
 }
 
-/** 独立的广场只读服务，发布写入仅允许会话创建者；binary 延迟取得，文本读取无需存储。 */
+/** 优先使用会话创建者；缺失时仅允许个人工作区拥有者管理历史会话，不回填身份。 */
+function canManageSharing(eid: string, session: D2cSession, workspace: D2cWorkspace): boolean {
+  const creator = session.createdUserId;
+  if (typeof creator === 'string' && creator.trim()) return sameUser(creator, eid);
+  return (
+    (workspace.teamId === null || workspace.teamId === '') && sameUser(workspace.createdUserId, eid)
+  );
+}
+
+/** 独立的广场只读服务；发布写入复查统一管理权限，binary 延迟取得，文本读取无需存储。 */
 export function createSharingService(mysql: Sequelize, options: { binary: () => SharingBinary }) {
   const shares = mysql.models.D2cSessionShare as typeof D2cSessionShare;
   const files = mysql.models.D2cFile as typeof D2cFile;
@@ -150,15 +159,15 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
   }
 
   return {
-    /** 状态沿用私有访问权限；团队成员可查看但只有会话创建者 canManage。 */
+    /** 状态沿用私有访问权限，历史个人会话与发布写入使用同一授权规则。 */
     async status(eid: string, sessionId: string) {
       requireSharingIdentity(eid);
-      const { session } = await ownedSession(mysql, eid, sessionId, undefined, 'read');
+      const { session, workspace } = await ownedSession(mysql, eid, sessionId, undefined, 'read');
       const share = await shares.findOne({ where: { sessionId } });
       return {
         public: share?.enabled === true,
         shareId: share?.enabled ? share.shareId : null,
-        canManage: sameUser(session.createdUserId, eid),
+        canManage: canManageSharing(eid, session, workspace),
       };
     },
     /** 锁序复用工作区→会话→发布；并发首次发布由会话锁串行化，重复启用保留 UUID。 */
@@ -167,8 +176,8 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
       if (typeof enabled !== 'boolean')
         throw new SessionError(422, 'INVALID_SHARING', '发布状态无效');
       return mysql.transaction(async (transaction) => {
-        const { session } = await ownedSession(mysql, eid, sessionId, transaction);
-        if (!sameUser(session.createdUserId, eid))
+        const { session, workspace } = await ownedSession(mysql, eid, sessionId, transaction);
+        if (!canManageSharing(eid, session, workspace))
           throw new SessionError(403, 'SESSION_CREATOR_REQUIRED', '仅会话创建者可发布或撤销');
         const existing = await shares.findOne({
           where: { sessionId },
