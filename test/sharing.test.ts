@@ -662,3 +662,52 @@ test('invalid share IDs and pagination fail explicitly', async () => {
   ])
     await assert.rejects(f.service.list('reader', page, pageSize), reason('INVALID_PAGE'));
 });
+
+test('legacy personal session: workspace owner may publish/revoke without backfilling creator', async () => {
+  const f = fixture();
+  f.tables.D2cSession[0].createdUserId = null;
+  f.tables.D2cWorkspace[0].teamId = null;
+  assert.equal((await f.service.status('OWNER', 'session-a')).canManage, true);
+  const published = await f.service.set('owner', 'session-a', true);
+  assert.equal(published.public, true);
+  await f.service.set('owner', 'session-a', false);
+  assert.equal((await f.service.status('owner', 'session-a')).public, false);
+  assert.equal(f.tables.D2cSession[0].createdUserId, null);
+  await assert.rejects(f.service.status('reader', 'session-a'));
+  await assert.rejects(f.service.set('reader', 'session-a', true));
+});
+
+test('legacy team session: neither workspace owner nor teammate gains publication permission', async () => {
+  const f = fixture();
+  f.tables.D2cSession[0].createdUserId = null;
+  for (const eid of ['owner', 'member']) {
+    assert.equal((await f.service.status(eid, 'session-a')).canManage, false);
+    await assert.rejects(f.service.set(eid, 'session-a', true), reason('SESSION_CREATOR_REQUIRED'));
+  }
+  assert.equal(f.tables.D2cSessionShare.length, 0);
+});
+
+test('explicit session creator stays authoritative even in a personal workspace', async () => {
+  const f = fixture();
+  f.tables.D2cWorkspace[0].teamId = null;
+  f.tables.D2cSession[0].createdUserId = 'another-creator';
+  assert.equal((await f.service.status('owner', 'session-a')).canManage, false);
+  await assert.rejects(
+    f.service.set('owner', 'session-a', true),
+    reason('SESSION_CREATOR_REQUIRED'),
+  );
+});
+
+test('empty legacy fields remain compatible; moving to a team rechecks write permission', async () => {
+  const f = fixture();
+  f.tables.D2cWorkspace[0].teamId = '';
+  f.tables.D2cSession[0].createdUserId = '  ';
+  assert.equal((await f.service.status('owner', 'session-a')).canManage, true);
+  await f.service.set('owner', 'session-a', true);
+  f.tables.D2cWorkspace[0].teamId = 'team-a';
+  assert.equal((await f.service.status('owner', 'session-a')).canManage, false);
+  await assert.rejects(
+    f.service.set('owner', 'session-a', false),
+    reason('SESSION_CREATOR_REQUIRED'),
+  );
+});
