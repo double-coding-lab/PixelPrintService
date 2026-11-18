@@ -1,4 +1,5 @@
 import { data, errorMessage, id } from './api';
+import type { PersonalWork } from './sharing';
 import { pauseForEdit } from './editRunControl';
 
 export type EditFile = { path: string; content: string };
@@ -21,9 +22,12 @@ export type EditCopy = {
 export type EditState = {
   copy: EditCopy | null;
   originalFiles?: EditFile[];
+  originalEntryPath?: string | null;
   files: EditFile[];
   entryPath: string | null;
-  pending: 'opening' | 'saving' | 'applying' | null;
+  pending: 'opening' | 'saving' | 'applying' | 'library' | null;
+  savedWork?: PersonalWork;
+  librarySaved?: boolean;
   error: string;
   applyPhase?: 'pausing' | 'writing' | 'resuming';
   resumePending?: boolean;
@@ -90,6 +94,8 @@ export function editPreviewUrl(copy: EditCopy) {
     : null;
 }
 
+export type EditWorkspaceOptions = { root?: string; detached?: boolean };
+
 /** 每个弹窗独立管理 CAS、请求互斥和轮询；退出后晚到的新副本也会删除。 */
 export class EditWorkspaceController {
   private state: EditState = { copy: null, files: [], entryPath: null, pending: null, error: '' };
@@ -106,8 +112,9 @@ export class EditWorkspaceController {
   constructor(
     sessionId: string,
     private readonly request: typeof data = data,
+    private readonly options: EditWorkspaceOptions = {},
   ) {
-    this.root = `/sessions/${id(sessionId)}/edit`;
+    this.root = options.root ?? `/sessions/${id(sessionId)}/edit`;
   }
 
   getSnapshot = () => this.state;
@@ -181,6 +188,8 @@ export class EditWorkspaceController {
       error: '',
       resumePending: false,
       applyPhase: undefined,
+      savedWork: undefined,
+      librarySaved: false,
     });
     try {
       const copy = await this.request<EditCopy>(this.root, { method: 'POST', body: '{}' });
@@ -191,6 +200,7 @@ export class EditWorkspaceController {
       this.update({
         copy,
         originalFiles: copy.files.map((file) => ({ ...file })),
+        originalEntryPath: copy.entryPath,
         files: copy.files,
         entryPath: copy.entryPath,
         pending: null,
@@ -266,10 +276,60 @@ export class EditWorkspaceController {
     }
   }
 
+  /** 持久化独立副本；正文仍有新修改时保留编辑状态，避免保存旧修订。 */
+  async saveToLibrary(name?: string) {
+    if (!this.options.detached || !this.active || !this.state.copy || this.state.pending)
+      return false;
+    if (editDirty(this.state) && !(await this.save())) return false;
+    if (!this.active || !this.state.copy || this.state.pending) return false;
+    if (editDirty(this.state)) {
+      this.update({ error: '内容已变化，请再次保存到我的作品' });
+      return false;
+    }
+    const copy = this.state.copy!;
+    const generation = this.generation;
+    const controller = new AbortController();
+    this.write = controller;
+    this.stopPolling();
+    this.update({ pending: 'library', error: '' });
+    try {
+      const work = await this.request<PersonalWork>(`${this.root}/${id(copy.editId)}/save`, {
+        method: 'POST',
+        body: JSON.stringify({ baseRevision: copy.revision, ...(name ? { name } : {}) }),
+        signal: controller.signal,
+      });
+      if (!this.active || generation !== this.generation || controller.signal.aborted) return false;
+      this.update({
+        savedWork: work,
+        librarySaved: true,
+        originalFiles: copy.files,
+        originalEntryPath: copy.entryPath,
+        pending: null,
+      });
+      this.poll();
+      return true;
+    } catch (reason) {
+      if (this.active && generation === this.generation && !controller.signal.aborted) {
+        this.update({ pending: null, error: errorMessage(reason) });
+        this.poll();
+      }
+      return false;
+    }
+  }
+
+  /** ZIP 始终对应已保存的副本修订，未保存正文时先保存并预览。 */
+  downloadPath() {
+    const { copy, pending } = this.state;
+    return this.options.detached && copy && !pending && !editDirty(this.state)
+      ? `/api/d2c${this.root}/${id(copy.editId)}/download`
+      : undefined;
+  }
+
   /** 禁止未保存或并发应用；只有显式 apply POST 可以改变当前工作区。 */
   async apply() {
     const { copy, pending } = this.state;
-    if (!this.active || !copy || pending || editDirty(this.state)) return false;
+    if (this.options.detached || !this.active || !copy || pending || editDirty(this.state))
+      return false;
     const generation = this.generation;
     const controller = new AbortController();
     this.write = controller;

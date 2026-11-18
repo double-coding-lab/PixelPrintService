@@ -96,8 +96,10 @@ function WorkFile({ versionId, file }: { versionId: string; file: FileInfo }) {
 export default function WorksPanel({
   versionId,
   onSelect,
+  onPersonal,
 }: {
   versionId: string;
+  onPersonal?: () => void;
   onSelect: (value: string) => void;
 }) {
   const [scope, setScope] = useState<'mine' | 'all' | 'team'>('mine');
@@ -159,6 +161,7 @@ export default function WorksPanel({
       <div className="works-heading">
         <h1>{versionId ? '版本详情' : '作品库'}</h1>
         <div className="works-heading-actions">
+          {onPersonal && <Button onClick={onPersonal}>我的作品</Button>}
           {versionId && (
             <Button
               icon={<Icon name="arrow" style={{ transform: 'rotate(180deg)' }} />}

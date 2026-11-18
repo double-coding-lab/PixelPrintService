@@ -21,7 +21,9 @@ export default function FilePreview({
   sessionId,
   fileId,
   current,
+  apiRoot,
 }: {
+  apiRoot?: string;
   sessionId: string;
   fileId: string;
   current?: FileInfo;
@@ -32,7 +34,11 @@ export default function FilePreview({
   const [reload, setReload] = useState(0);
   const [dimensions, setDimensions] = useState('');
   const imageFile = isPreviewImage(current);
-  const image = imageFile ? current?.url : null;
+  const image = imageFile
+    ? apiRoot
+      ? `/api/d2c${apiRoot}/files/${id(fileId)}`
+      : current?.url
+    : null;
   const binary = !!current && ['asset', 'attachment'].includes(current.kind);
   useEffect(() => {
     const controller = new AbortController();
@@ -40,7 +46,7 @@ export default function FilePreview({
     setFile(null);
     setDimensions('');
     setError('');
-    const path = `/sessions/${id(sessionId)}/files/${id(fileId)}`;
+    const path = `${apiRoot ?? `/sessions/${id(sessionId)}`}/files/${id(fileId)}`;
     if (imageFile) {
       if (!image) {
         setLoading(false);
@@ -66,7 +72,7 @@ export default function FilePreview({
         },
       );
     return () => controller.abort();
-  }, [sessionId, fileId, current?.revision, reload, imageFile, image, binary]);
+  }, [sessionId, fileId, current?.revision, reload, imageFile, image, binary, apiRoot]);
   return (
     <section className="file-editor" aria-label="只读文件预览">
       <div className="editor-toolbar">

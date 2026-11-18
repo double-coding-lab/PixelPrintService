@@ -1,3 +1,5 @@
+import { useContext } from 'react';
+import { SessionReadRoot } from './sharing';
 import { formatTime } from './time';
 import { revealPagedContent } from './pagedContent';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -60,9 +62,10 @@ export async function readSubagentPage(
   agentId: string,
   afterSeq: number,
   signal: AbortSignal,
+  root = `/sessions/${id(sessionId)}`,
 ): Promise<SubagentPage> {
   const page = await data<SubagentPage>(
-    `/sessions/${id(sessionId)}/subagents/${id(agentId)}/events?afterSeq=${afterSeq}&limit=500`,
+    `${root}/subagents/${id(agentId)}/events?afterSeq=${afterSeq}&limit=500`,
     { signal },
   );
   if (
@@ -412,18 +415,22 @@ export default function SubagentPanel({
   revision: number;
   onClose: () => void;
 }) {
+  const root = useContext(SessionReadRoot);
   const [state, setState] = useState<{ key: string; snapshot: Snapshot } | null>(null);
   const reader = useRef<ReturnType<typeof createSubagentReader> | null>(null);
   const [revealAfter, setRevealAfter] = useState<number | undefined>(undefined);
   const lastRevision = useRef(revision);
-  const key = JSON.stringify([sessionId, agentId]);
+  const key = JSON.stringify([sessionId, agentId, root]);
   useEffect(() => {
     setState(null);
     setRevealAfter(undefined);
     lastRevision.current = revision;
     if (!open || !sessionId || !agentId) return;
-    const current = createSubagentReader(sessionId, agentId, (snapshot) =>
-      setState({ key, snapshot }),
+    const current = createSubagentReader(
+      sessionId,
+      agentId,
+      (snapshot) => setState({ key, snapshot }),
+      (session, agent, after, signal) => readSubagentPage(session, agent, after, signal, root),
     );
     reader.current = current;
     void current.load();

@@ -21,6 +21,7 @@ import {
   editDirty,
   editNeedsExitConfirmation,
   editPreviewUrl,
+  type EditWorkspaceOptions,
 } from './editWorkspaceState';
 import EditableFileTree from './EditableFileTree';
 import { filterEditableFiles } from './editableFiles';
@@ -39,7 +40,11 @@ export default function EditWorkspace({
   disabled = false,
   onApplied,
   sourceSearch,
+  options,
+  label = '在线编辑',
 }: {
+  label?: string;
+  options?: EditWorkspaceOptions;
   sourceSearch?: SourceSearchRequest;
   sessionId: string;
   disabled?: boolean;
@@ -55,11 +60,12 @@ export default function EditWorkspace({
   return (
     <>
       <Button size="small" disabled={disabled} onClick={() => setOpen(true)}>
-        在线编辑
+        {label}
       </Button>
       {open && (
         <EditWorkspaceDialog
-          key={sessionId}
+          key={`${sessionId}:${options?.root ?? 'private'}`}
+          options={options}
           sessionId={sessionId}
           sourceSearch={sourceSearch}
           onClose={() => setOpen(false)}
@@ -155,13 +161,16 @@ function EditWorkspaceDialog({
   sourceSearch,
   onClose,
   onApplied,
+  options,
 }: {
+  options?: EditWorkspaceOptions;
   sessionId: string;
   onClose: () => void;
   onApplied: () => void;
   sourceSearch?: SourceSearchRequest;
 }) {
-  const [controller] = useState(() => new EditWorkspaceController(sessionId));
+  const [controller] = useState(() => new EditWorkspaceController(sessionId, undefined, options));
+  const detached = !!options?.detached;
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const { copy, files, entryPath, pending, error } = state;
   const [selectedPath, setSelectedPath] = useState('');
@@ -206,11 +215,14 @@ function EditWorkspaceDialog({
     .map((file) => file.path);
   const dirty = editDirty(state);
   const changes = editChanges(state);
-  const needsExitConfirmation = editNeedsExitConfirmation(state) || !!state.resumePending;
-  const readOnly = pending === 'applying' || !!state.resumePending;
+  const needsExitConfirmation =
+    editNeedsExitConfirmation(state) ||
+    !!state.resumePending ||
+    (detached && !!copy && state.originalEntryPath !== entryPath);
+  const readOnly = pending === 'applying' || pending === 'library' || !!state.resumePending;
   /** 关闭按钮、Esc 和退出共用未应用改动保护。 */
   const requestClose = () => {
-    if (pending === 'applying') return;
+    if (pending === 'applying' || pending === 'library') return;
     if (needsExitConfirmation) setConfirmClose(true);
     else onClose();
   };
@@ -246,8 +258,8 @@ function EditWorkspaceDialog({
       className="edit-workspace-modal"
       width="calc(100vw - 40px)"
       style={{ top: 20 }}
-      closable={pending !== 'applying'}
-      keyboard={pending !== 'applying' && !confirmClose}
+      closable={pending !== 'applying' && pending !== 'library'}
+      keyboard={pending !== 'applying' && pending !== 'library' && !confirmClose}
       mask={{ closable: false }}
       onCancel={requestClose}
       footer={
@@ -270,7 +282,9 @@ function EditWorkspaceDialog({
                         {change.restored
                           ? '已还原 · 待保存'
                           : change.saved
-                            ? '已保存 · 未应用'
+                            ? detached
+                              ? '已保存副本'
+                              : '已保存 · 未应用'
                             : '未保存'}
                       </small>
                     </button>
@@ -290,13 +304,17 @@ function EditWorkspaceDialog({
                       : dirty
                         ? '有未保存修改'
                         : changes.length
-                          ? '已保存副本，尚未应用'
+                          ? detached
+                            ? '副本有改动'
+                            : '已保存副本，尚未应用'
                           : copy
-                            ? '暂无改动'
+                            ? state.librarySaved
+                              ? '已保存到我的作品'
+                              : '暂无改动'
                             : '正在创建副本…'}
             </span>
           </div>
-          <Button disabled={pending === 'applying'} onClick={requestClose}>
+          <Button disabled={pending === 'applying' || pending === 'library'} onClick={requestClose}>
             退出
           </Button>
           <Button
@@ -306,20 +324,42 @@ function EditWorkspaceDialog({
           >
             保存并预览
           </Button>
-          <Button
-            type="primary"
-            disabled={!copy || dirty || !!pending}
-            loading={pending === 'applying'}
-            onClick={async () => {
-              if (await controller.apply()) onApplied();
-            }}
-          >
-            {state.resumePending ? '重试继续 Agent' : '应用到当前工作区'}
-          </Button>
+          {detached ? (
+            <>
+              <Button href={controller.downloadPath()} disabled={!controller.downloadPath()}>
+                下载 ZIP
+              </Button>
+              <Button
+                type="primary"
+                disabled={!copy || !!pending}
+                loading={pending === 'library'}
+                onClick={() => void controller.saveToLibrary()}
+              >
+                保存到我的作品
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="primary"
+              disabled={!copy || dirty || !!pending}
+              loading={pending === 'applying'}
+              onClick={async () => {
+                if (await controller.apply()) onApplied();
+              }}
+            >
+              {state.resumePending ? '重试继续 Agent' : '应用到当前工作区'}
+            </Button>
+          )}
         </div>
       }
     >
       {error && <Alert type="error" showIcon title={error} />}
+      {detached && state.savedWork && (
+        <p role="status">
+          已保存到我的作品{' '}
+          <a href={`?view=my-works&work=${encodeURIComponent(state.savedWork.workId)}`}>查看作品</a>
+        </p>
+      )}
       {!copy ? (
         <div className="edit-workspace-empty" role="status">
           {pending === 'opening' ? '正在从最新产物创建副本…' : '创建失败，请退出后重试'}
@@ -447,7 +487,13 @@ function EditWorkspaceDialog({
       )}
       <Modal
         open={confirmClose}
-        title={state.resumePending ? 'Agent 尚未继续，确定退出？' : '改动尚未应用，确定退出？'}
+        title={
+          detached
+            ? '副本尚未保存到我的作品，确定退出？'
+            : state.resumePending
+              ? 'Agent 尚未继续，确定退出？'
+              : '改动尚未应用，确定退出？'
+        }
         width={460}
         mask={{ closable: false }}
         onCancel={() => setConfirmClose(false)}
@@ -461,9 +507,11 @@ function EditWorkspaceDialog({
         ]}
       >
         <p>
-          {state.resumePending
-            ? '文件已应用到当前工作区。退出后可在对话中继续任务。'
-            : '退出会丢弃临时副本中的改动。保存并预览不会应用到当前工作区。'}
+          {detached
+            ? '退出会丢弃未保存到我的作品的副本改动。'
+            : state.resumePending
+              ? '文件已应用到当前工作区。退出后可在对话中继续任务。'
+              : '退出会丢弃临时副本中的改动。保存并预览不会应用到当前工作区。'}
         </p>
         {changes.length > 0 && (
           <ul className="edit-workspace-exit-files" aria-label="尚未应用的文件">
