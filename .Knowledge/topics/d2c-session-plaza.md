@@ -1,6 +1,6 @@
 ---
 id: d2c-session-plaza
-revision: 2
+revision: 3
 summary: "登录用户会话广场、独立编辑副本与个人作品再次编辑"
 primary: feature
 confidence: inferred
@@ -36,3 +36,10 @@ sourceDoc: ".Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md"
 ## 详细资料
 
 [会话广场与个人作品](../stock-docs/D2C会话广场与个人作品_终稿.md)
+
+## 广场详情编辑布局与用量
+
+- 详情默认直接创建访客隔离编辑副本，左侧文件目录与 Monaco 代码、右侧运行预览；窄屏上下排列。保存并预览仅更新副本，保存到我的作品和下载沿用原授权边界。
+- 对话默认隐藏，通过“查看对话”打开抽屉后才读取时间线，子 Agent 继续使用广场鉴权路径。打开对话或用量不重建编辑器，保留未保存源码；返回、切换及关闭页面保护尚未持久保存的改动。
+- “用量”通过 GET /plaza/sessions/:id/usage 查询所有轮次的持久化用量与累计耗时，包含主模型、子模型及摘要，未报告值保持未知。接口只投影聚合值与观察时间，读取前后复查公开状态，不返回模型配置、上下文、检查点或私有诊断。
+- 实现入口为 CommunityPanel、EditWorkspaceSurface 和 sharing/service.ts；回归见 plazaUsage、sharingFrontend、editWorkspaceUi 测试。

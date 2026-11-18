@@ -43,7 +43,7 @@
 | --- | --- | --- | --- |
 | 项目架构 | [主题摘要](topics/project-architecture.md) | Fastify全栈入口、登录、日志、数据连接与部署 | [实现终稿](stock-docs/项目架构终稿.md) |
 | 项目配置 | [主题摘要](topics/project-config.md) | 本地配置字段、模型预算、存储与生效时机 | [实现终稿](stock-docs/project-config.md) |
-| D2C 工作区与文件 | [主题摘要](topics/d2c-workspace-foundation.md) | 工作区、会话、文件修订、切图、凭据和版本 | [实现终稿](stock-docs/d2c-workspace-foundation.md) |
+| D2C 工作区与文件 | [主题摘要](topics/d2c-workspace-foundation.md) | 工作区、会话、文件修订、切图、凭据、版本与图片目录映射只读查看 | [实现终稿](stock-docs/d2c-workspace-foundation.md) |
 | Deep Agents 执行与恢复 | [主题摘要](topics/deep-agents-execution.md) | 模型循环、检查点、摘要、子Agent、预算和诊断 | [实现终稿](stock-docs/deep-agents-execution.md) |
 | 预览、截图与在线编辑 | [主题摘要](topics/d2c-preview-editing.md) | 本地Vite预览、缓存、截图、元素审查和在线编辑 | [实现终稿](stock-docs/d2c-preview-editing.md) |
 | 团队与共享权限 | [主题摘要](topics/d2c-team-collaboration.md) | 团队成员、共享工作区、操作者和凭据隔离 | [实现终稿](stock-docs/d2c-team-collaboration.md) |
@@ -87,4 +87,4 @@
 
 **说明**：「路由/知识已更新」指 `f2s-*`（如 `f2s-kb-build`、`f2s-kb-sync`、`f2s-kb-add`、`f2s-kb-fix` 等）产出或手改 `manifest-routing` / `matchers` 分片；**`flow2spec init` 不撰写业务文档**，以模板补齐与配置根落盘为主，勿与知识库内容更新混为一谈。
 
-| 会话广场与个人作品 | `.Knowledge/topics/d2c-session-plaza.md` | 登录用户公开浏览、隔离编辑、个人保存与再次编辑；旧个人会话发布兼容 | [能力说明](stock-docs/D2C会话广场与个人作品_终稿.md)、[三表迁移](req-docs/d2c-session-plaza_迁移.sql) |
+| 会话广场与个人作品 | `.Knowledge/topics/d2c-session-plaza.md` | 登录用户公开浏览、隔离编辑、个人保存与再次编辑；旧个人会话发布兼容、代码预览并排编辑、对话抽屉与用量 | [能力说明](stock-docs/D2C会话广场与个人作品_终稿.md)、[三表迁移](req-docs/d2c-session-plaza_迁移.sql) |

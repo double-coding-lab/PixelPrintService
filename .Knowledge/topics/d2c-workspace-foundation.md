@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 1
+revision: 2
 summary: "工作区、会话、文件修订、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -38,3 +38,7 @@ confidence: inferred
 ## 详细资料
 
 [D2C 工作区与文件](../stock-docs/d2c-workspace-foundation.md)
+
+## 图片目录映射只读查看
+
+`.d2c-cache/image-directories.json` 保存主题与上传目录的稳定映射，源码文件接口仅对这个准确的根级缓存路径额外开放只读查看。读取仍校验工作区权限、会话归属、路径及内容摘要；禁止编辑和删除，其他根级内部缓存继续受保护。验证见 `test/imageDirectoryRead.test.ts`。
