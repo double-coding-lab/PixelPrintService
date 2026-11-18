@@ -1,0 +1,30 @@
+src/functions/d2c/sharing/routes.ts
+  s_a4e26e740c8ebc::t_048fae8aeddae4 188-192
+src/functions/d2c/sharing/runtime.ts
+  s_a4e26e740c8ebc::t_dce9685d38abd1 109
+src/functions/d2c/preview/session.ts
+  s_a4e26e740c8ebc::t_091831964abd4d 74,77,93
+test/sharingGateway.test.ts
+  s_a4e26e740c8ebc::t_c0169212a3aa03 1
+test/sharing.test.ts
+  s_a4e26e740c8ebc::t_c0169212a3aa03 1
+test/detachedEditor.test.ts
+  s_a4e26e740c8ebc::t_6e231f94f1c68a 354-364
+  s_a4e26e740c8ebc::t_fe309d85f6e134 294-343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "f725742be50cd5b55cbca9ecaa72f91d1d8b9a49",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
