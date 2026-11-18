@@ -308,3 +308,95 @@ test('脚本输出超限优先于网络重试，不能因残留503诊断继续�
     return true;
   });
 });
+
+test('fetch和inspect精简编辑器字段，缓存紧凑存储且完整保留全部原始属性', async (t) => {
+  const node = {
+    id: '1:2',
+    name: '页面',
+    interactions: [],
+    boundVariables: {},
+    locked: true,
+    exportSettings: [{ format: 'PNG' }],
+    overrides: [{ id: '1:3', overriddenFields: ['characters'] }],
+    effects: [],
+    strokes: [],
+    fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 } }],
+    background: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 } }],
+    children: [{ id: '1:3', type: 'TEXT', characters: '标题', exportSettings: [] }],
+  };
+  const cachePath = '.d2c-cache/fixedKey/nodes/1_2.json';
+  const cache = JSON.stringify({ _depth: null, node });
+  const pretty = JSON.stringify({ _depth: null, node }, null, 2);
+  const f = await toolFixture(
+    t,
+    `import fs from 'node:fs';
+     fs.mkdirSync('.d2c-cache/fixedKey/nodes', {recursive:true});
+     fs.writeFileSync(${JSON.stringify(cachePath)}, ${JSON.stringify(pretty)});
+     console.log(JSON.stringify({ok:true,data:{cached:false,node:${JSON.stringify(node)}}}));`,
+  );
+  const saved = new Map<string, string>();
+  f.input.save = async (file?: string, content?: string) => {
+    if (file && content) saved.set(file, content);
+  };
+  const runtime = await createGenerationTools(f.input);
+  const fetched = JSON.parse(await runtime.tools.figma('fetch-node', {}));
+  assert.deepEqual(fetched.data.node, {
+    id: '1:2',
+    name: '页面',
+    fills: node.fills,
+    children: [{ id: '1:3', type: 'TEXT', characters: '标题' }],
+  });
+  assert.equal(saved.get(cachePath), cache);
+  const inspected = JSON.parse(await runtime.tools.figma('inspect-node', { depth: 1 }));
+  assert.equal(inspected.data.cachePath, cachePath);
+  assert.deepEqual(inspected.data.nodes, [
+    { attributes: { id: '1:2', name: '页面', fills: node.fills }, childIds: ['1:3'] },
+    { attributes: { id: '1:3', type: 'TEXT', characters: '标题' }, childIds: [] },
+  ]);
+  const page = JSON.parse(
+    await runtime.tools.figma('inspect-node', { subtree: true, offset: 1, limit: 1 }),
+  );
+  assert.deepEqual(page.data.nodes, inspected.data.nodes.slice(1));
+  assert.equal(page.data.nextOffset, null);
+  assert.equal(JSON.parse(await runtime.tools.read(cachePath, false)).content, cache);
+  assert.equal(await fs.readFile(path.join(f.workspace, cachePath), 'utf8'), cache);
+});
+
+test('节点缓存先去除排版再核对存储上限，其余文件及重复同步保持原行为', async (t) => {
+  const node = {
+    id: '1:2',
+    type: 'FRAME',
+    children: Array.from({ length: 250 }, (_, i) => ({
+      id: `2:${i}`,
+      type: 'TEXT',
+      characters: '原始文字',
+      style: { fontSize: 16 },
+      exportSettings: [{ format: 'PNG' }],
+    })),
+  };
+  const compact = JSON.stringify({ _depth: null, node });
+  const pretty = JSON.stringify({ _depth: null, node }, null, 2);
+  const cachePath = '.d2c-cache/fixedKey/nodes/1_2.json';
+  const f = await toolFixture(t, 'console.log(JSON.stringify({ok:true,data:{}}));');
+  f.input.textFileBytes = Buffer.byteLength(compact);
+  assert.ok(Buffer.byteLength(pretty) > f.input.textFileBytes);
+  await fs.mkdir(path.join(f.workspace, '.d2c-cache/fixedKey/nodes'), { recursive: true });
+  await fs.writeFile(path.join(f.workspace, cachePath), pretty);
+  const otherPath = '.d2c-cache/fixedKey/meta.json';
+  const other = JSON.stringify({ version: 'v1' }, null, 2);
+  await fs.writeFile(path.join(f.workspace, otherPath), other);
+  const saves: string[] = [];
+  f.input.save = async (file?: string, content?: string) => {
+    assert.ok(Buffer.byteLength(content!) <= f.input.textFileBytes);
+    saves.push(file!);
+  };
+  const runtime = await createGenerationTools(f.input);
+  await runtime.tools.figma('cache-check', {});
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(f.workspace, cachePath), 'utf8')), {
+    _depth: null,
+    node,
+  });
+  assert.equal(await fs.readFile(path.join(f.workspace, otherPath), 'utf8'), other);
+  await runtime.tools.figma('cache-check', {});
+  assert.equal(saves.filter((file) => file === cachePath).length, 1);
+});

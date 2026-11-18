@@ -43,7 +43,12 @@ import type { restoreExecutionWorkspace } from './workspace';
 
 import { ToolIssue, toolFeedback, toolIssue } from './toolFeedback';
 import { compressImage } from '../utils/compressImage';
-import { inspectFigmaNode, inspectFigmaSubtree } from './figmaNode';
+import {
+  compactFigmaCacheForStorage,
+  compactFigmaNodeForModel,
+  inspectFigmaNode,
+  inspectFigmaSubtree,
+} from './figmaNode';
 import { createRulesWorkspace, mergeRulesReports } from './rulesWorkspace';
 import { designReferencePaths, persistDesignReference } from './designReference';
 import {
@@ -538,6 +543,15 @@ export async function createGenerationTools(input: {
       }
       let digest = createHash('sha256').update(content).digest('hex');
       if (synced.get(relative) === digest) continue;
+      if (/^\.d2c-cache\/[^/]+\/nodes\/\d+_\d+\.json$/.test(relative)) {
+        const original = new TextDecoder('utf-8', { fatal: true }).decode(content);
+        const compact = Buffer.from(compactFigmaCacheForStorage(original));
+        if (compact.length < content.length) {
+          content = compact;
+          await fs.writeFile(filename, content, { mode: 0o600 });
+          digest = createHash('sha256').update(content).digest('hex');
+        }
+      }
       if (/\.(?:png|jpe?g)$/i.test(relative)) {
         const compressed = await compressImage(relative, content, input.signal);
         if (compressed.status === 'compressed') {
@@ -1088,7 +1102,17 @@ export async function createGenerationTools(input: {
         return input.redact(
           JSON.stringify(
             view
-              ? { ok: true, data: { cachePath: relative, ...view } }
+              ? {
+                  ok: true,
+                  data: {
+                    cachePath: relative,
+                    ...view,
+                    nodes: view.nodes.map(({ attributes, childIds }) => ({
+                      attributes: compactFigmaNodeForModel(attributes),
+                      childIds,
+                    })),
+                  },
+                }
               : {
                   ok: false,
                   type: 'tool_feedback',
@@ -1361,6 +1385,12 @@ export async function createGenerationTools(input: {
             message:
               '图片已保存；请使用返回的地址或读取 assetUrls 地址表，不要仅凭旧读取结果判断补切图片缺失。',
           },
+        });
+      }
+      if (command === 'fetch-node' && payload.data?.node) {
+        return JSON.stringify({
+          ...payload,
+          data: { ...payload.data, node: compactFigmaNodeForModel(payload.data.node) },
         });
       }
       return result.output;
