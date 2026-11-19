@@ -1,5 +1,6 @@
+import { publicOverviewPayload } from './overview';
 import { createHash, randomUUID } from 'node:crypto';
-import { Op, col, fn, literal, type Sequelize } from 'sequelize';
+import { Op, literal, type Sequelize } from 'sequelize';
 import type { D2cWorkspace } from '../../../models/D2cWorkspace';
 import type { D2cSession } from '../../../models/D2cSession';
 import type { D2cSessionShare } from '../../../models/D2cSessionShare';
@@ -363,7 +364,7 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
         attributes: [
           'runId',
           'createdAt',
-          [fn('JSON_UNQUOTE', fn('JSON_EXTRACT', col('displayPayload'), '$.status')), 'status'],
+          [literal("JSON_UNQUOTE(JSON_EXTRACT(`displayPayload`, '$.status'))"), 'status'],
         ],
         raw: true,
       })) as unknown as Array<{ runId: string | null; createdAt: unknown; status: string }>;
@@ -473,7 +474,11 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
           'kind',
           'messageId',
           'toolCallId',
-          'displayPayload',
+          ...(agentId
+            ? ['displayPayload']
+            : [
+                [publicOverviewPayload(), 'displayPayload'] as [ReturnType<typeof literal>, string],
+              ]),
           'completed',
           'createdAt',
         ],

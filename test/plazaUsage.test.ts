@@ -2,7 +2,7 @@ import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Fastify, { type FastifyRequest } from 'fastify';
-import type { Sequelize } from 'sequelize';
+import { Sequelize } from 'sequelize';
 import { createSharingService } from '../src/functions/d2c/sharing/service';
 import sharingRoutes from '../src/functions/d2c/sharing/routes';
 import { SessionError } from '../src/functions/d2c/session/access';
@@ -285,4 +285,22 @@ test('HTTP usage contract inherits login, no-store and publication errors', asyn
   f.tables.D2cSessionShare[0].enabled = false;
   assert.equal((await app.inject(url)).statusCode, 404);
   assert.equal((await app.inject('/api/d2c/plaza/sessions/source/usage')).statusCode, 422);
+});
+
+/** Sequelize 的 fn 字符串参数会转义美元符号，必须检查真实生成 SQL。 */
+test('用量状态查询生成合法 JSON 路径', async () => {
+  const f = fixture();
+  await f.service.usage('viewer', shareId);
+  const options = f.queries.find((query) => query.table === 'D2cTimeline')!.options;
+  const db = new Sequelize('test', 'test', 'test', { dialect: 'mysql', logging: false });
+  try {
+    const generator = db.getQueryInterface().queryGenerator as unknown as {
+      selectQuery(table: string, options: unknown): string;
+    };
+    const sql = generator.selectQuery('d2c_timeline', options);
+    assert.ok(sql.includes("JSON_EXTRACT(`displayPayload`, '$.status')"));
+    assert.doesNotMatch(sql, /\$\$/);
+  } finally {
+    await db.close();
+  }
 });

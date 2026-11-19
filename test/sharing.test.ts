@@ -102,7 +102,16 @@ function fixture() {
   function project(row: Row, options: Row): Row {
     const attrs = options.attributes;
     const projected = Array.isArray(attrs)
-      ? Object.fromEntries(attrs.map((key: string) => [key, row[key]]))
+      ? Object.fromEntries(
+          attrs.map((key: string | [unknown, string]) => {
+            if (typeof key === 'string') return [key, row[key]];
+            if (key[1] !== 'displayPayload') return [key[1], row[key[1]]];
+            const value = row.displayPayload;
+            if (row.kind !== 'stage' || value?.stage !== 'subagent') return [key[1], value];
+            const { message: _message, reasoning: _reasoning, ...overview } = value;
+            return [key[1], overview];
+          }),
+        )
       : { ...row };
     return Object.assign(projected, {
       async update(values: Row) {
