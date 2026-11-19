@@ -1,10 +1,10 @@
 ---
 id: d2c-preview-editing
-revision: 2
+revision: 3
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
-sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 primary: module
 confidence: inferred
+sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 ---
 # 预览、截图与在线编辑
 
@@ -53,3 +53,9 @@ confidence: inferred
 ## 详细资料
 
 [本地预览、截图与在线编辑](../stock-docs/d2c-preview-editing.md)
+
+## 临时预览失败诊断
+
+- 工作区、广场和个人作品临时编辑器的失败按snapshot、input、build、output、cache、publish分类，页面显示固定说明和排查编号；编译错误同时提供经过白名单校验的文件定位。图片读取或校验失败、编译失败和缓存保存失败分别提示。
+- 通用服务日志关联errorId、editId、来源ID、修订及输入相对文件路径，只保留固定网络码、storageStage、状态码和结构化编译诊断；原始异常、堆栈、源码、存储凭据及外部响应正文保持私有。
+- 日志回调失败不影响构建结算；主动取消、关闭和任务替换保持作业与修订边界。历史仅有通用错误的记录无法补回原因，重新保存产生新作业后获取诊断；不会自动重放构建或覆盖草稿。

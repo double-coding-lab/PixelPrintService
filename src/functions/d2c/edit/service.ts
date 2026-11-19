@@ -3,7 +3,8 @@ import { Transaction, type Sequelize } from 'sequelize';
 import type { StorageFileClient } from '@/hooks/tools/storage';
 import { createFileService } from '../files/service';
 import { createPreviewCache, type CachedPreviewFile, type PreviewCache } from '../preview/cache';
-import { runPreviewBuild } from '../preview/runner';
+import { PreviewBuildError, runPreviewBuild } from '../preview/runner';
+import { previewFailureDetails, previewFailureDiagnostic } from '../preview/diagnostics';
 import {
   type EditSourceSnapshot,
   sessionPreviewInput,
@@ -18,6 +19,7 @@ export type { EditSourceSnapshot } from '../preview/session';
 
 const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 type Limits = { textFileBytes: number; filesPerSession: number; uploadBytes: number };
+type BuildPhase = 'snapshot' | 'input' | 'build' | 'output' | 'cache' | 'publish';
 export type EditDraft = Pick<
   EditRecord,
   | 'editId'
@@ -96,6 +98,7 @@ export function createEditService(
     notify?: (sessionId: string, seq?: number) => void;
     cache?: PreviewCache;
     assetCache?: ReturnType<typeof createEditAssetCache>;
+    report?: (details: Record<string, unknown>) => void | Promise<void>;
   },
 ) {
   const { store, detached } = options;
@@ -243,11 +246,17 @@ export function createEditService(
     );
   }
   /** 冻结的配置和二进制定位重建；不访问最新会话文件，不创建 D2cPreview。 */
-  async function build(record: EditRecord, signal: AbortSignal) {
+  async function build(
+    record: EditRecord,
+    signal: AbortSignal,
+    progress: (phase: BuildPhase, artifactPath?: string) => void,
+  ) {
+    progress('input');
     const settings = limits();
     const output: Array<{ path: string; content: Buffer }> = [];
     let total = 0;
     for (const file of record.snapshot) {
+      progress('input', file.path);
       signal.throwIfAborted();
       const source = record.files.find((item) => item.path === file.path);
       const content =
@@ -285,6 +294,7 @@ export function createEditService(
       },
       signal,
     };
+    progress('build');
     return options.run ? options.run(input) : warm!.run(record.editId, input);
   }
   /** 构建器输出不能注入可遍历路径、特殊 MIME 或无限大小。HTML 安全策略由既有网关实施。 */
@@ -323,6 +333,12 @@ export function createEditService(
     if (jobs.has(jobId)) return;
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]);
+    let phase: BuildPhase = 'snapshot';
+    let artifactPath: string | undefined;
+    const progress = (next: BuildPhase, file?: string) => {
+      phase = next;
+      artifactPath = file;
+    };
     const done = Promise.resolve()
       .then(async () => {
         const current = await store.load(recordKey(record));
@@ -335,9 +351,11 @@ export function createEditService(
           Date.parse(current.expiresAt) <= Date.now()
         )
           return;
-        const built = await build(record, signal);
+        const built = await build(record, signal, progress);
         signal.throwIfAborted();
+        progress('output');
         validateBuilt(built);
+        progress('snapshot');
         const latest = await store.load(recordKey(record));
         if (
           !latest ||
@@ -347,14 +365,55 @@ export function createEditService(
           Date.parse(latest.expiresAt) <= Date.now()
         )
           return;
+        progress('cache');
         await cache.write(key(record), built);
         signal.throwIfAborted();
+        progress('publish');
         await settle(record, { status: 'ready', key: key(record) });
       })
-      .catch(async () => {
+      .catch(async (error: unknown) => {
+        if (controller.signal.aborted || closed) {
+          await settle(record, {
+            status: 'failed',
+            error: previewFailureDiagnostic({ reason: 'BUILD_INTERRUPTED' }).message,
+          }).catch(() => undefined);
+          return;
+        }
+        const errorId = randomUUID();
+        const diagnostic = signal.aborted
+          ? previewFailureDiagnostic({ reason: 'BUILD_TIMEOUT' })
+          : phase === 'build'
+            ? previewFailureDiagnostic(error instanceof PreviewBuildError ? error : null)
+            : null;
+        const messages: Record<BuildPhase, string> = {
+          snapshot: '临时预览状态读取失败，请重试并检查 Redis 服务。',
+          input: '预览输入文件读取或校验失败，请重试并检查图片存储及访问链路。',
+          build: '临时预览编译失败，请检查入口、依赖或编译环境。',
+          output: '预览产物校验失败，请检查构建输出与文件限额。',
+          cache: '临时预览缓存保存失败，请检查服务目录权限及磁盘空间。',
+          publish: '临时预览状态保存失败，请重试并检查 Redis 服务。',
+        };
+        try {
+          void Promise.resolve(
+            options.report?.({
+              errorId,
+              editId: record.editId,
+              sourceId: record.sessionId,
+              revision: record.revision,
+              editor: detached ? previewPrefix.slice(0, -1) : 'workspace',
+              phase,
+              ...(artifactPath ? { artifactPath } : {}),
+              ...previewFailureDetails(error),
+              ...(diagnostic ? { diagnostic } : {}),
+            }),
+          ).catch(() => undefined);
+        } catch {
+          /** 日志故障不能阻止本次构建结算。 */
+        }
+        const location = diagnostic?.file ? ` 文件：${diagnostic.file}` : '';
         await settle(record, {
           status: 'failed',
-          error: '临时预览构建失败，请检查源码后重新保存',
+          error: `${diagnostic?.message ?? messages[phase]}${location} 排查编号：${errorId}`,
         }).catch(() => undefined);
       })
       .finally(() => {

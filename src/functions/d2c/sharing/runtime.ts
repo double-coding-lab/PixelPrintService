@@ -25,6 +25,13 @@ export function installSharingEditors(app: FastifyInstance) {
   let runtime: Promise<Awaited<ReturnType<typeof initialize>>> | undefined;
   let plaza: Promise<EditService> | undefined;
   let personal: Promise<EditService> | undefined;
+  /** 三类临时编辑器使用同一脱敏构建诊断协议。 */
+  const report = (details: Record<string, unknown>) =>
+    app.logging.error({
+      title: 'D2C 临时预览',
+      message: '临时预览构建失败',
+      addInfo: details,
+    });
 
   /** 客户端仅在首次实际访问时初始化，注册路由不会触发数据库或存储请求。 */
   async function initialize() {
@@ -60,6 +67,7 @@ export function installSharingEditors(app: FastifyInstance) {
       .then(([runtime, { createEditService }, { createRedisEditStore }]) =>
         createEditService(app.mysql, {
           store: createRedisEditStore(app.redis, 'pixelprint:plaza-edit:v1'),
+          report,
           binary: runtime.binary,
           readLimits: runtime.readLimits,
           cache: createPreviewCache('.runtime/plaza-edit-previews', { ttlMs: EDIT_TTL_MS }),
@@ -100,6 +108,7 @@ export function installSharingEditors(app: FastifyInstance) {
       .then(([runtime, { createEditService }, { createRedisEditStore }]) =>
         createEditService(app.mysql, {
           store: createRedisEditStore(app.redis, 'pixelprint:work-edit:v1'),
+          report,
           binary: runtime.binary,
           readLimits: runtime.readLimits,
           cache: createPreviewCache('.runtime/work-edit-previews', { ttlMs: EDIT_TTL_MS }),
