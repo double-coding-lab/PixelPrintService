@@ -7,6 +7,7 @@ import {
 } from './reasoning';
 import {
   recoverSubagentMessages,
+  SubagentResumeError,
   type AgentCheckpoint,
   type SubagentProgress,
 } from './subagentCheckpoint';
@@ -593,7 +594,18 @@ export async function runAgent(input: AgentRunInput): Promise<{
       .update(JSON.stringify([role, nodeId ?? '', [...writePaths].sort(), task]))
       .digest('hex');
     const existing = input.subagentProgress ? backgroundDelegations.lookup(key) : undefined;
-    if (existing && !restored) return JSON.stringify(await existing);
+    if (existing && !restored) {
+      const receipt = await existing;
+      /** 显式恢复不能借同任务文字命中的在途回执绕过原身份核对。 */
+      if (resumeAgentId && receipt.agentId !== resumeAgentId)
+        return JSON.stringify({
+          success: false,
+          reason: 'RESUME_SCOPE_CHANGED',
+          resumeAgentId,
+          message: '原子任务身份与当前在途任务不一致，未启动或替换任何任务。',
+        });
+      return JSON.stringify(receipt);
+    }
     if (input.subagentProgress)
       delegationScheduler.assertAvailable(subagentReservations(role, writePaths));
     if (Buffer.byteLength(task) > subagentLimits.taskBytes)
@@ -601,29 +613,55 @@ export async function runAgent(input: AgentRunInput): Promise<{
         stage: 'tool',
         tool: 'delegate_agent',
       });
-    if (role === 'ui') await assertUiDelegation(input.tools, nodeId);
+    if (role === 'ui' && restored?.status !== 'settled')
+      await assertUiDelegation(input.tools, nodeId);
     const production = role === 'rule_scan' || role === 'ui';
-    const exceeded = production
-      ? ++executionDelegations > Math.min(subagentLimits.executionCalls, input.maxTurns)
-      : ++delegations > subagentLimits.calls;
-    if (exceeded)
+    /** 原任务恢复不是新委派，不重复消耗委派次数；模型请求仍使用共享预算。 */
+    if (!resumeAgentId) {
+      const exceeded = production
+        ? ++executionDelegations > Math.min(subagentLimits.executionCalls, input.maxTurns)
+        : ++delegations > subagentLimits.calls;
+      if (exceeded)
+        return JSON.stringify({
+          success: false,
+          reason: 'DELEGATION_LIMIT',
+          message: '本轮委派次数已用尽，未启动子任务；请核对未完成清单。',
+        });
+    }
+    if (resumeAgentId && !input.subagentProgress)
+      return JSON.stringify({ success: false, reason: 'RESUME_NOT_FOUND', resumeAgentId });
+    let progress: Awaited<ReturnType<SubagentProgress['open']>> | undefined;
+    try {
+      progress = input.subagentProgress
+        ? await input.subagentProgress.open(
+            { role, nodeId: nodeId ?? undefined, writePaths, description: task },
+            (await input.tools.subagentContext?.(role)) ?? '',
+            input.tools,
+            resumeAgentId ?? undefined,
+          )
+        : undefined;
+    } catch (error) {
+      if (!(error instanceof SubagentResumeError)) throw error;
       return JSON.stringify({
         success: false,
-        message: '本轮委派次数已用尽，未启动子任务；请核对未完成清单。',
+        reason: error.reason === 'SCOPE_CHANGED' ? 'RESUME_SCOPE_CHANGED' : 'RESUME_NOT_FOUND',
+        resumeAgentId,
+        message: '原子任务无法按当前授权恢复；已有产物和原检查点保留，请核对范围后接管未完成部分。',
       });
-    const progress = input.subagentProgress
-      ? await input.subagentProgress.open(
-          { role, nodeId: nodeId ?? undefined, writePaths, description: task },
-          (await input.tools.subagentContext?.(role)) ?? '',
-          input.tools,
-        )
-      : undefined;
+    }
     if (resumeAgentId && progress?.state.agentId !== resumeAgentId)
       return JSON.stringify({
         success: false,
-        reason: 'RESUME_INPUT_CHANGED',
-        message: '原子任务输入或授权已变化，不能将旧分析当作当前结果；请核对变化范围后重新委派。',
+        reason: 'RESUME_SCOPE_CHANGED',
+        resumeAgentId,
+        message: '原子任务身份不匹配，未启动新子任务；请读取已有进度后接管。',
       });
+    const recovery = progress?.recovery;
+    const recoveryChanged =
+      !!recovery &&
+      (recovery.inputChanged ||
+        recovery.changedPaths.length > 0 ||
+        recovery.missingPaths.length > 0);
     const childTools = createSubagentTools(input.tools, role, writePaths);
     const saved = new Set<string>(Object.keys(progress?.state.files ?? {}));
     const partialFiles = new Set(progress?.state.partialFiles ?? []);
@@ -948,7 +986,11 @@ export async function runAgent(input: AgentRunInput): Promise<{
           messages: [
             new HumanMessage({
               content: progress?.restored
-                ? `继续本子任务，保留已有分析与已保存文件；只完成未完成部分。最新委派要求：\n${task}`
+                ? `继续本子任务，保留已有分析与已保存文件；只完成未完成部分。${
+                    recoveryChanged
+                      ? `当前输入或文件已更新，先重新读取授权区块的配置、节点和相关文件，再复核未完成部分，不覆盖用户或其他执行者的现有修改。恢复差异：${JSON.stringify(recovery)}。`
+                      : ''
+                  }最新委派要求：\n${task}`
                 : task,
               id: randomUUID(),
             }),
@@ -1241,8 +1283,6 @@ export async function runAgent(input: AgentRunInput): Promise<{
       }
     };
     if (!input.subagentProgress || !progress) return executeChild();
-    if (restored && progress.state.agentId !== restored.agentId)
-      throw new Error('DEEP_BACKGROUND_SUBAGENT_SCOPE_CHANGED');
     const job = { agentId: event.agentId, key, role, writePaths, ...(nodeId ? { nodeId } : {}) };
     const persist = {
       started: () => subagentBoundary('start', () => progress.startBackground(key, task)),
@@ -1257,7 +1297,21 @@ export async function runAgent(input: AgentRunInput): Promise<{
     };
     if (restored?.status === 'settled') {
       if (restored.result === undefined) throw new Error('DEEP_BACKGROUND_SUBAGENT_RESULT_MISSING');
-      backgroundDelegations.restore(job, restored.result, persist);
+      /** 完成后输入有变时交付真实失效说明，由父级定点复核，不冒充当前交付成功。 */
+      const result = recoveryChanged
+        ? JSON.stringify({
+            success: false,
+            role,
+            reason: 'RESUME_INPUT_CHANGED',
+            agentId: event.agentId,
+            resumeAgentId: event.agentId,
+            files: [...saved],
+            handoff: { ...progress.state.handoff, recovery, writePaths },
+            message:
+              '子任务已保存的结果对应旧输入；请读取已有产物，按原任务ID复核变化部分或由主Agent接管，不从头扫描。',
+          })
+        : restored.result;
+      backgroundDelegations.restore(job, result, persist);
       return JSON.stringify({ accepted: true, agentId: event.agentId, status: 'completed' });
     }
     return JSON.stringify(
@@ -2053,20 +2107,51 @@ export async function runAgent(input: AgentRunInput): Promise<{
           : [...(input.bootstrapHistory ?? []), ...input.messages];
         if (!input.specialist && input.subagentProgress && input.recordSubagent) {
           for (const job of await input.subagentProgress.background()) {
-            const restored = JSON.parse(
-              await launchDelegation(
-                {
-                  role: job.role as SubagentRole,
-                  task: job.task,
-                  writePaths: job.writePaths,
-                  nodeId: job.nodeId,
+            let restored: { accepted?: boolean; reason?: string };
+            try {
+              restored = JSON.parse(
+                await launchDelegation(
+                  {
+                    role: job.role as SubagentRole,
+                    task: job.task,
+                    writePaths: job.writePaths,
+                    nodeId: job.nodeId,
+                    resumeAgentId: job.agentId,
+                  },
+                  job,
+                ),
+              );
+            } catch (error) {
+              /** 已知节点校验调整交给父级；存储、权限、取消及未知故障仍沿原边界上抛。 */
+              if (!(error instanceof ToolIssue) || error.feedback.action !== 'adjust') throw error;
+              restored = { reason: error.feedback.code };
+            }
+            if (restored.accepted !== true) {
+              const files = new Set(await input.tools.list());
+              backgroundDelegations.restore(
+                { ...job, role: job.role },
+                JSON.stringify({
+                  success: false,
+                  agentId: job.agentId,
                   resumeAgentId: job.agentId,
+                  role: job.role,
+                  reason: restored.reason ?? 'RESUME_REJECTED',
+                  files: job.writePaths.filter((path) => files.has(path)),
+                  writePaths: job.writePaths,
+                  task: job.task,
+                  message:
+                    '原子任务恢复未获接受，未执行越权写入。已保存文件及检查点保留，请读取已有产物并接管未完成项。',
+                }),
+                {
+                  settled: async () => {},
+                  observed: async () => {
+                    pendingObservations.set(job.agentId, () =>
+                      input.subagentProgress!.observeBackground(job.agentId),
+                    );
+                  },
                 },
-                job,
-              ),
-            );
-            if (restored.accepted !== true)
-              throw new Error('DEEP_BACKGROUND_SUBAGENT_SCOPE_CHANGED');
+              );
+            }
           }
         }
         await runGraphWithRecovery({
