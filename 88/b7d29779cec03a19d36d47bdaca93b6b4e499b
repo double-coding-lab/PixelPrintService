@@ -1,0 +1,31 @@
+.Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md
+  s_e16f52fd1de115::t_5011fc43a9a179 38-39
+.Knowledge/stock-docs/d2c-team-collaboration.md
+  s_e16f52fd1de115::t_5011fc43a9a179 42-43
+.Knowledge/topics/d2c-session-plaza.md
+  s_e16f52fd1de115::t_5011fc43a9a179 3,55-61
+.Knowledge/topics/d2c-team-collaboration.md
+  s_e16f52fd1de115::t_5011fc43a9a179 3,35-39
+.Knowledge/matchers/m-d2c-session-plaza.json
+  s_e16f52fd1de115::t_5011fc43a9a179 20-23
+.Knowledge/index.md
+  s_e16f52fd1de115::t_5011fc43a9a179 49,90
+.Knowledge/matchers/m-d2c-team-collaboration.json
+  s_e16f52fd1de115::t_5011fc43a9a179 13-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "88b7d29779cec03a19d36d47bdaca93b6b4e499b",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
