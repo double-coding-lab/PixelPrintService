@@ -14,6 +14,9 @@
     "租约",
     "maxTurns",
     "模型用量",
-    "执行诊断"
+    "执行诊断",
+    "checkpointPayload",
+    "writePayload",
+    "检查点占用"
   ]
 }
