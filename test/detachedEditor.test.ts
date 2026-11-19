@@ -11,13 +11,18 @@ import type { EditRecord, EditStore, EditTicket } from '../src/functions/d2c/edi
 import { createPreviewCache } from '../src/functions/d2c/preview/cache';
 import { sessionPreviewInput, type EditSourceSnapshot } from '../src/functions/d2c/preview/session';
 import { SessionError } from '../src/functions/d2c/session/access';
+import { PreviewBuildError } from '../src/functions/d2c/preview/runner';
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const reason = (value: string) => (error: unknown) =>
   error instanceof SessionError && error.reason === value;
 
 /** No database or Redis server: unexpected source-workspace access must fail. */
-async function fixture(t: test.TestContext, previewPrefix = 'plazaedit-') {
+async function fixture(
+  t: test.TestContext,
+  previewPrefix = 'plazaedit-',
+  overrides: Partial<Parameters<typeof createEditService>[1]> = {},
+) {
   const records = new Map<string, EditRecord>();
   const indices = new Map<string, string>();
   const tickets = new Map<string, EditTicket>();
@@ -75,9 +80,10 @@ async function fixture(t: test.TestContext, previewPrefix = 'plazaedit-') {
   };
   let revoked = false;
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'detached-edit-')));
+  const cache = createPreviewCache(root);
   const service = createEditService(mysql, {
     store,
-    cache: createPreviewCache(root),
+    cache,
     binary: () => ({ downloadFile: async () => Buffer.from('image') }),
     readLimits: () => ({ textFileBytes: 1000, filesPerSession: 10, uploadBytes: 10000 }),
     run: async (input) => [
@@ -92,16 +98,17 @@ async function fixture(t: test.TestContext, previewPrefix = 'plazaedit-') {
         return structuredClone(frozen);
       },
     },
+    ...overrides,
   });
   t.after(async () => {
     await service.close();
     await rm(root, { recursive: true, force: true });
   });
-  async function ready(owner: string, draft: EditDraft) {
+  async function ready(owner: string, draft: EditDraft, expected: 'ready' | 'failed' = 'ready') {
     for (let attempt = 0; attempt < 300; attempt++) {
       const value = await service.get(owner, 'source-1', draft.editId);
       if (value.preview.status !== 'building') {
-        assert.equal(value.preview.status, 'ready');
+        assert.equal(value.preview.status, expected);
         return value;
       }
       await new Promise((resolve) => setTimeout(resolve, 5));
@@ -114,6 +121,7 @@ async function fixture(t: test.TestContext, previewPrefix = 'plazaedit-') {
     records,
     indices,
     frozen,
+    cache,
     ready,
     revoke: () => {
       revoked = true;
@@ -366,4 +374,111 @@ test('baseline CAS cannot acknowledge content saved concurrently after export', 
   assert.equal(current.baseFileRevision, 7);
   assert.equal(current.revision, 2);
   assert.equal(current.files[0].content, 'concurrent edit');
+});
+
+test('detached build errors expose safe diagnostics and a correlated error ID', async (t) => {
+  for (const prefix of ['plazaedit-', 'workedit-']) {
+    await t.test(prefix, async (t) => {
+      const reports: Record<string, unknown>[] = [];
+      const f = await fixture(t, prefix, {
+        run: async () => {
+          throw new PreviewBuildError('PREVIEW_BUILD_FAILED', {
+            code: 'SYNTAX_ERROR',
+            file: 'src/App.tsx',
+            line: 3,
+          });
+        },
+        report: (details) => {
+          reports.push(details);
+        },
+      });
+      const draft = await f.service.create('alice', 'source-1');
+      const failed = await f.ready('alice', draft, 'failed');
+      assert.match(failed.preview.error!, /语法或编译错误/);
+      assert.match(failed.preview.error!, /src\/App\.tsx/);
+      assert.equal(reports.length, 1);
+      assert.equal(reports[0].phase, 'build');
+      assert.equal(reports[0].editor, prefix.slice(0, -1));
+      assert.equal(reports[0].sourceId, 'source-1');
+      assert.equal(reports[0].editId, draft.editId);
+      assert.ok(failed.preview.error!.includes(String(reports[0].errorId)));
+      assert.equal(f.frozen.snapshot[0].content, 'original');
+      assert.ok(!JSON.stringify(reports).includes('original'));
+    });
+  }
+});
+
+test('detached image download failures retain storage phase without blaming source code', async (t) => {
+  const reports: Record<string, unknown>[] = [];
+  const secret = 'private-storage-details';
+  const f = await fixture(t, 'plazaedit-', {
+    report: (details) => {
+      reports.push(details);
+    },
+    binary: () => ({
+      downloadFile: async () => {
+        throw Object.assign(new Error(secret), {
+          stage: 'download',
+          networkCode: 'ETIMEDOUT',
+          statusCode: 504,
+        });
+      },
+    }),
+  });
+  const draft = await f.service.create('alice', 'source-1');
+  const failed = await f.ready('alice', draft, 'failed');
+  assert.match(failed.preview.error!, /输入文件读取或校验失败/);
+  assert.doesNotMatch(failed.preview.error!, /检查源码/);
+  assert.equal(reports[0].phase, 'input');
+  assert.equal(reports[0].artifactPath, 'public/a.png');
+  assert.equal(reports[0].storageStage, 'download');
+  assert.equal(reports[0].causeCode, 'ETIMEDOUT');
+  assert.equal(reports[0].statusCode, 504);
+  assert.ok(!JSON.stringify([failed, reports]).includes(secret));
+});
+
+test('detached cache failures settle even if the diagnostic reporter throws or rejects', async (t) => {
+  for (const failure of ['none', 'throw', 'reject']) {
+    await t.test(failure, async (t) => {
+      const reports: Record<string, unknown>[] = [];
+      const f = await fixture(t, 'workedit-', {
+        report: (details) => {
+          reports.push(details);
+          if (failure === 'throw') throw new Error('private logger');
+          if (failure === 'reject') return Promise.reject(new Error('private logger'));
+        },
+      });
+      t.mock.method(f.cache, 'write', async () => {
+        throw Object.assign(new Error('private filesystem path'), { code: 'EACCES' });
+      });
+      const draft = await f.service.create('alice', 'source-1');
+      const failed = await f.ready('alice', draft, 'failed');
+      assert.match(failed.preview.error!, /缓存保存失败/);
+      assert.equal(reports[0].phase, 'cache');
+      assert.equal(reports[0].causeCode, 'EACCES');
+      assert.ok(!JSON.stringify([failed, reports]).includes('private'));
+    });
+  }
+});
+
+test('closing an active detached build preserves settlement without fault logging', async (t) => {
+  const reports: Record<string, unknown>[] = [];
+  const f = await fixture(t, 'plazaedit-', {
+    run: async ({ signal }) => {
+      if (signal.aborted) throw signal.reason;
+      await new Promise<void>((_, reject) =>
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
+      );
+      return [];
+    },
+    report: (details) => {
+      reports.push(details);
+    },
+  });
+  await f.service.create('alice', 'source-1');
+  await f.service.close();
+  const preview = [...f.records.values()][0].preview;
+  assert.equal(preview.status, 'failed');
+  assert.match(preview.error!, /已中断/);
+  assert.deepEqual(reports, []);
 });

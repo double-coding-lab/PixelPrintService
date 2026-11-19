@@ -72,6 +72,12 @@ export function installPreview(
         const binary = createStorageFileClient(readConfig, 'pro');
         return createEditService(app.mysql, {
           store: createRedisEditStore(app.redis),
+          report: (details) =>
+            app.logging.error({
+              title: 'D2C 临时预览',
+              message: '临时预览构建失败',
+              addInfo: details,
+            }),
           binary: () => binary,
           readLimits: () => readConfig().d2c.limits,
           /** 只发布应用回原文件后已提交的事件，临时保存不污染会话时间线。 */
