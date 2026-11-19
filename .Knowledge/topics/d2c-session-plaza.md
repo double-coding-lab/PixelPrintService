@@ -1,6 +1,6 @@
 ---
 id: d2c-session-plaza
-revision: 4
+revision: 5
 summary: "登录用户会话广场、独立编辑副本与个人作品再次编辑"
 primary: feature
 confidence: inferred
@@ -52,3 +52,10 @@ sourceDoc: ".Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md"
 - “查看对话”打开后串行读取历史，每页立即呈现并显示进度；关闭抽屉取消读取，失败保留已读取页并从失败游标重试。刷新重新读取。用户和助手正文均使用现有安全 Markdown 渲染；时间线取消装饰序号，正文中的有序列表仍正常显示。
 - 广场、会话版本和已保存作品详情的返回入口置于标题区左侧；右侧保留编辑、下载、刷新及对话操作。菜单切换和返回沿用编辑退出保护。
 - 本次复用本地账号、标准存储及现有数据与接口，未新增配置或表迁移。实现见 CommunityPanel、communityHistory、main、WorksPanel 及 sharing/service；回归见 plazaCover、communityHistory、communityExperienceBrowser。
+
+## 用量查询与时间线体积
+
+- 用量读取已有 d2c_run.usage 和 d2c_timeline 的停止状态，不需要新增用量表。固定 JSON 路径使用静态 SQL 表达式，回归必须检查 Sequelize 生成的 SQL；fn 的字符串参数会将 $.status 转义为 $$.status，导致数据库拒绝 JSON 路径。通用“作品服务暂不可用”需要核对底层异常，不能直接判为缺表。
+- 广场主对话在数据库投影阶段移除子 Agent 事件中的 message 和 reasoning 大字段，仅传入口、角色、状态及轻量过程信息；展开子 Agent 后，原独立事件接口仍按授权读取完整正文与思考。主对话正文、分页扫描游标及原始数据库记录保持。
+
+- SQL 路径及大字段投影通过 plazaUsage、plazaTimelineProjection 和 sharing 回归验证，采用模拟数据与实际 SQL 生成检查。
