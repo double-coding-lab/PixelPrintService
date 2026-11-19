@@ -1,7 +1,7 @@
 ---
 id: d2c-workspace-foundation
-revision: 3
-summary: "工作区、会话、文件修订、切图、凭据和版本"
+revision: 5
+summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
 ---
@@ -30,6 +30,12 @@ confidence: inferred
 `src/functions/d2c/workspace/`、`session/`、`run/tools.ts`、`run/persistence.ts`、`files.ts`、`version/` 和 `credential/`。
 
 工作区、会话软删除仍受归属和活跃轮次检查。具体执行恢复见 `deep-agents-execution`，预览编辑见 `d2c-preview-editing`，权限见 `d2c-team-collaboration`。
+
+## 代码存储与数据库大字段
+
+- 当前源码在 `d2c_file.content`；版本暂存、个人作品保存分别复制到 `d2c_version_file.content`、`d2c_saved_work_file.content`。三者均为LONGTEXT，按文件或快照修订分别统计。
+- 会话预览的 `d2c_preview.buildManifest.snapshot[].content` 还保存参与构建的源码；时间线与Agent检查点保存消息和工具状态，可能包含代码片段或完整历史。
+- 单条大内容与多版本/事件/检查点累积分别计量；数据库列名、字段清单和统计范围见[存储字段说明](../stock-docs/d2c-workspace-foundation.md#数据库大字段与增长来源)。图片等二进制使用本地对象存储或S3，数据库保存定位；Redis编辑副本和本地构建缓存独立统计。
 
 ## 适用场景
 

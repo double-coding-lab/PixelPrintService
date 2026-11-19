@@ -116,7 +116,7 @@
       "topics": [
         "d2c-workspace-foundation"
       ],
-      "summary": "工作区、会话、文件修订、切图、凭据和版本"
+      "summary": "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
     },
     {
       "task": "deep-agents-execution",

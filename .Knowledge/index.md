@@ -43,8 +43,8 @@
 | --- | --- | --- | --- |
 | 项目架构 | [主题摘要](topics/project-architecture.md) | Fastify全栈入口、登录、日志、数据连接与部署 | [实现终稿](stock-docs/项目架构终稿.md) |
 | 项目配置 | [主题摘要](topics/project-config.md) | 本地配置字段、模型预算、存储、100MiB文本上限与生效时机 | [实现终稿](stock-docs/project-config.md) |
-| D2C 工作区与文件 | [主题摘要](topics/d2c-workspace-foundation.md) | 工作区、会话、文件修订、节点缓存紧凑存储、模型字段精简、切图、凭据、版本与图片目录映射只读查看 | [实现终稿](stock-docs/d2c-workspace-foundation.md) |
-| Deep Agents 执行与恢复 | [主题摘要](topics/deep-agents-execution.md) | 模型循环、检查点、摘要、子Agent、预算和诊断 | [实现终稿](stock-docs/deep-agents-execution.md) |
+| D2C 工作区与文件 | [主题摘要](topics/d2c-workspace-foundation.md) | 工作区、会话、代码存储与数据库大字段、文件修订、节点缓存紧凑存储、模型字段精简、切图、凭据、版本与图片目录映射只读查看 | [实现终稿](stock-docs/d2c-workspace-foundation.md) |
+| Deep Agents 执行与恢复 | [主题摘要](topics/deep-agents-execution.md) | 模型循环、检查点大字段、历史归档、摘要、子Agent、预算和诊断 | [实现终稿](stock-docs/deep-agents-execution.md) |
 | 预览、截图与在线编辑 | [主题摘要](topics/d2c-preview-editing.md) | 本地Vite预览、缓存、截图、元素审查和在线编辑 | [实现终稿](stock-docs/d2c-preview-editing.md) |
 | 团队与共享权限 | [主题摘要](topics/d2c-team-collaboration.md) | 团队成员、共享工作区、操作者和凭据隔离 | [实现终稿](stock-docs/d2c-team-collaboration.md) |
 
