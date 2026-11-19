@@ -1,3 +1,4 @@
+import { SliceDiagnosticError, type SliceDiagnostics } from './sliceDiagnostics';
 import { fetch, ProxyAgent } from 'undici';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { toolIssue } from './toolFeedback';
@@ -29,7 +30,26 @@ export function createSliceNetwork(options: {
       (kind === 'json' && url.hostname !== 'api.figma.com')
     )
       throw toolIssue('INVALID_ARGUMENT', 'VALIDATION_FAILED', context);
+    const phase =
+      kind === 'image'
+        ? 'download_image'
+        : url.pathname.endsWith('/nodes')
+          ? 'fetch_node'
+          : 'export_image';
+    const node = url.searchParams.get('ids');
+    const nodeId = node && /^\d{1,20}:\d{1,20}$/.test(node) ? node : undefined;
     for (let attempt = 0; ; attempt++) {
+      const diagnostic = (
+        reason: SliceDiagnostics['reason'],
+        extra: Partial<SliceDiagnostics> = {},
+        cause?: unknown,
+      ) =>
+        new SliceDiagnosticError(
+          { phase, reason, nodeId, attempt: attempt + 1, proxyUsed: !!dispatcher, ...extra },
+          cause,
+        );
+      let statusCode: number | undefined;
+      let bytes = 0;
       options.signal.throwIfAborted();
       let delay = 1000 * 2 ** attempt;
       try {
@@ -39,10 +59,17 @@ export function createSliceNetwork(options: {
           signal: AbortSignal.any([options.signal, AbortSignal.timeout(30000)]),
           headers: kind === 'json' ? { 'X-Figma-Token': options.token } : {},
         });
+        statusCode = response.status;
         if (!response.ok) {
           await response.body?.cancel();
           if (response.status === 401 || response.status === 403)
-            throw toolIssue('ACCESS_REQUIRED', 'CREDENTIAL_UNAVAILABLE', context);
+            throw toolIssue(
+              'ACCESS_REQUIRED',
+              'CREDENTIAL_UNAVAILABLE',
+              context,
+              {},
+              diagnostic('HTTP_ERROR', { statusCode }),
+            );
           if (response.status === 429) {
             const raw = response.headers.get('retry-after');
             const seconds = raw === null ? NaN : Number(raw);
@@ -52,22 +79,55 @@ export function createSliceNetwork(options: {
                 ? seconds * 1000
                 : Math.max(0, Date.parse(raw ?? '') - Date.now()) || 0,
             );
-            if (delay > 300000) throw toolIssue('RATE_LIMIT_WAIT', 'FIGMA_REQUEST_FAILED', context);
+            if (delay > 300000)
+              throw toolIssue(
+                'RATE_LIMIT_WAIT',
+                'FIGMA_REQUEST_FAILED',
+                context,
+                {},
+                diagnostic('HTTP_ERROR', { statusCode }),
+              );
             if (attempt >= 2)
-              throw toolIssue('RATE_LIMITED', 'FIGMA_REQUEST_FAILED', context, {
-                retryAfterMs: delay,
-              });
+              throw toolIssue(
+                'RATE_LIMITED',
+                'FIGMA_REQUEST_FAILED',
+                context,
+                {
+                  retryAfterMs: delay,
+                },
+                diagnostic('HTTP_ERROR', { statusCode }),
+              );
           } else if (response.status < 500 || response.status > 599) {
-            throw toolIssue('RESOURCE_UNAVAILABLE', 'FIGMA_REQUEST_FAILED', context);
-          } else if (attempt >= 2) throw toolIssue('NETWORK_RETRY', 'NETWORK_UNAVAILABLE', context);
+            throw toolIssue(
+              'RESOURCE_UNAVAILABLE',
+              'FIGMA_REQUEST_FAILED',
+              context,
+              {},
+              diagnostic('HTTP_ERROR', { statusCode }),
+            );
+          } else if (attempt >= 2)
+            throw toolIssue(
+              'NETWORK_RETRY',
+              'NETWORK_UNAVAILABLE',
+              context,
+              {},
+              diagnostic('HTTP_ERROR', { statusCode }),
+            );
         } else {
           const maximum = options.uploadBytes;
           const chunks: Buffer[] = [];
           let size = 0;
           for await (const chunk of response.body ?? []) {
             size += chunk.byteLength;
+            bytes = size;
             if (size > maximum) {
-              throw toolIssue('RESOURCE_UNAVAILABLE', 'FIGMA_REQUEST_FAILED', context);
+              throw toolIssue(
+                'RESOURCE_UNAVAILABLE',
+                'FIGMA_REQUEST_FAILED',
+                context,
+                {},
+                diagnostic('RESPONSE_TOO_LARGE', { statusCode, bytes }),
+              );
             }
             chunks.push(Buffer.from(chunk));
           }
@@ -88,8 +148,21 @@ export function createSliceNetwork(options: {
             'ERR_TLS_CERT_ALTNAME_INVALID',
           ].includes(code ?? '')
         )
-          throw toolIssue('TLS_REQUIRED', 'TLS_CERTIFICATE_FAILED', context);
-        if (attempt >= 2) throw toolIssue('NETWORK_RETRY', 'NETWORK_TIMEOUT', context);
+          throw toolIssue(
+            'TLS_REQUIRED',
+            'TLS_CERTIFICATE_FAILED',
+            context,
+            {},
+            diagnostic('TLS_ERROR', { statusCode, bytes }, error),
+          );
+        if (attempt >= 2)
+          throw toolIssue(
+            'NETWORK_RETRY',
+            'NETWORK_TIMEOUT',
+            context,
+            {},
+            diagnostic('NETWORK_ERROR', { statusCode, bytes }, error),
+          );
       }
       await sleep(delay, undefined, { signal: options.signal });
     }

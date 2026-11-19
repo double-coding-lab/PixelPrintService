@@ -1,3 +1,4 @@
+import { SliceDiagnosticError } from './sliceDiagnostics';
 import { hasLocalImageUrl, modelImageConfig } from './imagePolicy';
 import { invalidBlockDirectory } from '../utils/blockPaths';
 import {
@@ -1681,10 +1682,20 @@ export async function createGenerationTools(input: {
       try {
         inspected = inspectSliceManifest(content, slug, await currentSliceFiles());
       } catch (error) {
-        throw toolIssue('RESOURCE_UNAVAILABLE', 'FIGMA_REQUEST_FAILED', {
-          stage: 'tool',
-          tool: 'prepare_slices',
-        });
+        throw toolIssue(
+          'RESOURCE_UNAVAILABLE',
+          'FIGMA_REQUEST_FAILED',
+          {
+            stage: 'tool',
+            tool: 'prepare_slices',
+          },
+          {},
+          new SliceDiagnosticError({
+            phase: 'manifest',
+            reason: 'MANIFEST_INVALID',
+            bytes: Buffer.byteLength(content),
+          }),
+        );
       }
       await storeSliceCache(slug, inspected, design);
       return JSON.stringify({

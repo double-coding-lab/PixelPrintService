@@ -1,3 +1,8 @@
+import {
+  SliceDiagnosticError,
+  sliceDiagnosticSchema,
+  type SliceDiagnostics,
+} from './sliceDiagnostics';
 import { StorageError } from '@/hooks/tools/storage';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -303,6 +308,7 @@ export type RunFailureReport = {
   sessionId?: string;
   diagnostics: GatewayDiagnostics &
     Partial<Omit<ScriptDiagnostics, 'causeCode'>> & {
+      slice?: SliceDiagnostics;
       frameworkCode?: FrameworkCode;
       errorType?: DiagnosticErrorType;
       subagentId?: string;
@@ -464,6 +470,10 @@ export function diagnoseRunFailure(
         diagnostics.readPath ??= feedback.path;
         if (typeof feedback.resource === 'boolean') diagnostics.resource ??= feedback.resource;
       }
+    }
+    if (current instanceof SliceDiagnosticError) {
+      const parsed = sliceDiagnosticSchema.safeParse(current.diagnostic);
+      if (parsed.success) diagnostics.slice ??= parsed.data;
     }
     if (current instanceof ScriptFailureError) {
       const parsed = scriptDiagnosticSchema.safeParse(current.diagnostics);
