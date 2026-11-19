@@ -49,7 +49,7 @@ export default function SessionSharing({ sessionId }: { sessionId: string }) {
         {sharing.public ? '从广场下架' : '发布到广场'}
       </Button>
       {sharing.public && sharing.shareId && (
-        <Button size="small" href={`?view=plaza&share=${id(sharing.shareId)}`}>
+        <Button size="small" href={`/plaza/${id(sharing.shareId)}`}>
           查看公开会话
         </Button>
       )}

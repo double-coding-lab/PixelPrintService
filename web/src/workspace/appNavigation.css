@@ -1,0 +1,137 @@
+/** 三个稳定主入口；作品分类始终在作品库内部展示。 */
+.primary-navigation {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  gap: 6px;
+}
+.primary-navigation > button {
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  padding: 0 16px;
+  background: transparent;
+  color: #727987;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.primary-navigation > button:hover:not(:disabled) {
+  color: #365b9d;
+  background: #f6f8fc;
+}
+.primary-navigation > button[aria-current='page'] {
+  color: #365b9d;
+}
+.primary-navigation > button[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 16px;
+  right: 16px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: #426ec9;
+}
+.app-header .header-leading {
+  align-self: stretch;
+  gap: 20px;
+}
+.app-header .header-actions {
+  gap: 16px;
+}
+.library-layout {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #f7f8fa;
+}
+.library-navigation {
+  padding: 20px clamp(16px, 2vw, 32px) 0;
+}
+.library-navigation > * {
+  max-width: 1440px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.library-navigation nav {
+  display: flex;
+  gap: 8px;
+}
+.library-navigation nav button {
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #626d7f;
+}
+.library-navigation nav button[aria-current='page'] {
+  border-color: #dee5f0;
+  background: #fff;
+  color: #365b9d;
+  box-shadow: 0 1px 3px #172b4d08;
+}
+.library-navigation p {
+  margin-top: 12px;
+  margin-bottom: 0;
+  color: #757f8e;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.library-layout > .works-panel {
+  flex: 1;
+}
+.works-heading-leading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+@media (max-width: 1050px) {
+  .app-header .header-leading {
+    gap: 12px;
+  }
+  .primary-navigation > button {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .app-header .workspace-switcher-trigger {
+    min-width: 120px;
+    max-width: 190px;
+  }
+}
+@media (max-width: 760px) {
+  .app-shell .app-header {
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    padding: 0 14px 8px;
+    gap: 8px;
+  }
+  .app-header .header-leading {
+    flex: 1 1 100%;
+    min-height: 52px;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+  .primary-navigation {
+    height: 52px;
+    margin-left: auto;
+  }
+  .app-header .header-actions {
+    margin-left: auto;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .app-header .workspace-switcher-trigger {
+    max-width: min(260px, calc(100vw - 28px));
+  }
+  .library-navigation {
+    padding-top: 16px;
+  }
+  .works-heading-leading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+}

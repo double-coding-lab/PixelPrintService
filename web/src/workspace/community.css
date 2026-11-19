@@ -106,3 +106,119 @@
     flex-shrink: 0;
   }
 }
+
+.community-detail-back {
+  margin-bottom: 16px;
+}
+.community-conversation-actions {
+  position: sticky;
+  top: -24px;
+  z-index: 2;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  background: #fff;
+  border-bottom: 1px solid #edf0f4;
+  color: #78818e;
+  font-size: 12px;
+}
+/* Drawer portal 不依赖 session-panel；只重置事件列表，保留 Markdown 内的真实序号。 */
+.community-conversation ol.timeline,
+.community-conversation .event-reply-history > details > ol {
+  list-style: none;
+  margin: 0;
+}
+.community-conversation .timeline > li,
+.community-conversation .event-reply-history > details > ol > li {
+  list-style: none;
+  min-width: 0;
+}
+.community-conversation .event-activity > .event-meta > span {
+  display: none;
+}
+.community-conversation .markdown-message {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.community-conversation .markdown-message li {
+  margin: 0.25em 0;
+  font-size: inherit;
+}
+.community-panel .works-grid {
+  gap: 20px;
+}
+.community-panel .work-card {
+  padding: 16px 16px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px #23324c06;
+}
+.community-panel .work-card:hover,
+.community-panel .work-card:focus-within {
+  border-color: #9aafd4;
+  box-shadow: 0 6px 20px #23324c10;
+}
+.community-cover {
+  display: block;
+  flex: none;
+  width: calc(100% + 32px);
+  aspect-ratio: 16 / 10;
+  padding: 0;
+  margin: -16px -16px 6px;
+  overflow: hidden;
+  border: 0;
+  border-bottom: 1px solid #edf0f4;
+  background: #f1f4f8;
+  cursor: pointer;
+}
+.community-cover:focus-visible {
+  outline: 3px solid #648bd3;
+  outline-offset: -3px;
+}
+.community-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+.community-cover-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: #8994a6;
+  font-size: 12px;
+  background: linear-gradient(135deg, #f0f3f8, #e7edf6);
+}
+.community-cover-placeholder > :first-child {
+  font-size: 36px;
+  line-height: 1;
+  color: #b3bfd2;
+}
+.community-panel .work-card h2 {
+  min-height: 0;
+  margin: 0;
+}
+.community-panel .work-card h2 .ant-btn {
+  max-width: 100%;
+  height: auto;
+  padding: 0;
+  white-space: normal;
+  text-align: left;
+  color: #303c52;
+  font-size: 16px;
+  font-weight: 600;
+}
+.community-panel .work-card > span {
+  color: #7a8494;
+  font-size: 12px;
+}
+@media (max-width: 720px) {
+  .community-conversation-actions {
+    top: -16px;
+  }
+}

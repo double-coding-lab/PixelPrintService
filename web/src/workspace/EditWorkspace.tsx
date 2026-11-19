@@ -330,7 +330,7 @@ export function EditWorkspaceSurface({
                             : '已保存副本，尚未应用'
                           : copy
                             ? state.librarySaved
-                              ? '已保存到我的作品'
+                              ? '已保存为作品'
                               : '暂无改动'
                             : '正在创建副本…'}
             </span>
@@ -361,7 +361,7 @@ export function EditWorkspaceSurface({
                 loading={pending === 'library'}
                 onClick={() => void controller.saveToLibrary()}
               >
-                保存到我的作品
+                保存为作品
               </Button>
             </>
           ) : (
@@ -382,8 +382,8 @@ export function EditWorkspaceSurface({
       {error && <Alert type="error" showIcon title={error} />}
       {detached && state.savedWork && (
         <p role="status">
-          已保存到我的作品{' '}
-          <a href={`?view=my-works&work=${encodeURIComponent(state.savedWork.workId)}`}>查看作品</a>
+          已保存为作品{' '}
+          <a href={`/works/saved/${encodeURIComponent(state.savedWork.workId)}`}>查看作品</a>
         </p>
       )}
       {!copy ? (
@@ -526,7 +526,7 @@ export function EditWorkspaceSurface({
         open={confirmClose}
         title={
           detached
-            ? '副本尚未保存到我的作品，确定退出？'
+            ? '副本尚未保存为作品，确定退出？'
             : state.resumePending
               ? 'Agent 尚未继续，确定退出？'
               : '改动尚未应用，确定退出？'
@@ -545,7 +545,7 @@ export function EditWorkspaceSurface({
       >
         <p>
           {detached
-            ? '退出会丢弃未保存到我的作品的副本改动。'
+            ? '退出会丢弃未保存为作品的副本改动。'
             : state.resumePending
               ? '文件已应用到当前工作区。退出后可在对话中继续任务。'
               : '退出会丢弃临时副本中的改动。保存并预览不会应用到当前工作区。'}
