@@ -22,6 +22,25 @@
 
 稳定文件带路径、大小和 SHA-256。并行工具的文件提交串行核对修订；恢复后使用已保存摘要跳过未变文件，避免重复上传。上传冲突时核对内容并使用有界后缀，不覆盖已发布对象。
 
+## 数据库大字段与增长来源
+
+- 当前源码保存在 `d2c_file.content`，按 `sessionId + pathHash` 定位文件；路径命中后核对完整 `path`。同一当前文件更新正文与修订，暂存版本和作品保存各自冻结副本。
+
+| 表 | 大内容字段（数据库列名） | 内容与增长来源 |
+| --- | --- | --- |
+| `d2c_file` | `content`（LONGTEXT） | 当前源码、样式、JSON及内部文本；`.d2c-cache` 的完整Figma节点缓存也保存在此处 |
+| `d2c_version_file` | `content`（LONGTEXT） | 每次暂存版本冻结的文件正文；版本增多会累积源码副本 |
+| `d2c_saved_work_file` | `content`（LONGTEXT） | 个人作品按修订冻结的源码正文 |
+| `d2c_preview` | `buildManifest`（JSON） | 会话预览的 `snapshot[].content` 保存参与构建的源码；输入变化可新增快照，清单还含构建资源定位 |
+| `d2c_timeline` | `sdkItem`、`displayPayload`（JSON） | 私有消息、工具参数/结果及公开展示投影，可能含代码或文件片段，随事件累积 |
+| `d2c_agent_checkpoint` | `checkpointPayload`、`metadataPayload`（LONGBLOB） | Agent图状态与元数据；独立namespace还保存内部历史归档 |
+| `d2c_agent_write` | `writePayload`（LONGBLOB） | 框架中间写值，可能包含消息、工具结果与状态 |
+
+- `d2c_run` 的配置/模型快照、`checkpoint`、`pendingInteraction`、`error`、`modelUsage`，以及工作区配置、会话校验状态属于JSON元数据，通常小于完整正文与历史；按实际数据核定占用。`d2c_session.contextSummary` 为LONGTEXT，当前会话创建置NULL，上下文摘要与恢复应按执行专题检查图状态和归档。
+- 图片、ZIP及二进制附件由统一存储客户端保存在本地对象目录或S3，文件表的 `objectLocator` 记录定位、大小和摘要。在线编辑临时副本的源码/快照在Redis，本地编译缓存按运行目录管理，分别统计。
+- 占用排查同时比较单条最大字节、总字节与记录数；优先统计检查点、中间写、时间线、当前文件、版本文件和预览清单，个人作品按修订另行统计。模型类型与上述增长来源是代码事实，线上占用排名须实际查询；SQL字段使用数据库列名，区分模型属性 `checkpoint/metadata/value/usage` 与列名 `checkpointPayload/metadataPayload/writePayload/modelUsage`。
+- 核验入口：`src/models/D2cFile.ts`、`D2cVersionFile.ts`、`D2cSavedWorkFile.ts`、`D2cPreview.ts`；`run/persistence.ts.write/record`、`version/service.ts`、`savedWork/service.ts`、`preview/service.ts` 的快照写入。
+
 ## Figma 与切图
 
 主 Agent 通过服务注册的 `figma`、`prepare_slices` 等工具查询和处理设计稿。Token 由可信工具解密注入，模型不能要求用户输出密钥；外网请求执行显式主机白名单和可选代理。
