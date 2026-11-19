@@ -1,3 +1,4 @@
+import { SliceDiagnosticError, type SliceDiagnostics } from './sliceDiagnostics';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -83,20 +84,44 @@ export async function prepareSlices(options: {
     await guard();
     await options.progress?.({ stage: 'slices', phase, total, completed, failed, reused });
   }
+  /** 业务反馈保持原分类，私有诊断通过cause传给后台日志。 */
+  function invalid(
+    phase: SliceDiagnostics['phase'],
+    reason: SliceDiagnostics['reason'],
+    nodeId?: string,
+    bytes?: number,
+  ) {
+    return toolIssue(
+      'RESOURCE_UNAVAILABLE',
+      'FIGMA_REQUEST_FAILED',
+      context,
+      {},
+      new SliceDiagnosticError({ phase, reason, nodeId, bytes }),
+    );
+  }
+  /** 网络层已校验成功状态；解析层记录真实字节，不猜测状态码。 */
+  async function jsonRequest(
+    address: string,
+    phase: 'fetch_node' | 'export_image',
+    nodeId: string,
+  ) {
+    const content = await options.request(address, 'json');
+    try {
+      return { value: JSON.parse(content.toString()), bytes: content.length };
+    } catch {
+      throw invalid(phase, 'INVALID_JSON', nodeId, content.length);
+    }
+  }
   /** 完整读取设计根节点，版本及节点树摘要参与断点复用范围。 */
   async function fetchTree(key: string, node: string) {
     await guard();
-    const response = JSON.parse(
-      (
-        await options.request(
-          `https://api.figma.com/v1/files/${key}/nodes?${new URLSearchParams({ ids: node })}`,
-          'json',
-        )
-      ).toString(),
+    const { value: response, bytes } = await jsonRequest(
+      `https://api.figma.com/v1/files/${key}/nodes?${new URLSearchParams({ ids: node })}`,
+      'fetch_node',
+      node,
     );
-    const root = response.nodes?.[node]?.document as FigmaSliceNode | undefined;
-    if (!root || root.id !== node)
-      throw toolIssue('RESOURCE_UNAVAILABLE', 'FIGMA_REQUEST_FAILED', context);
+    const root = response?.nodes?.[node]?.document as FigmaSliceNode | undefined;
+    if (!root || root.id !== node) throw invalid('fetch_node', 'NODE_MISSING', node, bytes);
     return { root, revision: response.lastModified ?? response.version ?? null };
   }
   await progress('fetching');
@@ -237,17 +262,14 @@ export async function prepareSlices(options: {
       if (shared)
         bytes = await fs.readFile(await resolveWorkspacePath(options.workspace, shared.filepath));
       else {
-        const response = JSON.parse(
-          (
-            await options.request(
-              `https://api.figma.com/v1/images/${fileKey}?${new URLSearchParams({ ids: item.nodeId, format: 'png', scale: '2', use_absolute_bounds: 'true' })}`,
-              'json',
-            )
-          ).toString(),
+        const { value: response, bytes: responseBytes } = await jsonRequest(
+          `https://api.figma.com/v1/images/${fileKey}?${new URLSearchParams({ ids: item.nodeId, format: 'png', scale: '2', use_absolute_bounds: 'true' })}`,
+          'export_image',
+          item.nodeId,
         );
-        const address = response.images?.[item.nodeId];
+        const address = response?.images?.[item.nodeId];
         if (typeof address !== 'string')
-          throw toolIssue('RESOURCE_UNAVAILABLE', 'FIGMA_REQUEST_FAILED', context);
+          throw invalid('export_image', 'EXPORT_URL_MISSING', item.nodeId, responseBytes);
         bytes = await options.request(address, 'image');
         if (
           bytes.length < 24 ||
@@ -255,7 +277,7 @@ export async function prepareSlices(options: {
           bytes.readUInt32BE(16) < 1 ||
           bytes.readUInt32BE(20) < 1
         )
-          throw toolIssue('RESOURCE_UNAVAILABLE', 'FIGMA_REQUEST_FAILED', context);
+          throw invalid('download_image', 'INVALID_IMAGE', item.nodeId, bytes.length);
         const optimized = await compressImage(destination, bytes, options.signal);
         bytes = optimized.content;
         compression.beforeBytes += optimized.beforeBytes;
@@ -267,6 +289,11 @@ export async function prepareSlices(options: {
       options.signal.throwIfAborted();
       if (!(error instanceof ToolIssue)) throw error;
       failed++;
+      if (
+        error.failure.cause instanceof SliceDiagnosticError &&
+        /^\d{1,20}:\d{1,20}$/.test(item.nodeId)
+      )
+        error.failure.cause.diagnostic.nodeId ??= item.nodeId;
       failure ??= error;
       await progress('exporting');
       if (error.feedback.action === 'user') break;
@@ -322,7 +349,6 @@ export async function prepareSlices(options: {
   };
   await options.saveText(`${prefix}/slice-manifest-${options.slug}.json`, JSON.stringify(manifest));
   if (failure) throw failure;
-  if (entries.length !== total)
-    throw toolIssue('RESOURCE_UNAVAILABLE', 'FIGMA_REQUEST_FAILED', context);
+  if (entries.length !== total) throw invalid('manifest', 'MANIFEST_INCOMPLETE');
   return { reused: previous.length > 0, total, manifest };
 }
