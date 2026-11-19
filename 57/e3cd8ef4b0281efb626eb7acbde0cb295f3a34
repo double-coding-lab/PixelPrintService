@@ -1,0 +1,23 @@
+.Knowledge/stock-docs/d2c-preview-editing.md
+  s_e16f52fd1de115::t_6e994b905627d5 55-58
+.Knowledge/topics/d2c-preview-editing.md
+  s_e16f52fd1de115::t_6e994b905627d5 3,7,56-61
+.Knowledge/index.md
+  s_e16f52fd1de115::t_6e994b905627d5 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "57e3cd8ef4b0281efb626eb7acbde0cb295f3a34",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
