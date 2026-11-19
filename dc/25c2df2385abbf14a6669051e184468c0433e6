@@ -1,0 +1,54 @@
+web/src/workspace/CommunityPanel.tsx
+  s_e16f52fd1de115::t_aa9902e4749822 433
+  s_e16f52fd1de115::t_0a5037609c5a20 3-4,16,20-21,75-77,106-108,128,130-131,135,137-151,155-166,173,175-180,262,320,354,360,362-364,366-368,397-404,427-432,434-438,454-488
+web/src/workspace/communityHistory.ts
+  s_e16f52fd1de115::t_0a5037609c5a20 1-30
+test/appRoutes.test.ts
+  s_e16f52fd1de115::t_aa9902e4749822 1-41
+web/src/workspace/VersionsPanel.tsx
+  s_e16f52fd1de115::t_aa9902e4749822 116
+web/src/workspace/EditWorkspace.tsx
+  s_e16f52fd1de115::t_0a5037609c5a20 333,364,385,529,548
+  s_e16f52fd1de115::t_aa9902e4749822 386
+web/src/main.tsx
+  s_e16f52fd1de115::t_aa9902e4749822 1,6,35-40,42-45,47-48,63-95,97,100,102,106-107
+  s_e16f52fd1de115::t_0a5037609c5a20 30,128-164,173,175-177,180,183-226
+test/appRoutesBrowser.test.ts
+  s_e16f52fd1de115::t_aa9902e4749822 1-56,61-94
+  s_e16f52fd1de115::t_b8d5deb8e76cf5 57-60
+test/communityExperienceBrowser.test.ts
+  s_e16f52fd1de115::t_aa9902e4749822 244
+  s_e16f52fd1de115::t_1f9b60bbcbf93a 69
+  s_e16f52fd1de115::t_0a5037609c5a20 1-68,70-243,245-249
+web/src/workspace/SessionSharing.tsx
+  s_e16f52fd1de115::t_aa9902e4749822 52
+web/src/workspace/appNavigation.css
+  s_e16f52fd1de115::t_0a5037609c5a20 1-137
+web/src/workspace/appRoutes.ts
+  s_e16f52fd1de115::t_aa9902e4749822 1-128
+test/sharingFrontendBrowser.test.ts
+  s_e16f52fd1de115::t_5d19804380104b 257-267,276-277,284,295,309
+web/src/workspace/WorksPanel.tsx
+  s_e16f52fd1de115::t_0a5037609c5a20 160,163,167,170-172,189-190,192,218,404-406
+  s_e16f52fd1de115::t_aa9902e4749822 370
+web/src/workspace/community.css
+  s_e16f52fd1de115::t_0a5037609c5a20 109-224
+test/communityHistory.test.ts
+  s_e16f52fd1de115::t_0a5037609c5a20 1-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "dc25c2df2385abbf14a6669051e184468c0433e6",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
