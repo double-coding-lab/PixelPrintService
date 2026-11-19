@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 5
+revision: 6
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -55,3 +55,10 @@ confidence: inferred
 ## 图片目录映射只读查看
 
 `.d2c-cache/image-directories.json` 保存主题与上传目录的稳定映射，源码文件接口仅对这个准确的根级缓存路径额外开放只读查看。读取仍校验工作区权限、会话归属、路径及内容摘要；禁止编辑和删除，其他根级内部缓存继续受保护。验证见 `test/imageDirectoryRead.test.ts`。
+
+## 切图请求与响应诊断
+
+- prepare_slices按社区版proxyUrl配置选择代理或直连；每次调用独享请求与重试状态，diagnostics.slice.proxyUsed记录实际是否使用代理。
+- 后台日志只投影SliceDiagnosticError中的固定phase/reason与可得的nodeId、statusCode、bytes、attempt及proxyUsed：阶段区分fetch_node/export_image/download_image/manifest，原因区分HTTP错误、网络/TLS失败、响应超限、节点或导出地址缺失、JSON/图片及清单校验失败。解析层缺少状态码时保持缺失，读取缓存不伪造网络信息。
+- RESOURCE_UNAVAILABLE/FIGMA_REQUEST_FAILED及权限、限流、取消、租约和有限重试规则保持原分类；完整请求URL、代理地址、Token和响应正文不进入新增日志或公开失败。历史日志无法补回未记录的原因，新字段在更新服务后的实际执行中产生。
+- 实现及回归入口：run/sliceDiagnostics.ts、sliceNetwork.ts、slices.ts、tools.ts、errors.ts；test/sliceDiagnostics.test.ts、sliceNetwork.test.ts和nativeSlices.test.ts覆盖错误区分、节点/字节/状态、重试、代理/直连及脱敏。
