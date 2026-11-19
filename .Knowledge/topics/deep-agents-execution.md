@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 2
+revision: 3
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -42,3 +42,11 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 ## 详细资料
 
 [Deep Agents 执行与恢复](../stock-docs/deep-agents-execution.md)
+
+## 后台子任务稳定身份恢复
+
+- 显式resumeAgentId只在当前job、thread与精确进度namespace中定位原记录，继续使用原存储key和子图；角色、节点及完整writePaths必须匹配。不匹配返回RESUME_SCOPE_CHANGED，找不到返回RESUME_NOT_FOUND，不新建ID或覆盖原记录。
+- 同授权的缓存输入变化或已保存文件变化保留agentId、原子图和交接上下文；contextHash及实际文件摘要用于记录inputChanged、changedPaths、missingPaths，未知写入仍先对账。失效的完成缓存不能当作当前成功，变化或缺失文件只在原授权内复核。
+- pending恢复差异跨open/start中断持续保存，仅真实执行结算成功后清除；恢复收到具体变化及先回读授权资料的要求；settled且仍有效的结果直接交付，不重跑模型或写入。settled结果过期时向父Agent交接RESUME_INPUT_CHANGED及真实已保存文件，原结果保留供审计，由父Agent沿原ID复核或接管。
+- 恢复原任务不消耗新委派次数，实际模型请求仍计入共享预算。在途回执也必须匹配显式恢复ID；自动恢复的已知拒绝或节点调整通过wait_subagents返回结构化失败，父图保存回执后才标记观察，避免因同一拒绝反复中断。存储损坏、读取/写入故障、权限、停止、失租和未知异常继续上抛。
+- 验证入口：backgroundAgentGraph与subagentCheckpoint离线真实图/保存器回归，覆盖恢复、缓存变化、文件缺失、结果重送、额度、授权隔离及数据保留；不自动改写历史failed轮次。
