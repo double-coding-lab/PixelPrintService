@@ -51,14 +51,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.workspace-home-name > .workspace-attribution,
-.workspace-switcher-panel .workspace-attribution {
-  display: block;
-  margin-top: 4px;
-}
-.workspace-switcher-panel .workspace-attribution {
-  text-align: left;
-}
 .workspace-context {
   flex-wrap: wrap;
   padding-top: 8px;
