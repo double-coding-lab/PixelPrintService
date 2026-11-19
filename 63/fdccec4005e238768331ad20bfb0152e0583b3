@@ -1,0 +1,21 @@
+test/subagentCheckpoint.test.ts
+  s_a4e26e740c8ebc::t_5e61765e4b4746 11,676-734,736-1031
+test/backgroundAgentGraph.test.ts
+  s_a4e26e740c8ebc::t_352193a7e904ef 1072-1102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "63fdccec4005e238768331ad20bfb0152e0583b3",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
