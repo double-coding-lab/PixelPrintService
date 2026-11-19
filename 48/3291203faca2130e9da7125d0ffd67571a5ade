@@ -1,0 +1,25 @@
+.Knowledge/topics/d2c-workspace-foundation.md
+  s_e16f52fd1de115::t_1d4f971d2f7217 3,58-64
+.Knowledge/stock-docs/d2c-workspace-foundation.md
+  s_e16f52fd1de115::t_1d4f971d2f7217 71-72
+.Knowledge/index.md
+  s_e16f52fd1de115::t_1d4f971d2f7217 46
+.Knowledge/matchers/m-d2c-workspace-foundation.json
+  s_e16f52fd1de115::t_1d4f971d2f7217 25-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "483291203faca2130e9da7125d0ffd67571a5ade",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
