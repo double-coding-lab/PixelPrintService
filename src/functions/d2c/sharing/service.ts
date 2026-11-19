@@ -24,9 +24,12 @@ function usageTime(value: unknown): number | null {
 export type SharingBinary = { downloadFile(locator: Record<string, unknown>): Promise<Buffer> };
 
 /** DTO 始终只含显示字段，不含配置、凭据或对象定位。 */
-function summary(session: D2cSession, shareId: string) {
+function summary(session: D2cSession, shareId: string, coverAttachmentId?: string) {
   return {
     shareId,
+    coverUrl: coverAttachmentId
+      ? `/api/d2c/plaza/sessions/${shareId}/attachments/${encodeURIComponent(coverAttachmentId)}`
+      : null,
     sessionId: session.sessionId!,
     name: session.name,
     target: session.target,
@@ -166,6 +169,55 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
     }
   }
 
+  /** 按当前页会话一次查询，每会话只返回最早截图 ID，不传输时间线/附件大字段。
+   * 无专用 screenshot 标记：联合校验 screenshots.ts 的助手消息、修订文件名、
+   * SHA-256 身份及首个附件代理引用；用户上传的 UUID 即使同名也不能命中。
+   */
+  async function covers(sessionIds: string[]) {
+    if (!sessionIds.length) return new Map<string, string>();
+    const rows = (await (mysql.models.D2cSession as typeof D2cSession).findAll({
+      where: { sessionId: { [Op.in]: sessionIds } },
+      attributes: [
+        'sessionId',
+        [
+          literal(`(
+          SELECT a.attachmentId FROM d2c_timeline AS t
+          INNER JOIN d2c_message_attachment AS a
+            ON a.sessionId = t.sessionId AND a.messageId = t.messageId
+          WHERE t.sessionId = D2cSession.sessionId AND t.kind = 'message'
+            AND t.runId IS NOT NULL AND t.seq > 0
+            AND JSON_UNQUOTE(JSON_EXTRACT(t.displayPayload, '$.role')) = 'assistant'
+            AND a.expiresAt IS NULL AND a.objectLocator IS NOT NULL
+            AND a.attachmentId REGEXP '^[a-f0-9]{64}$'
+            AND a.fileName REGEXP '^preview-r[0-9]+[.]png$'
+            AND a.mimeType = 'image/png' AND a.size BETWEEN 1 AND ${attachmentMaxBytes}
+            AND a.width > 0 AND a.height > 0
+            AND JSON_LENGTH(JSON_EXTRACT(t.displayPayload, '$.attachments')) = 1
+            AND JSON_UNQUOTE(JSON_EXTRACT(t.displayPayload, '$.attachments[0].attachmentId')) = a.attachmentId
+            AND JSON_UNQUOTE(JSON_EXTRACT(t.displayPayload, '$.attachments[0].url')) =
+              CONCAT('/api/d2c/sessions/', t.sessionId, '/attachments/', a.attachmentId)
+            AND SUBSTRING(JSON_UNQUOTE(JSON_EXTRACT(t.displayPayload, '$.text')), 1,
+              CHAR_LENGTH(CONCAT('运行截图 · 文件修订 r', SUBSTRING(a.fileName, 10, CHAR_LENGTH(a.fileName) - 13), CHAR(10), CHAR(10), '入口：'))) =
+              CONCAT('运行截图 · 文件修订 r', SUBSTRING(a.fileName, 10, CHAR_LENGTH(a.fileName) - 13), CHAR(10), CHAR(10), '入口：')
+          ORDER BY t.seq ASC, a.attachmentId ASC LIMIT 1
+        )`),
+          'coverAttachmentId',
+        ],
+      ],
+      limit: sessionIds.length,
+      raw: true,
+    })) as unknown as Array<{ sessionId: string; coverAttachmentId: string | null }>;
+    return new Map(
+      rows.flatMap((row) =>
+        sessionIds.includes(row.sessionId) &&
+        typeof row.coverAttachmentId === 'string' &&
+        /^[a-f0-9]{64}$/.test(row.coverAttachmentId)
+          ? [[row.sessionId, row.coverAttachmentId] as const]
+          : [],
+      ),
+    );
+  }
+
   return {
     /** 状态沿用私有访问权限，历史个人会话与发布写入使用同一授权规则。 */
     async status(eid: string, sessionId: string) {
@@ -237,6 +289,7 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
         offset: (page - 1) * pageSize,
       });
       if (!result.rows.length) return { items: [], total: result.count, page, pageSize };
+      const coverIds = await covers(result.rows.map((row) => row.sessionId));
       const sessions = await (mysql.models.D2cSession as typeof D2cSession).findAll({
         where: { sessionId: { [Op.in]: result.rows.map((row) => row.sessionId) } },
         attributes: [
@@ -282,7 +335,7 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
               active.sessionId === row.sessionId &&
               active.enabled,
           )
-          ? [summary(session, row.shareId)]
+          ? [summary(session, row.shareId, coverIds.get(session.sessionId!))]
           : [];
       });
       const total = result.count;
@@ -291,7 +344,9 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
     /** 返回最新稳定元数据，既不冻结快照也不暴露工作区配置。 */
     async get(eid: string, shareId: string) {
       const { session } = await publishedSession(mysql, eid, shareId);
-      return summary(session, shareId);
+      const coverIds = await covers([session.sessionId!]);
+      await publishedSession(mysql, eid, shareId);
+      return summary(session, shareId, coverIds.get(session.sessionId!));
     },
     /** 汇总已去重持久化的主/子模型用量；不重放模型事件、不读取私有诊断。 */
     async usage(eid: string, shareId: string) {

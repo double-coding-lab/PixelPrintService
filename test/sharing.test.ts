@@ -347,6 +347,7 @@ test('metadata returns only explicit latest display fields', async () => {
     Object.keys(value).sort(),
     [
       'shareId',
+      'coverUrl',
       'sessionId',
       'name',
       'target',
@@ -391,7 +392,8 @@ test('list paginates and counts alive rows in DB, queries bounded page metadata 
   assert.equal(result.page, 2);
   assert.equal(result.pageSize, 12);
   assert.equal(result.items[0].sessionId, 'session-27');
-  assert.equal(f.queries.length, 4);
+  assert.equal(f.queries.length, 5);
+  assert.ok(result.items.every((item) => item.coverUrl === null));
   const query = f.queries[0];
   assert.equal(query.operation, 'findAndCountAll');
   assert.equal(query.options.limit, 12);
