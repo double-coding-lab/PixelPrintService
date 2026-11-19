@@ -1,0 +1,25 @@
+test/subagentCheckpoint.test.ts
+  s_e16f52fd1de115::t_a4aad3e742e394 1-10,12-675
+  s_a4e26e740c8ebc::t_5e61765e4b4746 11,676-734,736-1031
+.Knowledge/index.md
+  s_e16f52fd1de115::t_6e994b905627d5 48
+  s_e16f52fd1de115::t_964bb562f505fa 25-27,31,38-44,50-54
+  s_e16f52fd1de115::t_5011fc43a9a179 49,90
+  s_a4e26e740c8ebc::t_d99926aae1de6c 89
+  s_e16f52fd1de115::t_2c2cef31b85797 45
+  s_a4e26e740c8ebc::t_d123c2b1e7c893 47
+.Knowledge/stock-docs/deep-agents-execution.md
+  s_a4e26e740c8ebc::t_d123c2b1e7c893 66-67
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-65
+test/backgroundAgentGraph.test.ts
+  s_a4e26e740c8ebc::t_352193a7e904ef 1072-1102
+.Knowledge/topics/deep-agents-execution.md
+  s_e16f52fd1de115::t_7f6f3e0970da21 1-2,4-31,38-44
+  s_a4e26e740c8ebc::t_8be54fd81d6747 3,45-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "b8c136897558fc979106e6cfac095ab91462928b",
+  "prompts": {}
+}
