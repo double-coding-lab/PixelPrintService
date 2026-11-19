@@ -8,6 +8,7 @@ import { FakeToolCallingModel } from 'langchain';
 import {
   createSubagentProgress,
   SubagentCheckpoint,
+  SubagentResumeError,
   settleSubagentMessages,
   type AgentCheckpoint,
 } from '../src/functions/d2c/run/agent/subagentCheckpoint';
@@ -671,4 +672,471 @@ test('局部编辑保存后丢失回执仍保留原子图，未知编辑不被�
   const settled = await recoverSubagentMessages(messages, restored.reconcile);
   assert.equal(JSON.parse(settled[1].text).outcome, 'unknown');
   assert.equal(f.files.get(file), '');
+});
+
+/** 获取保存位置以构造存量/损坏记录，并断言显式恢复没有创建第二条记录。 */
+async function progressRows(checkpoint: AgentCheckpoint) {
+  const rows = [];
+  for await (const row of checkpoint.list({
+    configurable: { thread_id: checkpoint.config().configurable?.thread_id },
+  }))
+    if (row.checkpoint.channel_values.progress) rows.push(row);
+  return rows;
+}
+
+/** 同一 job 的恢复使用原 key；缓存和写入状态不影响子图及交接身份。 */
+test('显式ID恢复在context变化时保留原key、子图、文件和交接上下文', async () => {
+  const f = fixture();
+  const store = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'config',
+    messageId: 'stable-context',
+  });
+  const child = await store.open(task, 'before', f.tools);
+  f.files.set(task.writePaths[0], 'report');
+  await child.wrote(task.writePaths[0]);
+  const handoff = {
+    contextPath: '/history/child-original',
+    verifiedTools: [{ tool: 'read_file', path: 'rules.md' }],
+    omitted: 0,
+  };
+  await child.saveHandoff(handoff);
+  await child.complete('old success');
+  const graph = emptyCheckpoint();
+  graph.channel_values = { marker: 'original child graph' };
+  await child.checkpoint.put(
+    child.checkpoint.config(),
+    graph,
+    { source: 'update', step: 1, parents: {} },
+    {},
+  );
+  const before = await progressRows(f.checkpoint);
+  const continued = await createSubagentProgress(f.checkpoint, {
+    continuation: true,
+    identity: 'config',
+    messageId: 'resume',
+  });
+  const restored = await continued.open(task, 'after', f.tools, child.state.agentId);
+  assert.equal(restored.state.agentId, child.state.agentId);
+  assert.equal(restored.restored, true);
+  assert.deepEqual(restored.recovery, { inputChanged: true, changedPaths: [], missingPaths: [] });
+  assert.equal(restored.state.result, undefined);
+  assert.deepEqual(restored.state.files, child.state.files);
+  assert.deepEqual(restored.state.handoff, handoff);
+  assert.equal(
+    (await restored.checkpoint.getTuple(restored.checkpoint.config()))?.checkpoint.channel_values
+      .marker,
+    'original child graph',
+  );
+  const after = await progressRows(f.checkpoint);
+  assert.equal(after.length, before.length);
+  assert.equal(after[0].checkpoint.id, before[0].checkpoint.id);
+  assert.deepEqual((await continued.open(task, 'after', f.tools, child.state.agentId)).recovery, {
+    inputChanged: true,
+    changedPaths: [],
+    missingPaths: [],
+  });
+});
+
+test('显式恢复标识变化和缺失文件，保留仍验证通过的产物且不新建ID', async () => {
+  const f = fixture();
+  const store = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'config',
+    messageId: 'changed-files',
+  });
+  const scope = { role: 'ui', nodeId: 'sub:1', writePaths: ['a.tsx', 'b.tsx', 'c.tsx'] };
+  const child = await store.open(scope, 'cache', f.tools);
+  for (const path of scope.writePaths) {
+    f.files.set(path, path);
+    await child.wrote(path);
+  }
+  await child.complete('success');
+  f.files.set('a.tsx', 'manual change');
+  f.files.delete('b.tsx');
+  const restored = await store.open(scope, 'cache', f.tools, child.state.agentId);
+  assert.equal(restored.state.agentId, child.state.agentId);
+  assert.deepEqual(restored.recovery, {
+    inputChanged: false,
+    changedPaths: ['a.tsx'],
+    missingPaths: ['b.tsx'],
+  });
+  assert.deepEqual(Object.keys(restored.state.files), ['c.tsx']);
+  assert.equal(restored.state.result, undefined);
+  assert.equal(f.files.get('a.tsx'), 'manual change');
+  assert.equal((await progressRows(f.checkpoint)).length, 1);
+});
+
+test('scope变化拒绝且零写入，原后台描述仍可读；manager仅标记原任务已交付', async () => {
+  const f = fixture();
+  const store = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'config',
+    messageId: 'scope-reject',
+  });
+  const child = await store.open(task, 'cache', f.tools);
+  await child.startBackground('background-key', 'original task');
+  const before = await progressRows(f.checkpoint);
+  for (const scope of [
+    { ...task, role: 'ui' },
+    { ...task, nodeId: 'another' },
+    { ...task, nodeId: undefined },
+    { ...task, writePaths: [...task.writePaths, 'extra.tsx'] },
+    { ...task, writePaths: [] },
+    { ...task, writePaths: [task.writePaths[0] + '/nested'] },
+  ]) {
+    await assert.rejects(
+      store.open(scope, 'different context', f.tools, child.state.agentId),
+      (error: unknown) => error instanceof SubagentResumeError && error.reason === 'SCOPE_CHANGED',
+    );
+    assert.deepEqual(await progressRows(f.checkpoint), before);
+  }
+  assert.equal((await store.background())[0].task, 'original task');
+  await store.observeBackground('00000000-0000-4000-8000-000000000000');
+  assert.deepEqual(await progressRows(f.checkpoint), before);
+  await store.observeBackground(child.state.agentId);
+  assert.deepEqual(await store.background(), []);
+  assert.equal(
+    (
+      (await progressRows(f.checkpoint))[0].checkpoint.channel_values.progress as {
+        background: { observed: boolean };
+      }
+    ).background.observed,
+    true,
+  );
+  const restored = await store.open(task, 'cache', f.tools, child.state.agentId);
+  assert.equal(restored.state.agentId, child.state.agentId);
+  assert.equal(restored.state.background?.task, 'original task');
+  await restored.observeBackground();
+});
+
+test('显式ID只能恢复当前job和精确namespace，不匹配时零写入', async () => {
+  const f = fixture();
+  const first = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'config',
+    messageId: 'old-job',
+  });
+  const child = await first.open(task, 'cache', f.tools);
+  await child.startBackground('original', 'other job');
+  const store = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'config',
+    messageId: 'new-job',
+  });
+  const original = (await progressRows(f.checkpoint))[0];
+  const jobNs =
+    '__pixelprint_subagent_progress/' +
+    createHash('sha256')
+      .update(JSON.stringify(['new-job', 'config']))
+      .digest('hex');
+  const nested = {
+    ...original.checkpoint,
+    channel_values: structuredClone(original.checkpoint.channel_values),
+  };
+  await f.checkpoint.put(
+    f.checkpoint.config(jobNs + '/nested'),
+    nested,
+    { source: 'update', step: 0, parents: {} },
+    {},
+  );
+  const before = await progressRows(f.checkpoint);
+  await assert.rejects(
+    store.open(task, 'cache', f.tools, child.state.agentId),
+    (error: unknown) => error instanceof SubagentResumeError && error.reason === 'NOT_FOUND',
+  );
+  await store.observeBackground(child.state.agentId);
+  assert.deepEqual(await progressRows(f.checkpoint), before);
+  assert.equal((await first.background())[0].agentId, child.state.agentId);
+});
+
+test('legacy无contextHash沿原key判定变化，授权路径顺序不影响恢复', async () => {
+  const f = fixture();
+  const store = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'config',
+    messageId: 'legacy',
+  });
+  const scope = { role: 'ui', nodeId: 'sub', writePaths: ['a.tsx', 'b.tsx'] };
+  const child = await store.open(scope, 'before', f.tools);
+  const row = (await progressRows(f.checkpoint))[0];
+  const legacy = structuredClone(row.checkpoint);
+  delete (legacy.channel_values.progress as { contextHash?: string }).contextHash;
+  await f.checkpoint.put(
+    f.checkpoint.config(String(row.config.configurable?.checkpoint_ns)),
+    legacy,
+    { source: 'update', step: 0, parents: {} },
+    {},
+  );
+  const same = await store.open(
+    { ...scope, writePaths: [...scope.writePaths].reverse() },
+    'before',
+    f.tools,
+    child.state.agentId,
+  );
+  assert.equal(same.recovery.inputChanged, false);
+  delete (legacy.channel_values.progress as { contextHash?: string }).contextHash;
+  await f.checkpoint.put(
+    f.checkpoint.config(String(row.config.configurable?.checkpoint_ns)),
+    legacy,
+    { source: 'update', step: 0, parents: {} },
+    {},
+  );
+  const changed = await store.open(scope, 'after', f.tools, child.state.agentId);
+  assert.equal(changed.recovery.inputChanged, true);
+  assert.equal(changed.state.agentId, child.state.agentId);
+});
+
+test('settled恢复验证当前输入与文件，过期成功不得作为当前成功缓存', async () => {
+  const f = fixture();
+  const store = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'config',
+    messageId: 'settled',
+  });
+  const child = await store.open(task, 'cache', f.tools);
+  f.files.set(task.writePaths[0], 'report');
+  await child.wrote(task.writePaths[0]);
+  await child.complete('success');
+  await child.startBackground('original-key', 'original task');
+  await child.settleBackground('{"success":true}');
+  const same = await store.open(task, 'cache', f.tools, child.state.agentId);
+  assert.deepEqual(same.recovery, { inputChanged: false, changedPaths: [], missingPaths: [] });
+  assert.equal(same.state.result, 'success');
+  f.files.delete(task.writePaths[0]);
+  const stale = await store.open(task, 'different', f.tools, child.state.agentId);
+  assert.equal(stale.state.agentId, child.state.agentId);
+  assert.deepEqual(stale.recovery, {
+    inputChanged: true,
+    changedPaths: [],
+    missingPaths: task.writePaths,
+  });
+  assert.equal(stale.state.result, undefined);
+  assert.equal(stale.state.background?.status, 'settled');
+  assert.equal(stale.state.background?.result, '{"success":true}');
+  assert.equal((await store.background())[0].agentId, child.state.agentId);
+  const retry = await store.open(task, 'different', f.tools, child.state.agentId);
+  assert.deepEqual(retry.recovery, stale.recovery);
+  assert.equal(retry.state.result, undefined);
+});
+
+test('损坏进度、权限和存储/租约异常不转换成恢复拒绝且不覆盖原记录', async (t) => {
+  const f = fixture();
+  const store = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'config',
+    messageId: 'corrupt',
+  });
+  const child = await store.open(task, 'cache', f.tools);
+  f.files.set(task.writePaths[0], 'report');
+  await child.wrote(task.writePaths[0]);
+  const before = await progressRows(f.checkpoint);
+  const fatal = new Error('LEASE_EXPIRED');
+  const read = t.mock.method(f.tools, 'read', async () => {
+    throw fatal;
+  });
+  await assert.rejects(
+    store.open(task, 'cache', f.tools, child.state.agentId),
+    (error) => error === fatal,
+  );
+  read.mock.restore();
+  const permission = t.mock.method(f.tools, 'read', async () =>
+    JSON.stringify({ ok: false, code: 'PERMISSION_DENIED' }),
+  );
+  await assert.rejects(
+    store.open(task, 'cache', f.tools, child.state.agentId),
+    /FILE_READ_INVALID/,
+  );
+  permission.mock.restore();
+  assert.deepEqual(await progressRows(f.checkpoint), before);
+  const list = t.mock.method(f.checkpoint, 'list', async function* () {
+    throw fatal;
+  });
+  await assert.rejects(
+    store.open(task, 'cache', f.tools, child.state.agentId),
+    (error) => error === fatal,
+  );
+  await assert.rejects(store.observeBackground(child.state.agentId), (error) => error === fatal);
+  list.mock.restore();
+  const corrupt = structuredClone(before[0].checkpoint);
+  (corrupt.channel_values.progress as { files: Record<string, string> }).files = {
+    [task.writePaths[0]]: 'broken hash',
+  };
+  await f.checkpoint.put(
+    f.checkpoint.config(String(before[0].config.configurable?.checkpoint_ns)),
+    corrupt,
+    { source: 'update', step: 0, parents: {} },
+    {},
+  );
+  const damaged = await progressRows(f.checkpoint);
+  await assert.rejects(store.open(task, 'cache', f.tools, child.state.agentId), /PROGRESS_CORRUPT/);
+  await assert.rejects(store.observeBackground(child.state.agentId), /PROGRESS_CORRUPT/);
+  assert.deepEqual(await progressRows(f.checkpoint), damaged);
+});
+
+/** 保存器即使忽略 namespace/thread 过滤，显式恢复和观察也不能触碰外部记录。 */
+test('显式恢复与manager观察都过滤伪造的其他thread及子namespace记录', async (t) => {
+  const f = fixture();
+  const store = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'config',
+    messageId: 'strict-scope',
+  });
+  const child = await store.open(task, 'cache', f.tools);
+  await child.startBackground('scope-key', 'task');
+  const before = await progressRows(f.checkpoint);
+  const nested = structuredClone(before[0]);
+  nested.config.configurable!.checkpoint_ns += '/child';
+  const foreign = structuredClone(before[0]);
+  foreign.config.configurable!.thread_id = 'another-user-session';
+  // 非当前作用域的损坏内容也不应参与当前任务校验。
+  nested.checkpoint.channel_values.progress = { agentId: child.state.agentId };
+  const list = t.mock.method(f.checkpoint, 'list', async function* () {
+    yield nested;
+    yield foreign;
+  });
+  await assert.rejects(
+    store.open(task, 'cache', f.tools, child.state.agentId),
+    (error: unknown) => error instanceof SubagentResumeError && error.reason === 'NOT_FOUND',
+  );
+  await store.observeBackground(child.state.agentId);
+  list.mock.restore();
+  assert.deepEqual(await progressRows(f.checkpoint), before);
+});
+
+/** 写入租约失败必须拒绝原调用，不修改原任务或使已交付标记提前可见。 */
+test('恢复保存和manager观察的写入异常原样抛出，原记录保持不变', async (t) => {
+  const f = fixture();
+  const store = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'config',
+    messageId: 'save-failure',
+  });
+  const child = await store.open(task, 'cache', f.tools);
+  await child.startBackground('persist-key', 'task');
+  const before = await progressRows(f.checkpoint);
+  const fatal = new Error('LEASE_EXPIRED');
+  const put = t.mock.method(f.checkpoint, 'put', async () => {
+    throw fatal;
+  });
+  await assert.rejects(
+    store.open(task, 'changed', f.tools, child.state.agentId),
+    (error) => error === fatal,
+  );
+  await assert.rejects(store.observeBackground(child.state.agentId), (error) => error === fatal);
+  put.mock.restore();
+  assert.deepEqual(await progressRows(f.checkpoint), before);
+  const recovered = await store.open(task, 'changed', f.tools, child.state.agentId);
+  assert.equal(recovered.recovery.inputChanged, true);
+  assert.equal(recovered.state.background?.observed, false);
+});
+
+/** 新 manager 只依赖真实保存器的已提交记录，模拟在子图保存新提示前丢失整个旧句柄。 */
+for (const window of ['open', 'startBackground'] as const) {
+  test(`pending在${window}后中断，跨实例重复恢复仍保留输入及文件差异`, async () => {
+    const f = fixture();
+    const store = await createSubagentProgress(f.checkpoint, {
+      continuation: false,
+      identity: 'pending-recovery',
+      messageId: `window-${window}`,
+    });
+    const scope = { role: 'ui', nodeId: 'sub:pending', writePaths: ['a.tsx', 'b.tsx', 'c.tsx'] };
+    const child = await store.open(scope, 'old-context', f.tools);
+    for (const path of scope.writePaths) {
+      f.files.set(path, path);
+      await child.wrote(path);
+    }
+    await child.startBackground('pending-key', 'original task');
+    const graph = emptyCheckpoint();
+    graph.channel_values = { marker: 'no recovery prompt saved yet' };
+    await child.checkpoint.put(
+      child.checkpoint.config(),
+      graph,
+      { source: 'update', step: 0, parents: {} },
+      {},
+    );
+    f.files.set('a.tsx', 'external edit');
+    f.files.delete('b.tsx');
+    const recovery = { inputChanged: true, changedPaths: ['a.tsx'], missingPaths: ['b.tsx'] };
+    const first = await store.open(scope, 'new-context', f.tools, child.state.agentId);
+    assert.deepEqual(first.recovery, recovery);
+    if (window === 'startBackground') await first.startBackground('pending-key', 'resume task');
+    // 此处没有向子图提交提示，直接新建 manager 代表进程中断后的恢复。
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const resumed = await createSubagentProgress(f.checkpoint, {
+        continuation: true,
+        identity: 'pending-recovery',
+        messageId: `retry-${attempt}`,
+      });
+      const restored = await resumed.open(scope, 'new-context', f.tools, child.state.agentId);
+      assert.deepEqual(restored.recovery, recovery);
+      assert.deepEqual(restored.state.recovery, recovery);
+      assert.equal(restored.state.agentId, child.state.agentId);
+      assert.equal(restored.state.background?.status, 'pending');
+      assert.deepEqual(Object.keys(restored.state.files), ['c.tsx']);
+      assert.equal(
+        (await restored.checkpoint.getTuple(restored.checkpoint.config()))?.checkpoint
+          .channel_values.marker,
+        'no recovery prompt saved yet',
+      );
+      assert.equal((await progressRows(f.checkpoint)).length, 1);
+    }
+    assert.equal(f.files.get('a.tsx'), 'external edit');
+    assert.equal(f.files.has('b.tsx'), false);
+  });
+}
+
+/** settled 的差异转入真实续作也必须保留；只有新结果结算事务提交后才能消费提示。 */
+test('恢复差异跨settled转pending保留，结算失败不清理，真实结算成功后跨实例清理', async (t) => {
+  const f = fixture();
+  const store = await createSubagentProgress(f.checkpoint, {
+    continuation: false,
+    identity: 'settle-recovery',
+    messageId: 'settle-window',
+  });
+  const child = await store.open(task, 'old-context', f.tools);
+  f.files.set(task.writePaths[0], 'original');
+  await child.wrote(task.writePaths[0]);
+  await child.startBackground('settle-key', 'original task');
+  await child.settleBackground('{"success":true,"version":"old"}');
+  f.files.set(task.writePaths[0], 'external edit');
+  const recovery = { inputChanged: true, changedPaths: task.writePaths, missingPaths: [] };
+  const stale = await store.open(task, 'new-context', f.tools, child.state.agentId);
+  assert.deepEqual(stale.recovery, recovery);
+  await stale.startBackground('settle-key', 'revalidate task');
+  const resumed = await createSubagentProgress(f.checkpoint, {
+    continuation: true,
+    identity: 'settle-recovery',
+    messageId: 'retry',
+  });
+  const active = await resumed.open(task, 'new-context', f.tools, child.state.agentId);
+  assert.deepEqual(active.recovery, recovery);
+  await active.wrote(task.writePaths[0]);
+  await active.complete('revalidated success');
+  assert.deepEqual(active.state.recovery, recovery, 'complete不是后台结算屏障');
+  const failure = new Error('LEASE_EXPIRED');
+  const put = t.mock.method(f.checkpoint, 'put', async () => {
+    throw failure;
+  });
+  await assert.rejects(
+    active.settleBackground('{"success":true,"version":"new"}'),
+    (error) => error === failure,
+  );
+  put.mock.restore();
+  assert.deepEqual(active.state.recovery, recovery);
+  const stillPending = await resumed.open(task, 'new-context', f.tools, child.state.agentId);
+  assert.deepEqual(stillPending.recovery, recovery);
+  assert.equal(stillPending.state.background?.status, 'pending');
+  await stillPending.complete('revalidated success');
+  await stillPending.settleBackground('{"success":true,"version":"new"}');
+  assert.equal(stillPending.state.recovery, undefined);
+  const finalStore = await createSubagentProgress(f.checkpoint, {
+    continuation: true,
+    identity: 'settle-recovery',
+    messageId: 'after-settle',
+  });
+  const final = await finalStore.open(task, 'new-context', f.tools, child.state.agentId);
+  assert.deepEqual(final.recovery, { inputChanged: false, changedPaths: [], missingPaths: [] });
+  assert.equal(final.state.background?.result, '{"success":true,"version":"new"}');
+  assert.equal(final.state.result, 'revalidated success');
 });
