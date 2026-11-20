@@ -11,5 +11,18 @@
     "linkedSkill": "f2s-kb-feat",
     "createdAt": "2026-11-18",
     "assignee": "taolan"
+  },
+  {
+    "name": "large_content_file_storage",
+    "folder": ".task/taolan/active/large_content_file_storage/",
+    "keywords": [
+      "大正文外置",
+      "文件存储迁移",
+      "LONGTEXT",
+      "兼容迁移"
+    ],
+    "linkedSkill": "f2s-req-plan",
+    "createdAt": "2026-11-21",
+    "assignee": "taolan"
   }
 ]

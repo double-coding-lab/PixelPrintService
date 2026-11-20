@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 10
+revision: 12
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -82,3 +82,14 @@ confidence: inferred
 - 后台日志只投影SliceDiagnosticError中的固定phase/reason与可得的nodeId、statusCode、bytes、attempt及proxyUsed：阶段区分fetch_node/export_image/download_image/manifest，原因区分HTTP错误、网络/TLS失败、响应超限、节点或导出地址缺失、JSON/图片及清单校验失败。解析层缺少状态码时保持缺失，读取缓存不伪造网络信息。
 - RESOURCE_UNAVAILABLE/FIGMA_REQUEST_FAILED及权限、限流、取消、租约和有限重试规则保持原分类；完整请求URL、代理地址、Token和响应正文不进入新增日志或公开失败。历史日志无法补回未记录的原因，新字段在更新服务后的实际执行中产生。
 - 实现及回归入口：run/sliceDiagnostics.ts、sliceNetwork.ts、slices.ts、tools.ts、errors.ts；test/sliceDiagnostics.test.ts、sliceNetwork.test.ts和nativeSlices.test.ts覆盖错误区分、节点/字节/状态、重试、代理/直连及脱敏。
+
+## 大正文文件存储
+
+- `content/runtime.ts`已装配当前文件/Figma缓存、Agent恢复、版本/作品冻结、ZIP/广场源码、预览冷重建和临时编辑。三张文件表的可空`contentRef`及预览snapshot记录不可变引用；二进制`objectLocator`沿用原语义。
+- `d2c.contentStorage`默认`schemaReady=false/mode=inline`，默认模型投影和旧INSERT不依赖新列；审阅增量建列并重启后设置`schemaReady=true`。此开关进程内固定；回退写模式时仍保持它为true，以读取历史引用。
+- `shadow`保留正文与引用兼容旧写入；有inline时优先读取，复制冻结前剔除与当前大小/摘要不符的陈旧引用。确认旧writer退出后才可`external`；低于阈值或超出当前传输能力的正文保留inline。候选阈值262144字节，目标性能待测量。
+- `content/store.ts`以AES-256-GCM、可信scope、独立版本密钥、随机不可变对象、上传回读及大小/摘要核验保护正文；底层复用平台文件客户端，有界并发/排队和流式下载限额，不缓存正文。引用/密钥/定位只在服务端，浏览器与编辑DTO仍返回授权字符串。
+- 上传和正文还原在业务事务外执行，提交前重验权限、修订及租约/CAS；版本、作品、预览复用同一不可变对象。数据库失败保留旧状态及未引用对象；当前阶段不做GC。
+- `content:audit`仅生成容量SELECT；`content:migrate`提供固定表组、默认dry-run、BIGINT分页、逐行正文、原子私有游标、分批resume及restore回填。外置apply要求显式确认；冲突/活动预览/故障保留失败行之前游标。目标库DDL、迁移和性能验证由部署方执行。
+- 回滚旧程序前先停止外置写入、恢复全部所需inline并核验，保留元数据/对象/历史正文密钥；仅关mode不能让旧程序读取引用。执行时间线、检查点和pending writes格式继续沿用当前实现。
+- 可执行配置、迁移顺序和第二阶段评估见[工作区基础终稿](../stock-docs/d2c-workspace-foundation.md#大正文文件存储)。

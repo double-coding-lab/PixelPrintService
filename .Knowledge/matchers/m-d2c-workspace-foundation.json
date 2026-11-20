@@ -31,6 +31,14 @@
     "补切改名",
     "FIGMA_EXPORT_FILE_MISSING",
     "切图诊断",
-    "Figma请求失败"
+    "Figma请求失败",
+    "大正文外置",
+    "正文协议",
+    "容量审计",
+    "content-storage-audit",
+    "文件存储迁移",
+    "contentStorage",
+    "content:migrate",
+    "正文回填"
   ]
 }
