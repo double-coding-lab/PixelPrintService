@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 7
+revision: 8
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -85,3 +85,11 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - 诊断抽屉展示主任务/历史未归属用量及各子任务职责、状态、耗时、请求、Token和交付；卡片默认收起详情，工具记录另可展开。仅打开时读取并随相关SSE合并刷新，子会话正文/思考分片不触发重读；本地秒表不新增请求。
 - 无新增DDL、配置或模型请求；发布后新执行开始记录精确归属，历史缺失不补造。检查点仍只读会话最新保存时间，不反序列化完整对话或大字段。
 - 回归覆盖test/subagentDiagnostics.test.ts、test/subagentDiagnosticsRead.test.ts、test/subagentDiagnosticsFrontend.test.ts及test/ruleRepair.test.ts：并行身份、用量未知、事件去重、交接继续、窗口完整性和窄屏展示。
+
+## UI任务准入与编译反馈
+
+- 正式执行器具备scanRules时，UI启动前核对授权区块的rule-hits.json结构、当前原生扫描指纹与疑难判断完成情况。缺失或未完成报告返回UI_PREREQUISITES_REQUIRED、dependencies和rule_scan的nextAction，此时不启动UI模型、不消耗执行委派次数；父级收取区块报告后继续。整页报告不能替代区块报告。
+- 已持久化的旧后台任务经原身份保存依赖交接，保留源码、检查点和上下文。UI仍禁止修改规则报告，实际源码违规继续由真实检查和有界无进展交接处理。路径占用反馈要求先收取相关任务，授权范围保持不变。
+- UI读取以本区块报告、节点、素材表及必要规则文档为主；bin检查器实现由父级排查。完整缓存和历史继续保留，进度说明复用已确认基线，聚焦区块与实际变化。
+- edit_file在参数解析和实际编辑两层返回摘要类型/长度、空原片段及无变化的具体反馈，不回传正文、不代填摘要；并发摘要冲突仍需重新读取。
+- 主模型请求前只读已有自动预览的失败诊断，按预览标识、修订及诊断去重，结果仍计入上下文预算。此反馈不启动编译、截图或额外模型请求；规则、编译和视觉验收分别判断。

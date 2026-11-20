@@ -22,6 +22,10 @@
     "大字段",
     "代码存储",
     "存储占用",
-    "d2c_file"
+    "d2c_file",
+    "ER_OUT_OF_SORTMEMORY",
+    "大字段排序",
+    "排序内存",
+    "LONGTEXT"
   ]
 }

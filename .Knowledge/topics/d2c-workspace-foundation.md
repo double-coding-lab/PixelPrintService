@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 5
+revision: 7
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -55,3 +55,11 @@ confidence: inferred
 ## 图片目录映射只读查看
 
 `.d2c-cache/image-directories.json` 保存主题与上传目录的稳定映射，源码文件接口仅对这个准确的根级缓存路径额外开放只读查看。读取仍校验工作区权限、会话归属、路径及内容摘要；禁止编辑和删除，其他根级内部缓存继续受保护。验证见 `test/imageDirectoryRead.test.ts`。
+
+## 大字段排序与数据库诊断
+
+- 涉及TEXT、JSON或BLOB的预览、文件与版本、会话、工作区、时间线及检查点查询，使用 `utils/orderedRead.ts` 先选择稳定标识排序分页，再按原筛选读取正文并恢复顺序。原权限筛选、事务、更新锁和属性投影保留，空页不读取正文。
+- 文件使用原会话或版本范围内的pathHash，时间线使用会话内seq，检查点使用namespaceHash/checkpointId。全局领取锚点只读取workspaceId；普通轻量投影不增加正文读取。存储位置、表结构及数据库参数沿用部署配置。
+- ER_OUT_OF_SORTMEMORY可由带大字段的查询排序触发，不能仅据STORAGE_FAILED判断为写库失败。后台和HTTP日志保留白名单数据库码、数值错误号及合法SQLState；SQL、绑定值、凭据和异常正文保持私有。
+
+跨会话队列候选扫描使用全局唯一的entryId作为分页与正文回填标识；只有已按sessionId限定范围的时间线读取才可使用seq，避免不同会话同序号记录相互覆盖。

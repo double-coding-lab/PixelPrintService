@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 4
+revision: 5
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -66,3 +66,9 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 - 手机视口保持选定宽高，仅用外层等比缩放适应屏幕，iframe内部滚动；常规模式沿用原375/750/自适应控件。进入、退出和比例切换复用同一iframe，不重签票据、不发起编译、不修改源码或预览缓存。
 - 优先使用用户点击触发的浏览器Fullscreen API；不支持或拒绝时使用页面内全屏。退出按钮、Esc、浏览器退出全屏、预览隐藏/失效和卸载均清理状态，恢复焦点、页面滚动及背景inert状态；原sandbox allow-scripts和无same-origin边界保持。
 - 实现位于web/src/workspace/PhonePreview.tsx、phoneViewport.ts与phonePreview.css；真实浏览器回归覆盖真实iframe尺寸、比例/旋转、原生和降级全屏、交互状态保留与只加载一次，参见test/phonePreviewBrowser.test.ts。
+
+## 大字段读取与自动编译反馈
+
+- 会话和版本预览列表、当前预览及构建输入涉及大字段时先按标识排序分页，再读取正文；保留输入修订与权限过滤。数据库排序缓冲不足的诊断见[工作区主题](d2c-workspace-foundation.md#大字段排序与数据库诊断)。
+- 源码变化后，主Agent下一次模型请求可只读查询当前输入的自动预览状态。失败按previewId、有效修订及诊断去重，最多保留64个已反馈键；等待文件、排队和构建中保持原状态，无变化时跳过，不因反馈启动新构建。
+- 本地Sass编译将未定义变量映射为STYLE_UNDEFINED_VARIABLE，提供工作区相对文件与行列；其他样式解析错误使用SYNTAX_ERROR，原始异常和源码保持私有。历史错误记录只展示当时已保存字段，新分类对新构建生效；编译成功与视觉通过分开判断。

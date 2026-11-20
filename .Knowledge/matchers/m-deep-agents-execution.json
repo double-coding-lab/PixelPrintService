@@ -28,6 +28,10 @@
     "图片证据",
     "子任务用量",
     "子Agent诊断",
-    "规则检查变化"
+    "规则检查变化",
+    "UI_PREREQUISITES_REQUIRED",
+    "区块报告",
+    "expectedSha256",
+    "编译反馈"
   ]
 }
