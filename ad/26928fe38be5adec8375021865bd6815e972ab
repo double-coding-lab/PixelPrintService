@@ -1,0 +1,27 @@
+test/ruleRepair.test.ts
+  s_e16f52fd1de115::t_f173a1ffbf1176 2-3,5-17,19-211,213-284
+src/functions/d2c/run/subagent.ts
+  s_e16f52fd1de115::t_f173a1ffbf1176 90
+src/functions/d2c/run/agent/ruleRepair.ts
+  s_e16f52fd1de115::t_f173a1ffbf1176 1-128
+src/functions/d2c/run/instructions.ts
+  s_e16f52fd1de115::t_f173a1ffbf1176 38-39
+src/functions/d2c/run/agent/agent.ts
+  s_e16f52fd1de115::t_f173a1ffbf1176 1,104-106,735,1103-1106,1174-1183,1351,2029-2037
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "ad26928fe38be5adec8375021865bd6815e972ab",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
