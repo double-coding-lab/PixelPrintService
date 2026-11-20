@@ -5,6 +5,7 @@ import Icon from '../components/Icon';
 import { data, id } from './api';
 import { getEventFailure } from './timeline';
 import type { SessionDiagnostics } from './types';
+import SubagentDiagnostics from './SubagentDiagnostics';
 
 /** 新增字段可缺省，兼容旧诊断接口；服务端只投影校验后的计时与编号。 */
 type ModelTimingStep = SessionDiagnostics['steps'][number] & {
@@ -234,6 +235,11 @@ export function DiagnosticsContent({
           未报告用量不代表零消耗。
         </p>
       </section>
+      <SubagentDiagnostics
+        diagnostics={snapshot.agentDiagnostics}
+        observedAt={snapshot.observedAt}
+        now={now}
+      />
       <section className="diagnostics-section" aria-label="耗时步骤">
         <div className="diagnostics-section-heading">
           <h3>耗时步骤</h3>

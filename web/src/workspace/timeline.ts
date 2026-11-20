@@ -569,11 +569,21 @@ export function mergeSessionSnapshot(
 export function diagnosticsRevision(entries: TimelineEntry[], previous = 0): number {
   return entries.reduce(
     (seq, entry) =>
-      ['model_status', 'stage', 'run_status', 'tool_call', 'tool_result', 'user_question'].includes(
-        entry.kind,
-      )
-        ? Math.max(seq, entry.seq)
-        : seq,
+      entry.kind === 'stage' &&
+      entry.data.stage === 'subagent' &&
+      (entry.data.status === 'reasoning' ||
+        (entry.data.status === 'message' && entry.data.message?.role !== 'user'))
+        ? seq
+        : [
+              'model_status',
+              'stage',
+              'run_status',
+              'tool_call',
+              'tool_result',
+              'user_question',
+            ].includes(entry.kind)
+          ? Math.max(seq, entry.seq)
+          : seq,
     previous,
   );
 }
