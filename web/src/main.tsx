@@ -24,6 +24,7 @@ import './workspace/designReference.css';
 import './workspace/messageQueue.css';
 import './workspace/conversationRound.css';
 import './workspace/previewPanel.css';
+import './workspace/phonePreview.css';
 import './workspace/previewInspector.css';
 import './workspace/subagents.css';
 import './workspace/team.css';

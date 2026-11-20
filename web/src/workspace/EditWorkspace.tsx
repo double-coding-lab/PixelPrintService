@@ -1,3 +1,4 @@
+import PhonePreview, { PhonePreviewButton, usePhonePreview } from './PhonePreview';
 import React, {
   useEffect,
   useMemo,
@@ -249,6 +250,7 @@ export function EditWorkspaceSurface({
   const url = copy ? editPreviewUrl(copy) : null;
   const [displayedUrl, setDisplayedUrl] = useState<string | null>(null);
   const onPreviewShown = useCallback((value: string) => setDisplayedUrl(value), []);
+  const phone = usePhonePreview(!!displayedUrl);
   const inspector = usePreviewInspector(`${sessionId}:${copy?.editId}:${displayedUrl}:${width}`);
   const entryOptions = useMemo(
     () => copy?.entries.map((path) => ({ label: path, value: path })) ?? [],
@@ -481,6 +483,7 @@ export function EditWorkspaceSurface({
                 options={entryOptions}
               />
               <PreviewInspectorButton inspector={inspector} />
+              <PhonePreviewButton preview={phone} />
               <Segmented
                 size="small"
                 aria-label="副本预览宽度"
@@ -509,15 +512,17 @@ export function EditWorkspaceSurface({
             {copy.preview.status === 'failed' && copy.preview.error && (
               <Alert type="error" showIcon title={copy.preview.error} />
             )}
-            <div className="edit-workspace-stage">
-              <EditWorkspacePreviewFrames
-                url={url}
-                revision={copy.revision}
-                width={width}
-                inspectorRef={inspector.frameRef}
-                onShown={onPreviewShown}
-              />
-            </div>
+            <PhonePreview preview={phone}>
+              <div className="edit-workspace-stage">
+                <EditWorkspacePreviewFrames
+                  url={url}
+                  revision={copy.revision}
+                  width={width}
+                  inspectorRef={inspector.frameRef}
+                  onShown={onPreviewShown}
+                />
+              </div>
+            </PhonePreview>
             <PreviewInspector inspector={inspector} onLocateSource={locateSource} />
           </section>
         </div>
