@@ -87,7 +87,7 @@ export function subagentInstructions(role: SubagentRole, nativeScan = false) {
         ? '每完成一批疑难判断用write_file(merge=true,complete=false)提交nativeScan.fingerprint和本批nativeReview；仅有新增命中时附带hits数组。报告头、程序命中和历史判断由平台合并，不复制整份报告；最后一批complete=true。不同block分别保存，空对象和口头说明不构成交付，沿用已有读取仅补pending。'
         : '不要等全部分析结束才一次性输出大报告。扫描每批用write_file(merge=true,complete=false)提交该批合法JSON（保留block/cache_key/generated_at/generated_by/hits格式），平台按rule/nodeId/trigger合并保存，重试不会重复；最后一批complete=true，真实零命中可用hits=[]。不同block分别保存。partial快照、空对象和口头说明不构成交付。沿用已有读取与快照，不因补交从头扫描；最终结果仍按固定Skill语义判断，结构合法不等于扫描覆盖完成。'
       : role === 'ui'
-        ? '源码逐文件保存，不把全部代码留在末尾一次输出。沿用已有报告和真实读取，不因补交重扫规则；写后完成授权区块的真实检查。'
+        ? '源码逐文件保存，不把全部代码留在末尾一次输出。按违规实际原因定点修改：图片“已登记但产物未引用”需要核对JSX/样式引用，不能只改assets.txt；相同违规连续两轮未改善时平台交回主Agent，保留已有源码及失败报告。沿用已有报告和真实读取，不因补交重扫规则；写后完成授权区块的真实检查。'
         : '只读分析通过report_progress保留阶段结论，不生成扫描报告或源码。',
     nativeScan
       ? '读取固定Skill和配置及报告；按nativeScan.pending读取需要的原规则和节点，文件名用list_files核对。程序已计算的约束直接消费，代码写完仍须真实check_rules。'
