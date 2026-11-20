@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 3
+revision: 4
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -59,3 +59,10 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 - 工作区、广场和个人作品临时编辑器的失败按snapshot、input、build、output、cache、publish分类，页面显示固定说明和排查编号；编译错误同时提供经过白名单校验的文件定位。图片读取或校验失败、编译失败和缓存保存失败分别提示。
 - 通用服务日志关联errorId、editId、来源ID、修订及输入相对文件路径，只保留固定网络码、storageStage、状态码和结构化编译诊断；原始异常、堆栈、源码、存储凭据及外部响应正文保持私有。
 - 日志回调失败不影响构建结算；主动取消、关闭和任务替换保持作业与修订边界。历史仅有通用错误的记录无法补回原因，重新保存产生新作业后获取诊断；不会自动重放构建或覆盖草稿。
+
+## 全屏手机比例预览
+
+- 当前会话运行预览、在线编辑副本（含广场/作品复用）与已保存版本预览共用PhonePreview。页面就绪后可点“全屏预览”，默认390×844，支持375×667、375×812、430×932、360×800、412×915及横竖屏切换；模拟CSS视口，不修改UA、DPR或系统安全区。
+- 手机视口保持选定宽高，仅用外层等比缩放适应屏幕，iframe内部滚动；常规模式沿用原375/750/自适应控件。进入、退出和比例切换复用同一iframe，不重签票据、不发起编译、不修改源码或预览缓存。
+- 优先使用用户点击触发的浏览器Fullscreen API；不支持或拒绝时使用页面内全屏。退出按钮、Esc、浏览器退出全屏、预览隐藏/失效和卸载均清理状态，恢复焦点、页面滚动及背景inert状态；原sandbox allow-scripts和无same-origin边界保持。
+- 实现位于web/src/workspace/PhonePreview.tsx、phoneViewport.ts与phonePreview.css；真实浏览器回归覆盖真实iframe尺寸、比例/旋转、原生和降级全屏、交互状态保留与只加载一次，参见test/phonePreviewBrowser.test.ts。
