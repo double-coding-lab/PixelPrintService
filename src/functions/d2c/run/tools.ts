@@ -1,3 +1,4 @@
+import { materializeExportImage } from './exportImage';
 import { hasLocalImageUrl, modelImageConfig } from './imagePolicy';
 import { invalidBlockDirectory } from '../utils/blockPaths';
 import {
@@ -1261,6 +1262,20 @@ export async function createGenerationTools(input: {
         for (const key of synced.keys())
           if (key.startsWith(`.d2c-cache/${fileKey}/`)) synced.delete(key);
       }
+      if (exportPath)
+        await materializeExportImage({
+          workspace: restored.workspace,
+          target: exportPath,
+          returnedPath: payload.data?.path,
+          reused: payload.data?.reused === true,
+          maxBytes: input.uploadBytes,
+          sourceHash: (relative) =>
+            exportOwners.get(relative)?.has(`${fileKey}/${nodeId}`)
+              ? assetFiles.get(relative)?.sha256
+              : undefined,
+          signal: input.signal,
+          assertLease: input.assertLease,
+        });
       if (rootScreenshot) {
         let reference;
         try {
@@ -1322,11 +1337,12 @@ export async function createGenerationTools(input: {
       mutation++;
       if (exportPath) {
         if (!assetFiles.has(exportPath))
-          throw new RunExecutionError('SCRIPT_OUTPUT_INVALID', {
-            stage: 'tool',
-            tool: 'figma',
-            command: 'export-image',
-          });
+          throw toolIssue(
+            'FIGMA_EXPORT_FILE_MISSING',
+            'FIGMA_REQUEST_FAILED',
+            { stage: 'tool', tool: 'figma', command: 'export-image' },
+            { path: exportPath },
+          );
         claimImage(exportPath, fileKey, nodeId!);
         await saveCacheText(
           `.d2c-cache/${fileKey}/image-exports.json`,

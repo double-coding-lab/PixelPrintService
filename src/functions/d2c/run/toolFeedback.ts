@@ -47,6 +47,10 @@ const definitions = {
     'adjust',
     'Figma 未返回此节点的图片地址。请核对真实节点、导出格式及切图清单后调整，不要反复请求同一无效节点。',
   ],
+  FIGMA_EXPORT_FILE_MISSING: [
+    'adjust',
+    '导图脚本未提供可用图片文件。请核对已保存图片、节点和导出参数后调整；不要原样重复调用或修改页面源码来修复导图问题。',
+  ],
   FIGMA_CACHE_INCOMPLETE: [
     'adjust',
     '根节点缓存不完整，请先 figma fetch-node 获取会话绑定的完整根节点（不要传 depth），再 inspect-node 或检查规则；不能把被截断节点当作空节点。',
