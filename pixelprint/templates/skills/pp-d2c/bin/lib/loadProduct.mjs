@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { dependencies } from './sourceDependencies.mjs';
 
 const STYLE_EXTS = ['.scss', '.less', '.css', '.module.scss', '.module.less', '.module.css'];
 const JSX_EXTS = ['.jsx', '.tsx'];
@@ -21,7 +22,10 @@ export function loadProduct(dir, { mode } = {}) {
   walk(root, root, jsx, style, boundary);
   const product = { root: absDir, jsx, style };
   if (mode === 'merge') return loadEntryProduct(root, product, boundary, warnings);
-  return warnings.length ? { ...product, warnings } : product;
+  // 图片证据只跟随明确的入口依赖；其他 block 规则仍保留原有目录扫描范围。
+  const entry = loadEntryProduct(root, product, boundary, []);
+  const assetSources = entry.assetSources;
+  return { ...product, assetSources, ...(warnings.length ? { warnings } : {}) };
 }
 
 /**
@@ -66,14 +70,23 @@ function loadEntryProduct(root, fallback, boundary, warnings) {
     // 已解析到的产物目录外、项目边界内依赖也不能在退回时丢掉。
     const union = (all, reachable) => [...new Map([...all, ...reachable].map((f) => [f.file, f])).values()];
     return { ...fallback, jsx: union(fallback.jsx, jsx), style: union(fallback.style, style),
+      assetSources: entries.length === 1 ? { jsx, style } : {
+        jsx: fallback.jsx.filter((f) => path.dirname(f.file) === root),
+        style: fallback.style.filter((f) => path.dirname(f.file) === root),
+      },
       warnings: [...new Set(warnings)].map((reason) => `merge 依赖范围无法确定，保留全量扫描: ${reason}`) };
   }
-  return { root, jsx, style, scope: 'entry' };
+  return { root, jsx, style, scope: 'entry', assetSources: { jsx, style } };
 
   /** 递归收集边界内源码依赖，按 realpath 去重。 */
   function visit(file) {
+    const requested = path.resolve(file);
     file = boundary.readPath(file);
     if (!file) return;
+    if (file !== requested) {
+      warnings.push(`源码依赖包含符号链接: ${requested}`);
+      return;
+    }
     if (seen.has(file)) return;
     seen.add(file);
     const ext = path.extname(file);
@@ -149,54 +162,6 @@ function resolveLocal(base, isStyle) {
   }
   return candidates.find(isFile);
 }
-
-/**
- * 跳过注释并提取字面量依赖，将动态或不支持的引用标记为不确定。
- */
-function dependencies(src, isStyle) {
-  // SCSS 也允许未加引号的远程 url，不能把其中 // 误当作行注释吞掉后续 import。
-  if (isStyle) src = src.replace(/url\(\s*((?:https?:|\/\/)[^'"\s)]+)\s*\)/g, (_, url) => `url(${JSON.stringify(url)})`);
-  const tokens = (src.match(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[A-Za-z_$][\w$]*|[^\s]/g) || [])
-    .filter((t) => !t.startsWith('//') && !t.startsWith('/*'));
-  const values = [];
-  let uncertain = false;
-  const literal = (s) => s && /^['"`]/.test(s);
-  const add = (s) => {
-    if (!literal(s)) { uncertain = true; return; }
-    values.push(s.slice(1, -1));
-  };
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i];
-    if (isStyle) {
-      if (t !== '@' || !['import', 'use', 'forward'].includes(tokens[i + 1])) continue;
-      const statement = [];
-      for (i += 2; i < tokens.length && tokens[i] !== ';'; i++) statement.push(tokens[i]);
-      const refs = statement.filter(literal);
-      if (!refs.length && !/^url\(https?:/.test(statement.join(''))) uncertain = true;
-      if (statement.some((part) => part.startsWith('$') || part === '#')) uncertain = true;
-      for (const ref of refs) add(ref);
-      continue;
-    }
-    if (t !== 'import' && t !== 'export' && t !== 'require') continue;
-    if (tokens[i + 1] === '.') {
-      // import.meta 本身不是动态依赖；glob/context 是。
-      if (t === 'require' || tokens.slice(i + 2, i + 6).includes('glob') || tokens.slice(i + 2, i + 6).includes('globEager')) uncertain = true;
-      continue;
-    }
-    if (tokens[i + 1] === '(') {
-      if (literal(tokens[i + 2]) && tokens[i + 3] === ')') add(tokens[i + 2]);
-      else uncertain = true;
-    } else if (t === 'import' && literal(tokens[i + 1])) add(tokens[i + 1]);
-    else if (t !== 'require') {
-      // static import / export ... from '...'; 不跨到下一条 import/export。
-      for (let j = i + 1; j < tokens.length && ![';', 'import', 'export'].includes(tokens[j]); j++) {
-        if (tokens[j] === 'from') { add(tokens[j + 1]); break; }
-      }
-    }
-  }
-  return { values, uncertain };
-}
-
 function walk(root, dir, jsx, style, boundary) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const e of entries) {
@@ -210,7 +175,7 @@ function walk(root, dir, jsx, style, boundary) {
     const ext = getExt(e.name);
     if (JSX_EXTS.includes(ext) || STYLE_EXTS.includes(ext)) {
       const safe = boundary.readPath(full);
-      if (!safe) continue;
+      if (!safe || safe !== path.resolve(full)) continue;
       const record = { file: safe, rel: path.relative(root, safe), content: fs.readFileSync(safe, 'utf8') };
       (JSX_EXTS.includes(ext) ? jsx : style).push(record);
     }

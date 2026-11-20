@@ -4,8 +4,8 @@
 // 期望: assets.txt 有切图记录 且 产物引用(<img>/background url)
 // 保守: RECTANGLE/ELLIPSE/LINE 等可 CSS 化的简单形状不计入「必切」信号;阈值 ≥3 真矢量;
 //       只抓「一堆真实矢量路径堆叠却没切图」,避免对装饰圆点/单形状/可 CSS 化图形误判。
-import fs from 'node:fs';
-import path from 'node:path';
+import { loadAssetEvidence } from '../lib/assetEvidence.mjs';
+import { buildNodeIdToClassName } from '../lib/nodeIdToClassName.mjs';
 import { collectRuleBodies } from '../lib/cssMatch.mjs';
 
 export const id = 'R03';
@@ -21,7 +21,9 @@ const HARD_VECTOR_THRESHOLD = 3;
 
 export function check({ cache, product, classMap }) {
   const violations = [];
-  const assetsText = readAssets(product);
+  const evidence = loadAssetEvidence(product);
+  product = evidence.product;
+  classMap = buildNodeIdToClassName(product.jsx);
 
   for (const [nodeId, node] of Object.entries(cache.nodes)) {
     if (node._inBakedSubtree || node._hidden || node._templateDup) continue;
@@ -32,7 +34,7 @@ export function check({ cache, product, classMap }) {
     if (!stat.ok) continue; // 含 TEXT/交互/复合前缀/非几何 → 不判
     if (stat.hardVectorCount < HARD_VECTOR_THRESHOLD) continue; // 极保守阈值
 
-    const inAssets = assetsText.includes(nodeId);
+    const inAssets = evidence.hasNode(nodeId);
     const productRef = mentionsAsset(product, nodeId, classMap);
     if (!inAssets && !productRef) {
       violations.push({
@@ -73,15 +75,6 @@ function scanSubtree(root) {
     if (Array.isArray(c.children)) stack.push(...c.children);
   }
   return { ok, hardVectorCount };
-}
-
-function readAssets(product) {
-  try {
-    const p = path.join(product.root, 'assets.txt');
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
-  } catch {
-    return '';
-  }
 }
 
 function mentionsAsset(product, nodeId, classMap) {

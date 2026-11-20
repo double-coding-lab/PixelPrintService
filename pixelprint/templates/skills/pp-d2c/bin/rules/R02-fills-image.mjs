@@ -6,8 +6,8 @@
 // 排斥: 节点前缀是 x- → 忽略
 
 // v1.2.0: 跳过 baked 子树与隐藏节点；CSS url 匹配走 lib/cssMatch.mjs（修 &__ 嵌套盲区）。
-import fs from 'node:fs';
-import path from 'node:path';
+import { loadAssetEvidence } from '../lib/assetEvidence.mjs';
+import { buildNodeIdToClassName } from '../lib/nodeIdToClassName.mjs';
 import { collectRuleBodies } from '../lib/cssMatch.mjs';
 
 export const id = 'R02';
@@ -17,9 +17,9 @@ export function check({ cache, product, config, classMap }) {
   const violations = [];
   const ignorePrefix = 'x-';
 
-  // 读 assets.txt (在 product root)
-  const assetsPath = path.join(product.root, 'assets.txt');
-  const assetsText = fs.existsSync(assetsPath) ? fs.readFileSync(assetsPath, 'utf8') : '';
+  const evidence = loadAssetEvidence(product);
+  product = evidence.product;
+  classMap = buildNodeIdToClassName(product.jsx);
 
   for (const [nodeId, node] of Object.entries(cache.nodes)) {
     if (!Array.isArray(node.fills) || node.fills.length === 0) continue;
@@ -33,7 +33,7 @@ export function check({ cache, product, config, classMap }) {
     if (node._templateDup) continue; // .map() 列表数据副本，只校验代表项
 
     // 检查 assets.txt 里是否提到此 nodeId
-    const inAssets = assetsText.includes(nodeId);
+    const inAssets = evidence.hasNode(nodeId);
 
     // 检查产物是否 (a) jsx 有 <img src=... nodeId 相关> 或 (b) style 有 url(...对应文件)
     const productMention = mentionsNodeIdAsset(product, nodeId, classMap);
@@ -72,9 +72,9 @@ export function check({ cache, product, config, classMap }) {
 }
 
 function mentionsNodeIdAsset(product, nodeId, classMap) {
+  const idNorm = nodeId.replace(/:/g, '-');
   // 简易: nodeId 直接串在产物 (jsx / style) 里就算 hit;
   //       或该 nodeId 对应 className 的 css 规则里含 url(
-  const idNorm = nodeId.replace(/:/g, '-');
   for (const j of product.jsx) {
     if (j.content.includes(nodeId) || j.content.includes(idNorm)) return { hit: true };
   }
