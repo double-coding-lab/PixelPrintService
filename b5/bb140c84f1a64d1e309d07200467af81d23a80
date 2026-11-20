@@ -1,0 +1,39 @@
+pixelprint/templates/skills/pp-d2c/bin/lib/loadProduct.mjs
+  s_e16f52fd1de115::t_b623c11ccdcbc5 4,25-28,73-76,79,83,86-89,178
+pixelprint/templates/skills/pp-d2c-rn/bin/lib/sourceDependencies.mjs
+  s_e16f52fd1de115::t_b623c11ccdcbc5 1-46
+pixelprint/templates/skills/pp-d2c/bin/rules/R02-fills-image.mjs
+  s_e16f52fd1de115::t_b623c11ccdcbc5 9-10,20-22,36,75
+test/ruleAssetEvidence.test.ts
+  s_e16f52fd1de115::t_b623c11ccdcbc5 1-239
+pixelprint/templates/skills/pp-d2c-rn/bin/lib/loadProduct.mjs
+  s_e16f52fd1de115::t_b623c11ccdcbc5 6,18-49,63-67
+pixelprint/templates/skills/pp-d2c/bin/rules/R03-implicit-image.mjs
+  s_e16f52fd1de115::t_b623c11ccdcbc5 7-8,24-26,37
+pixelprint/templates/skills/pp-d2c-rn/bin/rules/R03-implicit-image.mjs
+  s_e16f52fd1de115::t_b623c11ccdcbc5 7-8,24-26,37
+pixelprint/templates/skills/pp-d2c/bin/lib/assetEvidence.mjs
+  s_e16f52fd1de115::t_b623c11ccdcbc5 1-61
+pixelprint/templates/skills/pp-d2c-rn/bin/rules/R02-fills-image.mjs
+  s_e16f52fd1de115::t_b623c11ccdcbc5 8-9,19-21,32
+pixelprint/templates/skills/pp-d2c-rn/bin/lib/assetEvidence.mjs
+  s_e16f52fd1de115::t_b623c11ccdcbc5 1-61
+pixelprint/templates/skills/pp-d2c/bin/lib/sourceDependencies.mjs
+  s_e16f52fd1de115::t_b623c11ccdcbc5 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "b5bb140c84f1a64d1e309d07200467af81d23a80",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
