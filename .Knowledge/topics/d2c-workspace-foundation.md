@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 9
+revision: 10
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -75,3 +75,10 @@ confidence: inferred
 - 路径穿越、内部资源、符号链接、越界绝对路径、其他节点及摘要不符均拒绝。产物缺失或不可用返回FIGMA_EXPORT_FILE_MISSING（adjust），由现有有限纠错流程处理；JSON或成功信封非法仍按SCRIPT_OUTPUT_INVALID分类。停止、失租和真实存储故障继续中断。
 - 目标图仍经过既有图片同步、压缩/校验、上传、地址表及节点来源登记，全部成功后才返回稳定目标path与url。兼容层不额外请求Figma、不改冻结脚本或已有工作区资源，无新增配置；历史失败记录保持原值。
 - 回归入口test/exportImage.test.ts使用真实H5/RN旧CLI与离线缓存，覆盖换名、幂等、同节点摘要、目标冲突、路径边界、缺文件和执行保护，不代替真实设计稿视觉验收。
+
+## 切图请求与响应诊断
+
+- prepare_slices按社区版proxyUrl配置选择代理或直连；每次调用独享请求与重试状态，diagnostics.slice.proxyUsed记录实际是否使用代理。
+- 后台日志只投影SliceDiagnosticError中的固定phase/reason与可得的nodeId、statusCode、bytes、attempt及proxyUsed：阶段区分fetch_node/export_image/download_image/manifest，原因区分HTTP错误、网络/TLS失败、响应超限、节点或导出地址缺失、JSON/图片及清单校验失败。解析层缺少状态码时保持缺失，读取缓存不伪造网络信息。
+- RESOURCE_UNAVAILABLE/FIGMA_REQUEST_FAILED及权限、限流、取消、租约和有限重试规则保持原分类；完整请求URL、代理地址、Token和响应正文不进入新增日志或公开失败。历史日志无法补回未记录的原因，新字段在更新服务后的实际执行中产生。
+- 实现及回归入口：run/sliceDiagnostics.ts、sliceNetwork.ts、slices.ts、tools.ts、errors.ts；test/sliceDiagnostics.test.ts、sliceNetwork.test.ts和nativeSlices.test.ts覆盖错误区分、节点/字节/状态、重试、代理/直连及脱敏。

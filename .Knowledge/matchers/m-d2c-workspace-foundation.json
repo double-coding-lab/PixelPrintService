@@ -29,6 +29,8 @@
     "LONGTEXT",
     "导图缓存",
     "补切改名",
-    "FIGMA_EXPORT_FILE_MISSING"
+    "FIGMA_EXPORT_FILE_MISSING",
+    "切图诊断",
+    "Figma请求失败"
   ]
 }

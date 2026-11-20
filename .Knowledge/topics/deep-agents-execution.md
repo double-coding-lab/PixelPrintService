@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 8
+revision: 9
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
