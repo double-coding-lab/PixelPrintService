@@ -102,6 +102,8 @@ export interface GenerationTools {
   ): Promise<string>;
   /** 当前会话预览和实际截图；测试或未装配环境可省略，不影响文本工具。 */
   preview?: {
+    /** 已有自动编译的有界失败诊断；只读查询，不创建构建，同一失败只返回一次。 */
+    feedback?(): Promise<string | undefined>;
     build(entryPath?: string): Promise<string>;
     inspect(entryPath?: string): Promise<string>;
     needsInspection(): Promise<boolean>;

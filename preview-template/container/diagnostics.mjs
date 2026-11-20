@@ -33,17 +33,19 @@ export function formatCompilerDiagnostic(error, root = path.resolve(process.env.
       ? module
       : undefined;
   const code =
-    errorCode === 'UNSUPPORTED_IMPORT'
-      ? 'UNSUPPORTED_IMPORT'
-      : missing || errorCode === 'UNRESOLVED_IMPORT'
-        ? 'MODULE_NOT_FOUND'
-        : /PREVIEW_MODULE_BOUNDARY/.test(message)
-          ? 'MODULE_NOT_ALLOWED'
-          : location ||
-              errorCode === 'PARSE_ERROR' ||
-              /Transform failed|Unexpected token|SyntaxError/i.test(message)
-            ? 'SYNTAX_ERROR'
-            : 'BUILD_FAILED';
+    errorCode === 'SASS_UNDEFINED_VARIABLE'
+      ? 'STYLE_UNDEFINED_VARIABLE'
+      : errorCode === 'UNSUPPORTED_IMPORT'
+        ? 'UNSUPPORTED_IMPORT'
+        : missing || errorCode === 'UNRESOLVED_IMPORT'
+          ? 'MODULE_NOT_FOUND'
+          : /PREVIEW_MODULE_BOUNDARY/.test(message)
+            ? 'MODULE_NOT_ALLOWED'
+            : location ||
+                errorCode === 'PARSE_ERROR' ||
+                /Transform failed|Unexpected token|SyntaxError/i.test(message)
+              ? 'SYNTAX_ERROR'
+              : 'BUILD_FAILED';
   const line = Number.isInteger(location?.line) && location.line > 0 ? location.line : undefined;
   const column =
     Number.isInteger(location?.column) && location.column >= 0 ? location.column + 1 : undefined;

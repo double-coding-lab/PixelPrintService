@@ -5,6 +5,7 @@ const messages = {
   UNSUPPORTED_IMPORT: '预览不支持动态或非图片 require，请使用静态导入。',
   MODULE_NOT_ALLOWED: '源码引用了预览工作区以外的模块，请检查导入路径。',
   SYNTAX_ERROR: '源码存在语法或编译错误，请检查标记位置。',
+  STYLE_UNDEFINED_VARIABLE: '样式引用了未定义变量，请检查标记位置的变量声明及作用域。',
   RESOURCE_LIMIT: '预览构建超出执行环境资源限制，请检查页面规模或构建内存。',
   BUILD_FAILED: '预览构建失败，请检查入口、依赖或当前编译环境。',
   BUILD_INTERRUPTED: '预览构建已中断，可能因服务重启或执行停止。点击刷新重新构建。',

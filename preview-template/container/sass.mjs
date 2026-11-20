@@ -65,14 +65,31 @@ export function boundedSass(root) {
       const filename = id.split('?')[0];
       if (!/\.(scss|sass)$/.test(filename)) return;
       checked(filename);
-      const result = await sass.compileStringAsync(source, {
-        url: new URL(`preview:${filename}`),
-        importer,
-        importers: [importer],
-        loadPaths: [],
-        syntax: filename.endsWith('.sass') ? 'indented' : 'scss',
-        logger: sass.Logger.silent,
-      });
+      let result;
+      try {
+        result = await sass.compileStringAsync(source, {
+          url: new URL(`preview:${filename}`),
+          importer,
+          importers: [importer],
+          loadPaths: [],
+          syntax: filename.endsWith('.sass') ? 'indented' : 'scss',
+          logger: sass.Logger.silent,
+        });
+      } catch (error) {
+        // 将 Sass 的零基定位转换为编译协议；源码与原始异常只保留在 cause 中。
+        const span = error?.span;
+        const file = span?.url?.protocol === 'preview:'
+          ? checked(decodeURIComponent(span.url.pathname))
+          : filename;
+        const failed = new Error('PREVIEW_STYLE_COMPILE_FAILED', { cause: error });
+        failed.pluginCode = /^Undefined variable[.]/.test(error?.sassMessage ?? '')
+          ? 'SASS_UNDEFINED_VARIABLE'
+          : 'PARSE_ERROR';
+        failed.id = file;
+        if (Number.isInteger(span?.start?.line) && Number.isInteger(span?.start?.column))
+          failed.loc = { file, line: span.start.line + 1, column: span.start.column };
+        throw failed;
+      }
       // Vite's CSS preprocessor sees plain CSS here; it cannot load user Sass imports again.
       return { code: result.css, map: null };
     },

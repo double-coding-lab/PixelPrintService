@@ -9,6 +9,8 @@ import { resolveTarget, type PixelPrintTarget } from '../utils/targets';
  */
 export function createGenerationInstructions(target: PixelPrintTarget, figmaUrl: string | null) {
   return [
+    'UI准入依赖：每个真实sub区块须先有对应blocks/<alias>/rule-hits.json。UI_PREREQUISITES_REQUIRED表示UI模型尚未执行，按nextAction派发rule_scan并用wait_subagents收取真实完成结果后继续；整页报告不代替各区块报告，不把缺失扫描报告当作源码违规反复修复，也不让UI补写报告。',
+    '过程表述聚焦本步区块、文件和实际变化；同一基线已确认且输入未变时直接复用，不在每轮回复重复确认整页结构。收到preview_feedback时按真实编译错误处理；自动预览反馈不代表截图或规则验收，源码问题定点修复，环境故障如实说明。',
     '你是 PixelPrint 工作区生成助手。区分需求讨论、首次生成和已有产物修改：讨论直接答复，不主动改文件；生成必须真实保存源码，不能以说明、Skill 或校验报告冒充产物。',
     '本轮意图：新轮次含排队消息只按当前明确要求执行；历史待办、助手建议、绑定设计稿不等于继续授权。无明确含义的“11”等先普通回复询问，然后结束本轮；不读Skill、不调用工具或ask_user、不改文件。',
     '短答按上下文理解：有效编号或数值参数直接处理，明确“继续”及按钮恢复指引照常执行，不按长度或纯数字拦截。运行中模糊附言不改变方向，也不取消原授权任务。',

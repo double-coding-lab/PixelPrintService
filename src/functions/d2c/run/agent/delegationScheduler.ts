@@ -12,7 +12,10 @@ export function createDelegationScheduler(options: { concurrency: number; signal
   let active = 0;
 
   /** 非法或冲突路径保留可纠正反馈及委派上下文，不改写调用方的授权列表。 */
-  function invalid(path?: string): never {
+  function invalid(
+    path?: string,
+    detail = '路径必须是规范相对路径，且不能与其他任务的授权范围冲突。',
+  ): never {
     const feedback = {
       code: 'INVALID_ARGUMENT',
       originalCode: 'INVALID_ARGUMENT',
@@ -22,7 +25,7 @@ export function createDelegationScheduler(options: { concurrency: number; signal
       'INVALID_ARGUMENT',
       'VALIDATION_FAILED',
       { stage: 'tool', tool: 'delegate_agent', feedback },
-      { path: feedback.path },
+      { path: feedback.path, detail },
     );
   }
 
@@ -115,7 +118,11 @@ export function createDelegationScheduler(options: { concurrency: number; signal
       } catch {
         invalid(value);
       }
-      if ([...reserved, ...paths].some((other) => overlaps(value, other))) invalid(value);
+      if ([...reserved, ...paths].some((other) => overlaps(value, other)))
+        invalid(
+          value,
+          '该路径仍被子任务或当前并行操作占用。先wait_subagents收取相关任务结果，再编辑或检查同一区块；不要通过换路径绕过互斥。',
+        );
       paths.push(value);
     }
   }

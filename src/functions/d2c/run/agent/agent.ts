@@ -1,3 +1,5 @@
+import { uiPrerequisites } from './uiPrerequisites';
+import { editArgumentDetail } from '../editFile';
 import { createRuleRepairMiddleware, ruleRepairReport, type RuleRepairState } from './ruleRepair';
 import { runGraphWithRecovery } from './graphRecovery';
 import { createBackgroundDelegations } from './backgroundDelegations';
@@ -599,6 +601,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
     { role, task, writePaths, nodeId, resumeAgentId }: DelegationInput,
     restored?: { agentId: string; status: 'pending' | 'settled'; result?: string },
   ) {
+    let blockedUiDependencies: Awaited<ReturnType<typeof uiPrerequisites>> = [];
     const key = createHash('sha256')
       .update(JSON.stringify([role, nodeId ?? '', [...writePaths].sort(), task]))
       .digest('hex');
@@ -622,8 +625,35 @@ export async function runAgent(input: AgentRunInput): Promise<{
         stage: 'tool',
         tool: 'delegate_agent',
       });
-    if (role === 'ui' && restored?.status !== 'settled')
+    if (role === 'ui' && restored?.status !== 'settled') {
       await assertUiDelegation(input.tools, nodeId);
+      // 正式执行器提供 scanRules；不启动缺少有效区块报告的 UI 模型。
+      if (input.tools.scanRules) {
+        const dependencies = await uiPrerequisites(
+          input.tools,
+          writePaths,
+          nodeId,
+          input.resources?.target ?? 'h5',
+        );
+        blockedUiDependencies = dependencies;
+        if (dependencies.length && !restored)
+          return JSON.stringify({
+            success: false,
+            role: 'ui',
+            reason: 'UI_PREREQUISITES_REQUIRED',
+            nodeId,
+            ...(resumeAgentId ? { resumeAgentId } : {}),
+            dependencies,
+            nextAction: {
+              role: 'rule_scan',
+              nodeId,
+              writePaths: dependencies.map((item) => item.path),
+            },
+            message:
+              'UI尚未启动。先为上述区块派发rule_scan，等待真实报告完成并收取结果后再启动UI；整页报告不能代替区块报告。不要让UI补写报告，不要原样重复当前委派。已有源码保留。',
+          });
+      }
+    }
     const production = role === 'rule_scan' || role === 'ui';
     /** 原任务恢复不是新委派，不重复消耗委派次数；模型请求仍使用共享预算。 */
     if (!resumeAgentId) {
@@ -931,6 +961,19 @@ export async function runAgent(input: AgentRunInput): Promise<{
         message: { role: 'user', text: delegatedTask.text.slice(0, 65536) },
       });
       try {
+        // 已持久化的旧后台任务仍须经原结果落盘和交接，不能遗留悬空启动描述。
+        if (role === 'ui' && blockedUiDependencies.length) {
+          return incomplete('UI_PREREQUISITES_REQUIRED', {
+            dependencies: blockedUiDependencies,
+            nextAction: {
+              role: 'rule_scan',
+              nodeId,
+              writePaths: blockedUiDependencies.map((item) => item.path),
+            },
+            message:
+              '缺少有效区块报告，UI模型未执行。由父级完成rule_scan并收取报告后沿用原任务上下文继续；已有源码保留。',
+          });
+        }
         if (role === 'rule_scan' && input.tools.scanRules) {
           for (const path of writePaths) {
             await guard();
@@ -1586,6 +1629,16 @@ export async function runAgent(input: AgentRunInput): Promise<{
     requestAttempts = 0,
   ): Promise<AIMessage> {
     await flushBackgroundObservations();
+    if (!input.specialist) {
+      const previewFeedback = await input.tools.preview?.feedback?.();
+      if (previewFeedback) {
+        const note = new HumanMessage(previewFeedback);
+        request = {
+          ...request,
+          messages: [...request.messages, input.transformMessage?.(note) ?? note],
+        };
+      }
+    }
     await beforeRequest();
     request = {
       ...request,
@@ -1941,7 +1994,9 @@ export async function runAgent(input: AgentRunInput): Promise<{
                             ? request.toolCall.args.resource
                             : undefined,
                       }
-                    : {},
+                    : name === 'edit_file'
+                      ? { detail: editArgumentDetail(request.toolCall.args) }
+                      : {},
                 ),
                 new RunExecutionError('TOOL_FAILED', {
                   stage: 'tool',

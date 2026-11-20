@@ -61,6 +61,20 @@ function invalid(error: unknown) {
   return error instanceof ToolIssue && error.feedback.code === 'INVALID_ARGUMENT';
 }
 
+test('UI读取规则说明和实际缓存，检查器源码读取有明确反馈且不触达底层', async () => {
+  const f = fixture();
+  const tools = createSubagentTools(f.tools, 'ui', ['page/a/index.tsx']);
+  await assert.rejects(
+    tools.read('/resources/templates/skills/pp-d2c/bin/check-rules.mjs', true),
+    (error: unknown) =>
+      error instanceof ToolIssue && /rules中的规则说明/.test(error.feedback.message),
+  );
+  assert.equal(f.actions.length, 0);
+  await tools.read('/resources/templates/skills/pp-d2c/rules/R01.md', true);
+  await tools.read('.d2c-cache/key/nodes/0_1.json', false);
+  assert.equal(f.actions.length, 2);
+});
+
 test('只读角色仅暴露list/read，直接调用受禁方法也不会执行', async () => {
   for (const role of ['design', 'review'] as const) {
     const f = fixture();
@@ -117,7 +131,14 @@ test('委派前拒绝路径别名、隐藏资源、包配置、清单和伪造�
     'README.md',
     'page/image.png',
   ])
-    assert.throws(() => createSubagentTools(f.tools, 'ui', [path]), invalid, path);
+    assert.throws(
+      () => createSubagentTools(f.tools, 'ui', [path]),
+      (error: unknown) =>
+        path.endsWith('/rule-hits.json')
+          ? error instanceof ToolIssue && error.feedback.code === 'FILE_WRITE_NOT_ALLOWED'
+          : invalid(error),
+      path,
+    );
   assert.deepEqual(f.actions, []);
 });
 
