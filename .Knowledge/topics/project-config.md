@@ -1,6 +1,6 @@
 ---
 id: project-config
-revision: 2
+revision: 3
 summary: "本地配置字段、模型预算、存储与生效时机"
 primary: config
 confidence: inferred
@@ -37,3 +37,7 @@ project.config.json、配置填写、运行配置、modelConfigs、contextBudget
 
 - 示例runtime.d2c.limits.textFileBytes为104857600（100MiB），用于源码及受控缓存的单文件文本写入；uploadBytes与模型上下文预算独立。
 - 新实例通过setup继承示例值；已有project.config.json保持原配置，需要显式修改此字段并重启。应用限额不改写反向代理请求限额和数据库包大小。
+
+## 单次模型请求超时
+
+- modelConfigs 每个模型可设置 requestTimeoutMs，单位毫秒，默认 180000，范围 1000–600000。新轮次保存模型快照；已有显式快照不被配置覆盖，旧快照缺少字段时回退默认值。主/子模型及摘要共用此字段，整轮 runTimeoutMs 和 maxTurns 继续独立生效。

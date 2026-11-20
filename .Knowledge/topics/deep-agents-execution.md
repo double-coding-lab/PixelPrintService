@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 3
+revision: 4
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -50,3 +50,10 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - pending恢复差异跨open/start中断持续保存，仅真实执行结算成功后清除；恢复收到具体变化及先回读授权资料的要求；settled且仍有效的结果直接交付，不重跑模型或写入。settled结果过期时向父Agent交接RESUME_INPUT_CHANGED及真实已保存文件，原结果保留供审计，由父Agent沿原ID复核或接管。
 - 恢复原任务不消耗新委派次数，实际模型请求仍计入共享预算。在途回执也必须匹配显式恢复ID；自动恢复的已知拒绝或节点调整通过wait_subagents返回结构化失败，父图保存回执后才标记观察，避免因同一拒绝反复中断。存储损坏、读取/写入故障、权限、停止、失租和未知异常继续上抛。
 - 验证入口：backgroundAgentGraph与subagentCheckpoint离线真实图/保存器回归，覆盖恢复、缓存变化、文件缺失、结果重送、额度、授权隔离及数据保留；不自动改写历史failed轮次。
+
+## 子模型网络故障与有限重试
+
+- SDK 的 APIConnectionTimeoutError/APIConnectionError 可能没有状态码或网络 code，按真实异常类型及固定网络码识别；不使用任意错误正文猜测。模型请求包装可沿 cause 检查；取消、权限、存储、失租和共享预算异常继续阻止重试。每次实际请求计入原预算，最多追加两次，等待可被取消。
+- 重试在当前主/子图模型调用内进行，复用已有消息与成功工具结果；不重建子任务、不重放已完成工具。超时耗尽保留 NETWORK_TIMEOUT/模型阶段与安全 SDK 类型，普通模型失败保留 MODEL_REQUEST_FAILED，不被 execute 边界覆盖为 SUBAGENT_FAILED。settle/observe 故障仍属于存储；未知异常不自动重试。
+- 每模型 requestTimeoutMs 默认 180000，允许 1000–600000 毫秒；主模型、子模型、摘要和思考变体均沿同一配置。旧配置及缺少字段的旧快照使用默认值，已显式保存的值按快照保持。该值是单次 SDK 请求设置，整轮时间与请求预算仍独立限制；不是已验证的最优值。
+- 验证包括实际 SDK 异常、真实图中的原子任务身份与工具不重放、次数耗尽/停止、分类优先级及配置透传。历史失败仍保留原状态，不自动启动历史任务，也不能据时长推断具体网络故障。

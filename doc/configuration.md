@@ -25,6 +25,7 @@
 | runtime.modelConfigs[].MODEL_BASE_URL | 兼容 OpenAI 的 /v1 根地址，不是完整 /chat/completions 路径 |
 | runtime.modelConfigs[].MODEL_NAME / MODEL_API_KEY | 服务端接受的模型标识和凭据 |
 | runtime.modelConfigs[].contextBudgetTokens | 单次上下文预算，不是累计计费 Token；不要超过服务实际支持的窗口 |
+| runtime.modelConfigs[].requestTimeoutMs | 单次模型 SDK 请求超时，毫秒；默认180000，范围1000–600000，主/子模型及摘要共用；整轮时限独立 |
 | runtime.modelConfigs[].reasoningPolicy | 默认 provider-default，其他取值请以 src/config/d2c.ts 的模型契约为准 |
 | runtime.d2c.execution.workRoot | 每轮任务独立临时执行根目录，需要可写 |
 | runtime.d2c.execution.concurrency | 单实例同时执行的轮次数，默认2 |
