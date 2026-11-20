@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 10
+revision: 11
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -82,3 +82,11 @@ confidence: inferred
 - 后台日志只投影SliceDiagnosticError中的固定phase/reason与可得的nodeId、statusCode、bytes、attempt及proxyUsed：阶段区分fetch_node/export_image/download_image/manifest，原因区分HTTP错误、网络/TLS失败、响应超限、节点或导出地址缺失、JSON/图片及清单校验失败。解析层缺少状态码时保持缺失，读取缓存不伪造网络信息。
 - RESOURCE_UNAVAILABLE/FIGMA_REQUEST_FAILED及权限、限流、取消、租约和有限重试规则保持原分类；完整请求URL、代理地址、Token和响应正文不进入新增日志或公开失败。历史日志无法补回未记录的原因，新字段在更新服务后的实际执行中产生。
 - 实现及回归入口：run/sliceDiagnostics.ts、sliceNetwork.ts、slices.ts、tools.ts、errors.ts；test/sliceDiagnostics.test.ts、sliceNetwork.test.ts和nativeSlices.test.ts覆盖错误区分、节点/字节/状态、重试、代理/直连及脱敏。
+
+## Figma 参数兼容与子树读取
+
+- `subtree` 是平台 `inspect-node` 的子树读取选项：`true` 从选中节点及其后代按 `offset/limit` 分页；浅层读取使用 `depth`，分页默认40、最多100条。
+- `run/figmaArguments.ts` 在主工具与执行子工具入口清理空值；非 `inspect-node` 命令仅兼容无操作含义的 `offset=0`、`subtree=false`。非零偏移、非空分页条数或开启子树仍拒绝，避免静默丢弃有效请求。浅层读取携带分页时保持原范围，反馈要求显式开启子树或删除分页参数。
+- 参数组合冲突返回固定 `FIGMA_ARGUMENT_CONFLICT`（adjust）及具体字段提示，纠错耗尽按 `TOOL_ARGUMENT_INVALID` 结算。提示只使用程序固定文字；权限、缓存归属、路径、取消、租约与真实存储故障沿用既有门禁。
+- `agent/feedback.ts` 按工具、可信调用命令、错误码、路径及资源类型累计纠错，普通纠错每组允许10次，第11次要求用户处理；成功不重置；`RULES_FAILED` 沿用规则修复流程。网络重试仍按工具共享两次额外机会，主子模型继续共享整轮请求上限。
+- 部署服务即可生效，无新增配置、数据库迁移或冻结资源升级。历史失败保持原记录。`test/figmaArguments*.test.ts`、`test/exportImage.test.ts` 和 `test/deepFeedback.test.ts` 离线覆盖实际导图默认值、浅层分页冲突、范围保持及预算隔离。
