@@ -28,13 +28,24 @@ export function modelRetryPlan(
   for (let depth = 0; current && typeof current === 'object' && depth < 8; depth++) {
     if (seen.has(current)) return;
     seen.add(current);
-    if (current instanceof RunExecutionError) return;
+    if (
+      current instanceof RunExecutionError &&
+      !(current.code === 'MODEL_REQUEST_FAILED' && current.context.stage === 'model')
+    )
+      return;
     const value = current as {
+      name?: unknown;
       status?: unknown;
       code?: unknown;
       cause?: unknown;
       headers?: unknown;
     };
+    if (current instanceof Error) {
+      const kind = current.constructor.name;
+      if (['APIUserAbortError', 'AbortError'].includes(kind) || current.name === 'AbortError')
+        return;
+      if (['APIConnectionTimeoutError', 'APIConnectionError'].includes(kind)) retryable = true;
+    }
     if (typeof value.status === 'number' && [400, 401, 403, 404].includes(value.status)) return;
     if (value.status === 429) {
       rateLimited = true;
@@ -76,6 +87,7 @@ export function modelRetryPlan(
       retryable = true;
     current = value.cause;
   }
+  if (current) return;
   if ((!rateLimited && !retryable) || requestedDelay > 60000) return;
   return {
     delayMs: rateLimited ? Math.ceil(requestedDelay) : 250 * (attempt + 1),
@@ -87,4 +99,43 @@ export function modelRetryPlan(
 /** 保留调用方使用的瞬时故障判定入口，实际等待由重试计划统一决定。 */
 export function canRetryModelRequest(error: unknown): boolean {
   return modelRetryPlan(error, 0) !== undefined;
+}
+
+/** 只识别 SDK 固定异常类型及网络码，不按任意消息正文猜测超时。 */
+export function modelNetworkFailure(
+  error: unknown,
+): 'NETWORK_TIMEOUT' | 'NETWORK_UNAVAILABLE' | undefined {
+  let current = error;
+  let result: 'NETWORK_TIMEOUT' | 'NETWORK_UNAVAILABLE' | undefined;
+  const seen = new Set<unknown>();
+  for (let depth = 0; current && typeof current === 'object' && depth < 8; depth++) {
+    if (seen.has(current)) return;
+    seen.add(current);
+    if (
+      current instanceof RunExecutionError &&
+      !(current.code === 'MODEL_REQUEST_FAILED' && current.context.stage === 'model')
+    )
+      return;
+    const value = current as { code?: unknown; status?: unknown; cause?: unknown };
+    if (typeof value.status === 'number' && [400, 401, 403, 404, 429].includes(value.status))
+      return;
+    const kind = current instanceof Error ? current.constructor.name : '';
+    if (kind === 'APIUserAbortError' || (current instanceof Error && current.name === 'AbortError'))
+      return;
+    if (
+      kind === 'APIConnectionTimeoutError' ||
+      ['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT'].includes(
+        String(value.code),
+      )
+    )
+      result = 'NETWORK_TIMEOUT';
+    else if (
+      !result &&
+      (kind === 'APIConnectionError' ||
+        ['ECONNRESET', 'UND_ERR_SOCKET'].includes(String(value.code)))
+    )
+      result = 'NETWORK_UNAVAILABLE';
+    current = value.cause;
+  }
+  return current ? undefined : result;
 }

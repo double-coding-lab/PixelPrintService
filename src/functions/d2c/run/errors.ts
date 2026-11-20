@@ -197,6 +197,9 @@ export const frameworkErrorCodes = [
 export type FrameworkCode = (typeof frameworkErrorCodes)[number];
 const frameworkCodeSchema = z.enum(frameworkErrorCodes);
 const errorTypeSchema = z.enum([
+  'APIConnectionTimeoutError',
+  'APIConnectionError',
+  'APIUserAbortError',
   'Error',
   'TypeError',
   'RangeError',
@@ -505,7 +508,14 @@ export function diagnoseRunFailure(
     const frameworkCode = framework.success ? framework : frameworkCodeSchema.safeParse(value.code);
     if (frameworkCode.success) diagnostics.frameworkCode = frameworkCode.data;
     const errorType = errorTypeSchema.safeParse(
-      current instanceof StorageOperationError ? 'StorageOperationError' : value.name,
+      current instanceof StorageOperationError
+        ? 'StorageOperationError'
+        : current instanceof Error &&
+            ['APIConnectionTimeoutError', 'APIConnectionError', 'APIUserAbortError'].includes(
+              current.constructor.name,
+            )
+          ? current.constructor.name
+          : value.name,
     );
     if (errorType.success) diagnostics.errorType = errorType.data;
     const status = value.statusCode ?? value.status;
