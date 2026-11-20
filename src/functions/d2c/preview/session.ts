@@ -8,11 +8,15 @@ import type { D2cWorkspace } from '../../../models/D2cWorkspace';
 import { ownedSession, SessionError } from '../session/access';
 import { createConfigSnapshot, parseWorkspaceConfigs } from '../utils/config';
 import { assertArtifactPath } from '../utils/paths';
+import { contentModel, copyTextStorage, resolveTextContent } from '../content/runtime';
+import type { TextContentReference } from '../content/store';
 
 export type PreviewSnapshotFile = {
   path: string;
   kind: 'source' | 'asset' | 'attachment';
   content: string | null;
+  /** Private frozen reference; hydrate and remove it before entering an editor. */
+  contentRef?: TextContentReference | null;
   objectLocator: Record<string, unknown> | null;
   size: number;
   sha256: string;
@@ -27,6 +31,37 @@ export type EditSourceSnapshot = {
   entryPath: string | null;
 };
 const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
+
+/** 授权调用方将冻结正文水合为编辑字符串，显式投影以剥离私有正文引用。 */
+export async function hydratePreviewSnapshot(
+  mysql: Sequelize,
+  snapshot: PreviewSnapshotFile[],
+  expectedScope?: string,
+  signal?: AbortSignal,
+): Promise<PreviewSnapshotFile[]> {
+  const result: PreviewSnapshotFile[] = [];
+  for (const file of snapshot) {
+    signal?.throwIfAborted();
+    const content =
+      file.kind === 'source' ? await resolveTextContent(mysql, file, expectedScope, signal) : null;
+    if (
+      file.kind === 'source' &&
+      (typeof content !== 'string' ||
+        Buffer.byteLength(content) !== file.size ||
+        sha(content) !== file.sha256)
+    )
+      throw new SessionError(503, 'FILE_CORRUPT', '预览源码校验失败');
+    result.push({
+      path: file.path,
+      kind: file.kind,
+      content,
+      objectLocator: file.kind === 'source' ? null : structuredClone(file.objectLocator),
+      size: file.size,
+      sha256: file.sha256,
+    });
+  }
+  return result;
+}
 
 /** 与隔离构建器保持相同模板边界，报告与内部配置不参与输入摘要。 */
 function participates(file: D2cFile) {
@@ -90,16 +125,22 @@ export async function sessionPreviewInput(
       });
   if (!session.target || !workspace?.activeResourceRevisionId)
     throw new SessionError(503, 'RESOURCE_UNAVAILABLE', '会话固定资源尚未就绪');
-  const rows = await findOrderedRows(mysql.models.D2cFile as typeof D2cFile, 'pathHash', {
-    where: { sessionId: session.sessionId },
-    transaction,
-    order: [['pathHash', 'ASC']],
-    ...(write ? { lock: transaction.LOCK.UPDATE } : {}),
-  });
+  const rows = await findOrderedRows(
+    contentModel(mysql, mysql.models.D2cFile as typeof D2cFile),
+    'pathHash',
+    {
+      where: { sessionId: session.sessionId },
+      transaction,
+      order: [['pathHash', 'ASC']],
+      ...(write ? { lock: transaction.LOCK.UPDATE } : {}),
+    },
+  );
   const snapshot: PreviewSnapshotFile[] = [];
   let total = 0;
   for (const file of rows.filter(participates)) {
+    let storage: ReturnType<typeof copyTextStorage>;
     try {
+      storage = file.kind === 'source' ? copyTextStorage(mysql, file) : { content: null };
       if (
         !file.path ||
         assertArtifactPath(file.path) !== file.path ||
@@ -112,9 +153,13 @@ export async function sessionPreviewInput(
         throw new Error();
       if (
         file.kind === 'source' &&
-        (typeof file.content !== 'string' ||
-          Buffer.byteLength(file.content) !== file.size ||
-          sha(file.content) !== file.sha256)
+        (typeof storage.content === 'string'
+          ? Buffer.byteLength(storage.content) !== file.size || sha(storage.content) !== file.sha256
+          : !('contentRef' in storage) ||
+            !storage.contentRef ||
+            storage.contentRef.scope !== `session:${session.sessionId}` ||
+            storage.contentRef.size !== file.size ||
+            storage.contentRef.sha256 !== file.sha256)
       )
         throw new Error();
       if (file.kind !== 'source' && !file.objectLocator) throw new Error();
@@ -131,7 +176,7 @@ export async function sessionPreviewInput(
     snapshot.push({
       path: file.path!,
       kind: file.kind as PreviewSnapshotFile['kind'],
-      content: file.kind === 'source' ? file.content : null,
+      ...storage,
       objectLocator: file.kind === 'source' ? null : structuredClone(file.objectLocator),
       size: file.size!,
       sha256: file.sha256!,

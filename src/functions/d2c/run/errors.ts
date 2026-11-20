@@ -1,3 +1,4 @@
+import { TextContentError } from '../content/store';
 import { databaseDiagnostics } from '@/common/databaseDiagnostics';
 import {
   SliceDiagnosticError,
@@ -217,6 +218,7 @@ const errorTypeSchema = z.enum([
   'AbortError',
   'RunExecutionError',
   'StorageOperationError',
+  'TextContentError',
   'SubagentExecutionError',
   'StorageError',
   'HistoryConversionError',
@@ -328,6 +330,7 @@ export type RunFailureReport = {
       storageOperation?: 'upload' | 'write_binary' | 'write_text';
       artifactPath?: string;
       bytes?: number;
+      contentCode?: TextContentError['code'];
       storageStage?: string;
       storageReason?: string;
       storageCode?: number;
@@ -520,6 +523,7 @@ export function diagnoseRunFailure(
       const parsed = scriptDiagnosticSchema.safeParse(current.diagnostics);
       if (parsed.success) Object.assign(diagnostics, parsed.data);
     }
+    if (current instanceof TextContentError) diagnostics.contentCode ??= current.code;
     if (current instanceof StorageOperationError) {
       diagnostics.storageOperation ??= current.operation;
       const relative = current.artifactPath;
@@ -615,6 +619,13 @@ export function diagnoseRunFailure(
       selectedCode = 'MODEL_AUTH_FAILED';
     else if (selectedContext.stage === 'model' && diagnostics.statusCode === 429)
       selectedCode = 'MODEL_RATE_LIMITED';
+  }
+  if (
+    diagnostics.contentCode &&
+    ['EXECUTION_FAILED', 'TOOL_FAILED', 'SUBAGENT_FAILED'].includes(selectedCode)
+  ) {
+    selectedCode = 'STORAGE_FAILED';
+    selectedContext.stage = 'storage';
   }
   const failure = runFailureSchema.parse({
     errorId: failureOccurrenceId(error),

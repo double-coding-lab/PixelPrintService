@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { assertArtifactPath } from '../utils/paths';
+import type { TextContentReference } from '../content/store';
 
 export type ArchiveFile = {
   path: string;
   kind: 'source' | 'asset' | 'attachment';
   content: string | null;
+  contentRef?: TextContentReference | null;
   objectLocator: Record<string, unknown> | null;
   mimeType: string | null;
   size: number;
@@ -88,6 +90,7 @@ export async function buildVersionArchive(
   files: ArchiveFile[],
   download: (locator: Record<string, unknown>) => Promise<Buffer>,
   limits: { textFileBytes: number; filesPerSession: number; uploadBytes: number },
+  resolveText?: (file: ArchiveFile) => Promise<string | null>,
 ): Promise<Buffer> {
   if (
     ![limits.textFileBytes, limits.filesPerSession, limits.uploadBytes].every(
@@ -120,15 +123,24 @@ export async function buildVersionArchive(
       throw new Error('ARCHIVE_INVALID_FILE');
     }
     if (file.kind === 'source') {
-      if (typeof file.content !== 'string' || file.objectLocator !== null) {
+      if (
+        (typeof file.content !== 'string' &&
+          !(file.content === null && file.contentRef && resolveText)) ||
+        file.objectLocator !== null
+      ) {
         throw new Error('ARCHIVE_INVALID_FILE');
       }
-      if (Buffer.byteLength(file.content, 'utf8') > limits.textFileBytes) {
+      if (
+        file.size > limits.textFileBytes ||
+        (typeof file.content === 'string' &&
+          Buffer.byteLength(file.content, 'utf8') > limits.textFileBytes)
+      ) {
         throw new Error('ARCHIVE_TEXT_LIMIT');
       }
     } else if (
       (file.kind !== 'asset' && file.kind !== 'attachment') ||
       file.content !== null ||
+      file.contentRef != null ||
       !file.objectLocator ||
       typeof file.objectLocator !== 'object' ||
       Array.isArray(file.objectLocator) ||
@@ -142,7 +154,12 @@ export async function buildVersionArchive(
     headers += 92 + 2 * Buffer.byteLength(path, 'utf8');
     if (headers > maxBytes) throw new Error('ARCHIVE_ZIP_LIMIT');
     try {
-      return { ...file, path, objectLocator: structuredClone(file.objectLocator) };
+      return {
+        ...file,
+        path,
+        objectLocator: structuredClone(file.objectLocator),
+        ...(file.contentRef ? { contentRef: structuredClone(file.contentRef) } : {}),
+      };
     } catch {
       throw new Error('ARCHIVE_INVALID_FILE');
     }
@@ -161,7 +178,16 @@ export async function buildVersionArchive(
   for (const file of snapshot) {
     let bytes: Buffer;
     if (file.kind === 'source') {
-      bytes = Buffer.from(file.content!, 'utf8');
+      let text: string | null;
+      try {
+        text = resolveText ? await resolveText(file) : file.content;
+      } catch {
+        throw new Error('ARCHIVE_CONTENT_FAILED');
+      }
+      if (typeof text !== 'string') throw new Error('ARCHIVE_INVALID_FILE');
+      if (Buffer.byteLength(text, 'utf8') > limits.textFileBytes)
+        throw new Error('ARCHIVE_TEXT_LIMIT');
+      bytes = Buffer.from(text, 'utf8');
     } else {
       try {
         const downloaded = await download(file.objectLocator!);

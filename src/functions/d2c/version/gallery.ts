@@ -1,3 +1,4 @@
+import { contentModel, resolveTextContent } from '../content/runtime';
 import { findOrderedRows } from '../utils/orderedRead';
 import { createHash } from 'node:crypto';
 import { Op, type Sequelize } from 'sequelize';
@@ -142,17 +143,25 @@ export function createGalleryService(
       await ready(userId, versionId);
       if (!/^[a-f0-9]{64}$/.test(pathHash))
         throw new SessionError(422, 'INVALID_FILE', '文件标识无效');
-      const row = await files.findOne({ where: { versionId, pathHash } });
+      const row = await contentModel(mysql, files).findOne({ where: { versionId, pathHash } });
       if (!row || row.kind !== 'source')
         throw new SessionError(404, 'VERSION_FILE_NOT_FOUND', '源码文件不存在');
       const info = fileMetadata(row);
-      if (
-        typeof row.content !== 'string' ||
-        Buffer.byteLength(row.content) !== row.size ||
-        createHash('sha256').update(row.content).digest('hex') !== row.sha256
-      )
+      let content: string | null;
+      try {
+        /** Frozen references retain the originating scope; authorization is on the version. */
+        content = await resolveTextContent(mysql, row);
+        if (
+          typeof content !== 'string' ||
+          row.objectLocator !== null ||
+          Buffer.byteLength(content) !== row.size ||
+          createHash('sha256').update(content).digest('hex') !== row.sha256
+        )
+          throw new Error();
+      } catch {
         throw new SessionError(503, 'VERSION_FILE_INVALID', '版本文件校验失败');
-      return { ...info, content: row.content };
+      }
+      return { ...info, content };
     },
     /** 所有登录用户可下载固定 ZIP；源会话删除不影响版本定位。 */
     async archive(userId: string, versionId: string) {

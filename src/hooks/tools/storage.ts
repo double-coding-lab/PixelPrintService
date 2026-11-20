@@ -22,7 +22,10 @@ export type StorageFileClient = {
     renameOnConflict?: boolean;
     signal?: AbortSignal;
   }): Promise<StorageFileObject>;
-  downloadFile(locator: unknown): Promise<Buffer>;
+  downloadFile(
+    locator: unknown,
+    options?: { signal?: AbortSignal; maxBytes?: number },
+  ): Promise<Buffer>;
 };
 export type StorageFailure =
   | 'INVALID_INPUT'
@@ -177,23 +180,31 @@ export function createStorageFileClient(
   async function read(key: string, max: number, signal?: AbortSignal) {
     signal?.throwIfAborted();
     if (settings.driver === 'local') {
-      const file = await open(
-        await localPath(key, false),
-        constants.O_RDONLY | constants.O_NOFOLLOW,
-      );
+      const filename = await localPath(key, false);
+      signal?.throwIfAborted();
+      const file = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW);
       try {
+        signal?.throwIfAborted();
         const stat = await file.stat();
+        signal?.throwIfAborted();
         if (!stat.isFile() || stat.size > max) throw new StorageError('download', 'INTEGRITY', 422);
         const bytes = Buffer.alloc(stat.size);
         let offset = 0;
         while (offset < bytes.length) {
           signal?.throwIfAborted();
-          const { bytesRead } = await file.read(bytes, offset, bytes.length - offset, offset);
+          const { bytesRead } = await file.read(
+            bytes,
+            offset,
+            Math.min(bytes.length - offset, 64 * 1024),
+            offset,
+          );
+          signal?.throwIfAborted();
           if (!bytesRead) break;
           offset += bytesRead;
         }
         if (offset !== bytes.length || (await file.stat()).size !== stat.size)
           throw new StorageError('download', 'INTEGRITY', 422);
+        signal?.throwIfAborted();
         return bytes;
       } finally {
         await file.close();
@@ -204,7 +215,11 @@ export function createStorageFileClient(
     });
     const body = result.Body;
     if (!body) throw new StorageError('download', 'INTEGRITY', 422);
+    /** SDK请求结束后仍需取消响应流，避免等待下一块数据时无法停止。 */
+    const abort = () => (body as { destroy?: () => void }).destroy?.();
+    signal?.addEventListener('abort', abort, { once: true });
     try {
+      signal?.throwIfAborted();
       if ((result.ContentLength ?? 0) > max) throw new StorageError('download', 'INTEGRITY', 422);
       const chunks: Buffer[] = [];
       let total = 0;
@@ -214,8 +229,10 @@ export function createStorageFileClient(
         if (total > max) throw new StorageError('download', 'INTEGRITY', 422);
         chunks.push(Buffer.from(chunk));
       }
+      signal?.throwIfAborted();
       return Buffer.concat(chunks, total);
     } finally {
+      signal?.removeEventListener('abort', abort);
       (body as { destroy?: () => void }).destroy?.();
     }
   }
@@ -300,8 +317,13 @@ export function createStorageFileClient(
       }
     },
     /** 仅接收业务数据库已登记的完整定位；限定 provider、公开前缀和键，复核字节及摘要。 */
-    async downloadFile(value) {
+    async downloadFile(value, options = {}) {
       const { maxBytes, base } = config();
+      if (
+        options.maxBytes !== undefined &&
+        (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < 1)
+      )
+        throw new StorageError('download', 'INVALID_INPUT', 400);
       const object = value as StorageFileObject;
       if (
         !object ||
@@ -316,12 +338,22 @@ export function createStorageFileClient(
           new URL(object.fileName.split('/').map(encodeURIComponent).join('/'), base).href
       )
         throw new StorageError('download', 'INVALID_INPUT', 400);
+      const signal = options.signal
+        ? AbortSignal.any([options.signal, AbortSignal.timeout(60_000)])
+        : AbortSignal.timeout(60_000);
       try {
-        const bytes = await read(object.fileName, object.size, AbortSignal.timeout(60_000));
+        const bytes = await read(
+          object.fileName,
+          Math.min(object.size, options.maxBytes ?? maxBytes, maxBytes),
+          signal,
+        );
+        signal.throwIfAborted();
         if (bytes.length !== object.size || digest(bytes) !== object.sha256)
           throw new StorageError('download', 'INTEGRITY', 422);
         return bytes;
       } catch (error) {
+        if (options.signal?.aborted) throw new StorageError('download', 'ABORTED', 499);
+        if (signal.aborted) throw failure(signal.reason, 'download');
         throw failure(error, 'download');
       }
     },

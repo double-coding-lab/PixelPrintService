@@ -28,6 +28,8 @@ config.auth.users = [
   },
 ];
 config.runtime.d2c.secrets.keys.primary = randomBytes(32).toString('hex');
+config.runtime.d2c.contentStorage.encryption.keys['body-primary'] =
+  randomBytes(32).toString('base64');
 if (args.includes('--docker')) {
   config.database.host = 'mysql';
   config.redis.url = 'redis://redis:6379';

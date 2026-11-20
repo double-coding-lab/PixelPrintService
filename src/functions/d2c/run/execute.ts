@@ -77,7 +77,10 @@ export async function executeGenerationRun(input: {
       throw executionError(cause, code, { stage });
     }
   }
-  const secrets = new Set(config.modelConfigs.map((model) => model.MODEL_API_KEY));
+  const secrets = new Set([
+    ...config.modelConfigs.map((model) => model.MODEL_API_KEY),
+    ...Object.values(config.d2c.contentStorage?.encryption?.keys ?? {}),
+  ]);
   /** 仅在当前轮次保留临时明文，用于阻止凭据进入文件、历史和页面。 */
   function redact(value: string) {
     let safe = value;

@@ -7,6 +7,12 @@ import type { D2cRun } from '@/models/D2cRun';
 import { ownedSession, requireRevision, SessionError } from '../session/access';
 import { appendFileEvent } from '../session/service';
 import { assertArtifactPath, isExecutionDocument, normalizeRelativePath } from '../utils/paths';
+import {
+  contentModel,
+  copyTextStorage,
+  prepareTextContent,
+  resolveTextContent,
+} from '../content/runtime';
 
 export type BlockDirectoryRename = { from: string; to: string; nodeId?: string };
 export type RenameBlockDirectoriesInput = {
@@ -338,7 +344,7 @@ function jsonReferences(
 /** 仅开放产物源码、Markdown/JSON 报告与规则缓存；设计缓存和配置不参与替换。 */
 function textKind(file: D2cFile): 'source' | 'json' | 'markdown' | 'style' | undefined {
   const value = file.path!;
-  if (value === mappingPath || file.content === null || file.objectLocator !== null) return;
+  if (value === mappingPath || file.objectLocator !== null) return;
   if (/^(?:.*\/)?(?:pp-d2c(?:\.rn)?\.config\.json|[^/]*config\.[^/]+)$/i.test(value)) return;
   let artifact = false;
   try {
@@ -394,122 +400,128 @@ export async function renameBlockDirectories(
     throw new SessionError(503, 'LIMITS_UNAVAILABLE', '文件限额尚未配置');
   for (const name of ['D2cFile', 'D2cRun', 'D2cSession', 'D2cWorkspace', 'D2cTimeline'])
     if (!mysql.models[name]) throw new SessionError(503, 'MODELS_UNAVAILABLE', '迁移模型尚未注册');
-  const files = mysql.models.D2cFile as typeof D2cFile;
+  const files = contentModel(mysql, mysql.models.D2cFile as typeof D2cFile);
   const runs = mysql.models.D2cRun as typeof D2cRun;
-  return mysql.transaction(async (transaction) => {
-    const { session } = await ownedSession(mysql, userId, sessionId, transaction);
-    if (
-      (session.activeRunId != null && session.activeRunId !== '') ||
-      (await runs.findOne({
-        where: { sessionId, status: { [Op.notIn]: ['succeeded', 'failed', 'cancelled'] } },
-        transaction,
-        lock: transaction.LOCK.UPDATE,
-      }))
-    )
-      throw new SessionError(409, 'SESSION_BUSY', '请先完成或明确结束当前轮次');
-    requireRevision(session.fileRevision);
-    const rows = await files.findAll({
-      where: { sessionId },
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
-    for (const file of rows) {
-      try {
-        if (
-          !file.path ||
-          normalizeRelativePath(file.path) !== file.path ||
-          Buffer.byteLength(file.path) > 1024 ||
-          file.pathHash !== hash(file.path)
-        )
-          throw new Error();
-      } catch {
-        throw new SessionError(503, 'FILE_CORRUPT', '文件路径元数据无效');
-      }
-    }
-    const mappingFile = rows.find((file) => file.path === mappingPath);
-    let prior: Mapping | undefined;
-    if (mappingFile) {
-      try {
-        if (
-          mappingFile.kind !== 'internal' ||
-          typeof mappingFile.content !== 'string' ||
-          mappingFile.objectLocator !== null ||
-          mappingFile.sha256 !== hash(mappingFile.content) ||
-          mappingFile.size !== Buffer.byteLength(mappingFile.content)
-        )
-          throw new Error();
-        prior = JSON.parse(mappingFile.content) as Mapping;
-        if (prior?.version !== 1 || !Array.isArray(prior.renames)) throw new Error();
-        requireRevision(prior.baseFileRevision);
-        requireRevision(prior.fileRevision);
-        validateRenames(prior.renames);
-        if (!prior.renames.every((entry) => typeof entry.originalName === 'string'))
-          throw new Error();
-      } catch {
-        throw new SessionError(409, 'INVALID_MAPPING', '已有区块映射无效，不能覆盖');
-      }
-    }
-    const sourceExists = (rename: BlockDirectoryRename) =>
-      rows.some((file) => within(file.path!, rename.from));
-    const recorded = (rename: BlockDirectoryRename) =>
-      prior?.renames.some(
-        (entry) =>
-          entry.from === rename.from && entry.to === rename.to && entry.nodeId === rename.nodeId,
-      );
-    const complete = renames.every(
-      (rename) =>
-        recorded(rename) &&
-        !sourceExists(rename) &&
-        rows.some((file) => file.path!.startsWith(rename.to + '/')),
-    );
-    const sameRevision = session.fileRevision === input.baseFileRevision;
-    if (
-      !sameRevision &&
-      !(
-        complete &&
-        prior?.baseFileRevision === input.baseFileRevision &&
-        prior.fileRevision === session.fileRevision
-      )
-    )
-      throw new SessionError(409, 'FILES_CONFLICT', '会话文件已更新，请重新读取');
-    if (complete)
-      return {
-        sessionId,
-        fileRevision: session.fileRevision,
-        renamedFiles: 0,
-        updatedFiles: 0,
-        unchanged: true,
-      };
-    const merged = [...(prior?.renames ?? [])];
-    for (const rename of renames) {
-      if (!sourceExists(rename))
-        throw new SessionError(409, 'SOURCE_NOT_FOUND', '原区块目录不存在');
+  /** 事务外规划与上传；后续锁内重验完整输入，绝不在数据库锁中上传对象。 */
+  const { session } = await ownedSession(mysql, userId, sessionId);
+  if (
+    (session.activeRunId != null && session.activeRunId !== '') ||
+    (await runs.findOne({
+      where: { sessionId, status: { [Op.notIn]: ['succeeded', 'failed', 'cancelled'] } },
+    }))
+  )
+    throw new SessionError(409, 'SESSION_BUSY', '请先完成或明确结束当前轮次');
+  requireRevision(session.fileRevision);
+  const rows = await files.findAll({
+    where: { sessionId },
+  });
+  const baseRevision = session.fileRevision;
+  const identity = (file: D2cFile) =>
+    JSON.stringify([
+      file.fileId,
+      file.path,
+      file.pathHash,
+      file.kind,
+      file.revision,
+      file.size,
+      file.sha256,
+      file.objectLocator,
+      copyTextStorage(mysql, file),
+    ]);
+  const originalRows = new Map(rows.map((file) => [file.fileId, identity(file)]));
+  for (const file of rows) {
+    try {
       if (
-        rows.some(
-          (file) =>
-            within(file.path!, rename.to) ||
-            within(rename.to, file.path!) ||
-            file.path === rename.from,
-        )
+        !file.path ||
+        normalizeRelativePath(file.path) !== file.path ||
+        Buffer.byteLength(file.path) > 1024 ||
+        file.pathHash !== hash(file.path)
       )
-        throw new SessionError(409, 'PATH_EXISTS', '目标目录已存在或被文件占用');
-      merged.push({ ...rename, originalName: path.basename(rename.from) });
+        throw new Error();
+    } catch {
+      throw new SessionError(503, 'FILE_CORRUPT', '文件路径元数据无效');
     }
-    validateRenames(merged);
-    if (rows.length + (mappingFile ? 0 : 1) > limits.filesPerSession)
-      throw new SessionError(422, 'FILE_LIMIT', '会话文件数量超过限额');
-    if (session.fileRevision >= 4294967294)
-      throw new SessionError(409, 'REVISION_EXHAUSTED', '文件修订已达到上限');
-    const fileRevision = session.fileRevision + 1;
-    const plans = rows
+  }
+  const mappingFile = rows.find((file) => file.path === mappingPath);
+  let prior: Mapping | undefined;
+  if (mappingFile) {
+    try {
+      const content = await resolveTextContent(mysql, mappingFile, `session:${sessionId}`);
+      if (
+        mappingFile.kind !== 'internal' ||
+        typeof content !== 'string' ||
+        mappingFile.objectLocator !== null ||
+        mappingFile.sha256 !== hash(content) ||
+        mappingFile.size !== Buffer.byteLength(content)
+      )
+        throw new Error();
+      prior = JSON.parse(content) as Mapping;
+      if (prior?.version !== 1 || !Array.isArray(prior.renames)) throw new Error();
+      requireRevision(prior.baseFileRevision);
+      requireRevision(prior.fileRevision);
+      validateRenames(prior.renames);
+      if (!prior.renames.every((entry) => typeof entry.originalName === 'string'))
+        throw new Error();
+    } catch {
+      throw new SessionError(409, 'INVALID_MAPPING', '已有区块映射无效，不能覆盖');
+    }
+  }
+  const sourceExists = (rename: BlockDirectoryRename) =>
+    rows.some((file) => within(file.path!, rename.from));
+  const recorded = (rename: BlockDirectoryRename) =>
+    prior?.renames.some(
+      (entry) =>
+        entry.from === rename.from && entry.to === rename.to && entry.nodeId === rename.nodeId,
+    );
+  const complete = renames.every(
+    (rename) =>
+      recorded(rename) &&
+      !sourceExists(rename) &&
+      rows.some((file) => file.path!.startsWith(rename.to + '/')),
+  );
+  const sameRevision = session.fileRevision === input.baseFileRevision;
+  if (
+    !sameRevision &&
+    !(
+      complete &&
+      prior?.baseFileRevision === input.baseFileRevision &&
+      prior.fileRevision === session.fileRevision
+    )
+  )
+    throw new SessionError(409, 'FILES_CONFLICT', '会话文件已更新，请重新读取');
+  const merged = [...(prior?.renames ?? [])];
+  for (const rename of complete ? [] : renames) {
+    if (!sourceExists(rename)) throw new SessionError(409, 'SOURCE_NOT_FOUND', '原区块目录不存在');
+    if (
+      rows.some(
+        (file) =>
+          within(file.path!, rename.to) ||
+          within(rename.to, file.path!) ||
+          file.path === rename.from,
+      )
+    )
+      throw new SessionError(409, 'PATH_EXISTS', '目标目录已存在或被文件占用');
+    merged.push({ ...rename, originalName: path.basename(rename.from) });
+  }
+  validateRenames(merged);
+  if (rows.length + (mappingFile ? 0 : 1) > limits.filesPerSession)
+    throw new SessionError(422, 'FILE_LIMIT', '会话文件数量超过限额');
+  if (!complete && session.fileRevision >= 4294967294)
+    throw new SessionError(409, 'REVISION_EXHAUSTED', '文件修订已达到上限');
+  const fileRevision = session.fileRevision + (complete ? 0 : 1);
+  const plans = await Promise.all(
+    (complete ? [] : rows)
       .filter((file) => file !== mappingFile)
-      .map((file) => {
+      .map(async (file) => {
         const before = file.path!,
           after = mappedPath(before, renames);
         if (Buffer.byteLength(after) > 1024)
           throw new SessionError(422, 'INVALID_PATH', '迁移路径过长');
         const kind = textKind(file);
-        let content = file.content;
+        const original = kind
+          ? await resolveTextContent(mysql, file, `session:${sessionId}`)
+          : null;
+        let content = original;
         if (kind) {
           if (
             typeof content !== 'string' ||
@@ -526,35 +538,123 @@ export async function renameBlockDirectories(
                   ? jsonReferences(content, before, after, renames)
                   : reportReferences(content, before, after, renames);
         }
-        const changed = content !== file.content;
+        const changed = content !== original;
+        const data: Partial<ReturnType<typeof textData>> = changed
+          ? textData(content!, limits.textFileBytes)
+          : {};
         return {
           file,
           before,
           after,
           changed,
-          data: changed ? textData(content!, limits.textFileBytes) : {},
+          data,
         };
-      });
-    const finalPaths = new Map<string, string>();
-    for (const plan of plans) {
-      const digest = hash(plan.after);
-      if (finalPaths.has(digest)) throw new SessionError(409, 'PATH_HASH_CONFLICT', '迁移路径冲突');
-      finalPaths.set(digest, plan.after);
+      }),
+  );
+  const finalPaths = new Map<string, string>();
+  for (const plan of plans) {
+    const digest = hash(plan.after);
+    if (finalPaths.has(digest)) throw new SessionError(409, 'PATH_HASH_CONFLICT', '迁移路径冲突');
+    finalPaths.set(digest, plan.after);
+  }
+  const mapping = textData(
+    JSON.stringify(
+      {
+        version: 1,
+        baseFileRevision: input.baseFileRevision,
+        fileRevision,
+        renames: merged,
+      } satisfies Mapping,
+      null,
+      2,
+    ) + '\n',
+    limits.textFileBytes,
+  );
+  const prepared = new Map<string, Awaited<ReturnType<typeof prepareTextContent>>>();
+  for (const plan of plans) {
+    if (plan.changed)
+      prepared.set(
+        plan.before,
+        await prepareTextContent(mysql, `session:${sessionId}`, plan.data.content!),
+      );
+  }
+  const mappingStorage = complete
+    ? undefined
+    : await prepareTextContent(mysql, `session:${sessionId}`, mapping.content);
+  return mysql.transaction(async (transaction) => {
+    const { session: lockedSession } = await ownedSession(mysql, userId, sessionId, transaction);
+    if (
+      lockedSession.activeRunId ||
+      (await runs.findOne({
+        where: { sessionId, status: { [Op.notIn]: ['succeeded', 'failed', 'cancelled'] } },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      }))
+    )
+      throw new SessionError(409, 'SESSION_BUSY', '请先完成或明确结束当前轮次');
+    const lockedRows = await files.findAll({
+      where: { sessionId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    if (
+      lockedSession.fileRevision !== baseRevision ||
+      lockedRows.length !== originalRows.size ||
+      lockedRows.some((file) => originalRows.get(file.fileId) !== identity(file))
+    ) {
+      /** 同一迁移的并发重试可能已由另一请求提交；仅原基线的完整映射可幂等返回。 */
+      const currentMapping = lockedRows.find((file) => file.path === mappingPath);
+      if (currentMapping?.kind === 'internal' && currentMapping.objectLocator === null) {
+        const content = await resolveTextContent(mysql, currentMapping, `session:${sessionId}`);
+        if (
+          content !== null &&
+          hash(content) === currentMapping.sha256 &&
+          Buffer.byteLength(content) === currentMapping.size
+        ) {
+          let mapping: Mapping | undefined;
+          try {
+            mapping = JSON.parse(content) as Mapping;
+          } catch {
+            /* 不接受损坏的并发映射。 */
+          }
+          if (
+            mapping?.version === 1 &&
+            Array.isArray(mapping.renames) &&
+            mapping.baseFileRevision === input.baseFileRevision &&
+            mapping.fileRevision === lockedSession.fileRevision &&
+            renames.every(
+              (rename) =>
+                mapping!.renames.some(
+                  (entry) =>
+                    entry.from === rename.from &&
+                    entry.to === rename.to &&
+                    entry.nodeId === rename.nodeId,
+                ) &&
+                !lockedRows.some((file) => within(file.path!, rename.from)) &&
+                lockedRows.some((file) => file.path!.startsWith(rename.to + '/')),
+            )
+          )
+            return {
+              sessionId,
+              fileRevision: lockedSession.fileRevision,
+              renamedFiles: 0,
+              updatedFiles: 0,
+              unchanged: true,
+            };
+        }
+      }
+      throw new SessionError(409, 'FILES_CONFLICT', '会话文件已更新，请重新读取');
     }
-    const mapping = textData(
-      JSON.stringify(
-        {
-          version: 1,
-          baseFileRevision: input.baseFileRevision,
-          fileRevision,
-          renames: merged,
-        } satisfies Mapping,
-        null,
-        2,
-      ) + '\n',
-      limits.textFileBytes,
-    );
-    let seq = session.timelineSeq,
+    if (complete)
+      return {
+        sessionId,
+        fileRevision: baseRevision,
+        renamedFiles: 0,
+        updatedFiles: 0,
+        unchanged: true,
+      };
+    const lockedById = new Map(lockedRows.map((file) => [file.fileId, file]));
+    let seq = lockedSession.timelineSeq,
       renamedFiles = 0,
       updatedFiles = 0;
     const event = async (
@@ -563,7 +663,7 @@ export async function renameBlockDirectories(
       value: string,
       revision: number,
     ) => {
-      seq = await appendFileEvent(mysql, session, transaction, {
+      seq = await appendFileEvent(mysql, lockedSession, transaction, {
         action,
         path: value,
         fileId: file.fileId!,
@@ -572,6 +672,7 @@ export async function renameBlockDirectories(
       });
     };
     for (const plan of plans) {
+      plan.file = lockedById.get(plan.file.fileId)!;
       if (plan.before === plan.after && !plan.changed) continue;
       requireRevision(plan.file.revision, false);
       if (plan.file.revision >= 4294967294)
@@ -580,7 +681,13 @@ export async function renameBlockDirectories(
       if (plan.before !== plan.after)
         await event(plan.file, 'deleted', plan.before, plan.file.revision);
       await plan.file.update(
-        { path: plan.after, pathHash: hash(plan.after), revision, ...plan.data },
+        {
+          path: plan.after,
+          pathHash: hash(plan.after),
+          revision,
+          ...plan.data,
+          ...(plan.changed ? prepared.get(plan.before) : copyTextStorage(mysql, plan.file)),
+        },
         { transaction },
       );
       if (plan.before !== plan.after) {
@@ -596,8 +703,12 @@ export async function renameBlockDirectories(
       requireRevision(mappingFile.revision, false);
       if (mappingFile.revision >= 4294967294)
         throw new SessionError(409, 'REVISION_EXHAUSTED', '映射修订已达到上限');
-      await mappingFile.update({ ...mapping, revision: mappingFile.revision + 1 }, { transaction });
-      await event(mappingFile, 'updated', mappingPath, mappingFile.revision);
+      const lockedMapping = lockedById.get(mappingFile.fileId)!;
+      await lockedMapping.update(
+        { ...mapping, ...mappingStorage, revision: lockedMapping.revision + 1 },
+        { transaction },
+      );
+      await event(lockedMapping, 'updated', mappingPath, lockedMapping.revision);
     } else {
       const created = await files.create(
         {
@@ -607,6 +718,7 @@ export async function renameBlockDirectories(
           pathHash: hash(mappingPath),
           kind: 'internal',
           ...mapping,
+          ...mappingStorage,
           objectLocator: null,
           mimeType: 'application/json',
           revision: 1,
@@ -615,7 +727,7 @@ export async function renameBlockDirectories(
       );
       await event(created, 'created', mappingPath, 1);
     }
-    await session.update(
+    await lockedSession.update(
       { fileRevision, validationState: { status: 'stale', fileRevision } },
       { transaction },
     );

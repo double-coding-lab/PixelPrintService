@@ -8,6 +8,7 @@ import type { D2cSession } from '@/models/D2cSession';
 import { isExecutionDocument, assertArtifactPath, normalizeRelativePath } from '../utils/paths';
 import { ownedSession, requireIdentifier, requireRevision, SessionError } from '../session/access';
 import { appendFileEvent } from '../session/service';
+import { contentModel, prepareTextContent, resolveTextContent } from '../content/runtime';
 
 type FileLimits = { textFileBytes: number; filesPerSession: number };
 
@@ -60,7 +61,7 @@ export function createFileService(
   readLimits: () => FileLimits | undefined,
   notify?: (sessionId: string, seq: number) => void,
 ) {
-  const files = mysql.models.D2cFile as typeof D2cFile;
+  const files = contentModel(mysql, mysql.models.D2cFile as typeof D2cFile);
   const runs = mysql.models.D2cRun as typeof D2cRun;
   if (
     !files ||
@@ -153,13 +154,17 @@ export function createFileService(
   }
 
   /** 只允许编辑完整文本源码，不修改附件、二进制或内部资料。 */
-  function editableFile(file: D2cFile, base: number) {
+  async function editableFile(file: D2cFile, base: number) {
     requireRevision(base, false);
-    if (file.kind !== 'source' || file.content === null || file.objectLocator !== null)
+    if (file.kind !== 'source' || file.objectLocator !== null)
       throw new SessionError(409, 'FILE_NOT_EDITABLE', '该文件不能作为文本编辑');
     sourcePath(file.path!);
     if (file.revision !== base)
       throw new SessionError(409, 'FILE_CONFLICT', '文件已更新，请重新读取');
+    const content = await resolveTextContent(mysql, file, `session:${file.sessionId}`);
+    if (content === null)
+      throw new SessionError(409, 'FILE_NOT_EDITABLE', '该文件不能作为文本编辑');
+    return content;
   }
 
   /** 文件修订、会话修订、校验失效与时间线在同一事务提交，失败全部回滚。 */
@@ -229,11 +234,14 @@ export function createFileService(
       }
       if (file.kind === 'internal' && !cacheJson && !isExecutionDocument(file.path!))
         throw new SessionError(403, 'INTERNAL_FILE', '内部执行资料不通过源码接口返回');
-      if (file.content === null || file.objectLocator !== null)
+      if (file.objectLocator !== null)
         throw new SessionError(409, 'BINARY_DOWNLOAD_UNAVAILABLE', '二进制文件请使用受控下载入口');
-      if (file.size !== Buffer.byteLength(file.content) || file.sha256 !== hash(file.content))
+      const content = await resolveTextContent(mysql, file, `session:${sessionId}`);
+      if (content === null)
+        throw new SessionError(409, 'BINARY_DOWNLOAD_UNAVAILABLE', '二进制文件请使用受控下载入口');
+      if (file.size !== Buffer.byteLength(content) || file.sha256 !== hash(content))
         throw new SessionError(503, 'FILE_CORRUPT', '文件内容摘要不一致');
-      return { ...summary(file), content: file.content };
+      return { ...summary(file), content };
     },
     /**
      * 在空闲会话创建文本源码，先校验路径和 UTF-8 字节，再在事务内检查文件树修订。
@@ -250,6 +258,8 @@ export function createFileService(
         path = sourcePath(input.path),
         data = text(input.content, settings.textFileBytes);
       requireRevision(input.baseFileRevision);
+      await ownedSession(mysql, userId, sessionId);
+      const storage = await prepareTextContent(mysql, `session:${sessionId}`, data.content);
       return mysql.transaction(async (transaction) => {
         const { session } = await ownedSession(mysql, userId, sessionId, transaction);
         await editable(session, transaction);
@@ -282,6 +292,7 @@ export function createFileService(
             pathHash: hash(path),
             kind: 'source',
             ...data,
+            ...storage,
             objectLocator: null,
             mimeType: 'text/plain',
             revision: 1,
@@ -289,7 +300,7 @@ export function createFileService(
           { transaction },
         );
         const fileRevision = await changed(session, transaction, file, 'created');
-        return { ...summary(file), content: file.content, fileRevision };
+        return { ...summary(file), content: data.content, fileRevision };
       });
     },
     /**
@@ -305,14 +316,17 @@ export function createFileService(
       content: string,
     ) {
       const data = text(content, limits().textFileBytes);
+      await ownedSession(mysql, userId, sessionId);
+      await editableFile(await fileFor(sessionId, fileId), baseRevision);
+      const storage = await prepareTextContent(mysql, `session:${sessionId}`, content);
       return mysql.transaction(async (transaction) => {
         const { session } = await ownedSession(mysql, userId, sessionId, transaction);
         await editable(session, transaction);
         const file = await fileFor(sessionId, fileId, transaction);
-        editableFile(file, baseRevision);
-        await file.update({ ...data, revision: baseRevision + 1 }, { transaction });
+        await editableFile(file, baseRevision);
+        await file.update({ ...data, ...storage, revision: baseRevision + 1 }, { transaction });
         const fileRevision = await changed(session, transaction, file, 'updated');
-        return { ...summary(file), content: file.content, fileRevision };
+        return { ...summary(file), content, fileRevision };
       });
     },
     /**
@@ -342,6 +356,14 @@ export function createFileService(
         seen.add(path);
         return { path, data: text(file.content, settings.textFileBytes) };
       });
+      await ownedSession(mysql, userId, sessionId);
+      const prepared = new Map<string, Awaited<ReturnType<typeof prepareTextContent>>>();
+      for (const update of updates) {
+        prepared.set(
+          update.path,
+          await prepareTextContent(mysql, `session:${sessionId}`, update.data.content),
+        );
+      }
       return mysql.transaction(async (transaction) => {
         const { session } = await ownedSession(mysql, userId, sessionId, transaction);
         const active = await editable(session, transaction, true);
@@ -356,12 +378,11 @@ export function createFileService(
           });
           if (!file || file.path !== update.path)
             throw new SessionError(409, 'FILES_CONFLICT', '源码文件已变更，请重新进入编辑');
-          editableFile(file, file.revision);
+          const content = await editableFile(file, file.revision);
           if (
             input.originals &&
-            file.content !== update.data.content &&
-            input.originals.find((original) => original.path === update.path)?.content !==
-              file.content
+            content !== update.data.content &&
+            input.originals.find((original) => original.path === update.path)?.content !== content
           ) {
             throw new SessionError(
               409,
@@ -369,9 +390,9 @@ export function createFileService(
               `文件 ${update.path} 已被 Agent 更新，编辑副本已保留，请核对后重新编辑`,
             );
           }
-          if (file.sha256 !== hash(file.content!) || file.size !== Buffer.byteLength(file.content!))
+          if (file.sha256 !== hash(content) || file.size !== Buffer.byteLength(content))
             throw new SessionError(503, 'FILE_CORRUPT', '文件内容摘要不一致');
-          if (file.content !== update.data.content) pending.push({ file, data: update.data });
+          if (content !== update.data.content) pending.push({ file, data: update.data });
         }
         const fileRevision = session.fileRevision + (pending.length ? 1 : 0);
         requireRevision(fileRevision);
@@ -382,7 +403,10 @@ export function createFileService(
           );
           for (const { file, data } of pending) {
             requireRevision(file.revision + 1, false);
-            await file.update({ ...data, revision: file.revision + 1 }, { transaction });
+            await file.update(
+              { ...data, ...prepared.get(file.path!), revision: file.revision + 1 },
+              { transaction },
+            );
             const seq = await appendFileEvent(mysql, session, transaction, {
               action: 'updated',
               fileId: file.fileId!,
@@ -419,7 +443,7 @@ export function createFileService(
         const { session } = await ownedSession(mysql, userId, sessionId, transaction);
         await editable(session, transaction);
         const file = await fileFor(sessionId, fileId, transaction);
-        editableFile(file, baseRevision);
+        await editableFile(file, baseRevision);
         await file.destroy({ transaction });
         return { fileId, fileRevision: await changed(session, transaction, file, 'deleted') };
       });

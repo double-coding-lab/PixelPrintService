@@ -1,3 +1,4 @@
+import { contentModel, resolveTextContent } from '../content/runtime';
 import { findOrderedRows } from '../utils/orderedRead';
 import { publicOverviewPayload } from './overview';
 import { createHash, randomUUID } from 'node:crypto';
@@ -537,19 +538,22 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
     async file(eid: string, shareId: string, fileId: string) {
       const { session } = await publishedSession(mysql, eid, shareId);
       requireIdentifier(fileId);
-      const row = await files.findOne({ where: { sessionId: session.sessionId, fileId } });
+      const row = await contentModel(mysql, files).findOne({
+        where: { sessionId: session.sessionId, fileId },
+      });
       if (!row || row.sessionId !== session.sessionId || row.fileId !== fileId || !artifact(row))
         throw new SessionError(404, 'FILE_NOT_FOUND', '文件不存在');
       if (row.pathHash !== createHash('sha256').update(row.path!).digest('hex'))
         throw new SessionError(503, 'FILE_CORRUPT', '文件路径元数据无效');
-      if (row.content !== null && row.objectLocator === null) {
-        if (
-          typeof row.content !== 'string' ||
-          !verifyBytes(Buffer.from(row.content), row.size, row.sha256)
-        )
+      if (
+        row.objectLocator === null &&
+        (typeof row.content === 'string' || row.contentRef != null)
+      ) {
+        const content = await resolveTextContent(mysql, row, 'session:' + session.sessionId);
+        if (typeof content !== 'string' || !verifyBytes(Buffer.from(content), row.size, row.sha256))
           throw new SessionError(503, 'FILE_CORRUPT', '文件完整性校验失败');
         await publishedSession(mysql, eid, shareId);
-        return { ...fileInfo(row, shareId), content: row.content };
+        return { ...fileInfo(row, shareId), content };
       }
       if (
         row.content !== null ||

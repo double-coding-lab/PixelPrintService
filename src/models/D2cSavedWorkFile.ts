@@ -20,6 +20,7 @@ export class D2cSavedWorkFile extends Model<
   declare pathHash: CreationOptional<string>;
   declare kind: CreationOptional<'source' | 'asset' | 'attachment'>;
   declare content: string | null;
+  declare contentRef: CreationOptional<Record<string, unknown> | null>;
   declare objectLocator: Record<string, unknown> | null;
   declare size: CreationOptional<number>;
   declare sha256: CreationOptional<string>;
@@ -69,6 +70,11 @@ export function initD2cSavedWorkFile(sequelize: Sequelize) {
         comment: '可预览或下载产物',
       },
       content: { type: DataTypes.TEXT('long'), allowNull: true, comment: '冻结源码正文' },
+      contentRef: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: '私有不可变文本正文引用，按schemaReady启用',
+      },
       objectLocator: { type: DataTypes.JSON, allowNull: true, comment: '不可变存储定位；不含凭据' },
       size: {
         type: DataTypes.INTEGER.UNSIGNED,
@@ -102,6 +108,8 @@ export function initD2cSavedWorkFile(sequelize: Sequelize) {
       tableName: 'd2c_saved_work_file',
       freezeTableName: true,
       timestamps: true,
+      defaultScope: { attributes: { exclude: ['contentRef'] } },
+      scopes: { contentBody: {} },
       indexes: [
         {
           name: 'uk_d2c_saved_file_owner_revision_path',
