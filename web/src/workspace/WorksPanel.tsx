@@ -96,10 +96,8 @@ function WorkFile({ versionId, file }: { versionId: string; file: FileInfo }) {
 export default function WorksPanel({
   versionId,
   onSelect,
-  onPersonal,
 }: {
   versionId: string;
-  onPersonal?: () => void;
   onSelect: (value: string) => void;
 }) {
   const [scope, setScope] = useState<'mine' | 'all' | 'team'>('mine');
@@ -159,17 +157,19 @@ export default function WorksPanel({
   return (
     <section className="works-panel">
       <div className="works-heading">
-        <h1>{versionId ? '版本详情' : '作品库'}</h1>
-        <div className="works-heading-actions">
-          {onPersonal && <Button onClick={onPersonal}>我的作品</Button>}
+        <div className="works-heading-leading">
           {versionId && (
             <Button
+              type="text"
               icon={<Icon name="arrow" style={{ transform: 'rotate(180deg)' }} />}
               onClick={() => onSelect('')}
             >
-              返回作品库
+              返回会话版本
             </Button>
           )}
+          <h1>{versionId ? '版本详情' : '会话版本'}</h1>
+        </div>
+        <div className="works-heading-actions">
           <Button
             icon={<Icon name="refresh" />}
             loading={loading}
@@ -186,10 +186,10 @@ export default function WorksPanel({
         <div className="works-toolbar">
           <Segmented
             options={[
-              { label: '我的作品', value: 'mine' },
-              { label: '全部作品', value: 'all' },
+              { label: '我的版本', value: 'mine' },
+              { label: '全部版本', value: 'all' },
               {
-                label: '团队作品',
+                label: '团队版本',
                 value: 'team',
                 disabled: directory.loading || !directory.teams.length,
               },
@@ -215,7 +215,7 @@ export default function WorksPanel({
             />
           )}
           <span className="works-total">
-            {loading ? '正在读取作品' : `共 ${list?.total ?? 0} 份作品`}
+            {loading ? '正在读取版本' : `共 ${list?.total ?? 0} 个版本`}
           </span>
         </div>
       )}
@@ -367,7 +367,7 @@ export default function WorksPanel({
                   </div>
                   <h2 title={work.name}>
                     <a
-                      href={`?view=works&version=${id(work.versionId)}`}
+                      href={`/works/versions/${id(work.versionId)}`}
                       onClick={(event) => {
                         event.preventDefault();
                         onSelect(work.versionId);
@@ -401,7 +401,9 @@ export default function WorksPanel({
             </div>
             {list && !list.total && (
               <p className="works-empty" role="status">
-                {scope === 'mine' ? '暂无作品，可在会话中暂存版本。' : '暂无作品'}
+                {scope === 'mine'
+                  ? '暂无会话版本。前往工作台打开会话，点击“暂存版本”后即可在这里查看。'
+                  : '暂无会话版本'}
               </p>
             )}
             {list && list.total > 12 && (

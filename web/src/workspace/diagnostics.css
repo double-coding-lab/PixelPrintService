@@ -418,3 +418,243 @@
 .diagnostics-gateway-id {
   grid-column: 1 / -1;
 }
+
+.subagent-diagnostics h4 {
+  margin: 0 0 10px;
+  color: #4a5668;
+  font-size: 12px;
+  font-weight: 600;
+}
+.subagent-attribution,
+.subagent-cards {
+  display: grid;
+  gap: 12px;
+}
+.subagent-attribution > section,
+.subagent-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e7ebf1;
+  border-radius: 8px;
+}
+.subagent-attribution > section {
+  background: #f8f9fb;
+}
+.subagent-cards {
+  margin-top: 14px;
+}
+.subagent-usage,
+.subagent-outcomes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.subagent-usage > div,
+.subagent-outcomes > div,
+.subagent-details .diagnostics-facts > div {
+  min-width: 0;
+}
+.subagent-usage dt,
+.subagent-outcomes dt,
+.subagent-scope > span {
+  color: #858d9a;
+  font-size: 10px;
+}
+.subagent-usage dd,
+.subagent-outcomes dd {
+  margin: 0;
+  color: #536782;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.subagent-usage dd {
+  font-size: 16px;
+}
+.subagent-coverage {
+  margin: 10px 0 0;
+  color: #7c899c;
+  font-size: 10px;
+}
+.subagent-coverage > span,
+.subagent-details dd > small {
+  display: block;
+  color: #858d9a;
+  font-size: 10px;
+}
+.subagent-card-heading,
+.subagent-check-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.subagent-card-heading h4 {
+  margin: 0;
+}
+.subagent-scope {
+  margin-top: 12px;
+}
+.subagent-paths {
+  padding-left: 16px;
+  margin: 3px 0 0;
+}
+.subagent-scope p,
+.subagent-task,
+.subagent-elapsed {
+  margin: 8px 0;
+}
+.subagent-task {
+  white-space: pre-wrap;
+}
+.subagent-elapsed strong {
+  color: #536782;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.subagent-diagnostics p,
+.subagent-diagnostics code,
+.subagent-diagnostics summary,
+.subagent-warning {
+  overflow-wrap: anywhere;
+}
+.subagent-warning {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: #fff8ed;
+  color: #8c6836;
+  font-size: 11px;
+}
+.subagent-details {
+  margin-top: 14px;
+  border-top: 1px solid #eef0f4;
+}
+.subagent-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0 0;
+  color: #63728e;
+  cursor: pointer;
+  list-style: none;
+}
+.subagent-details > summary::-webkit-details-marker {
+  display: none;
+}
+.subagent-details > summary:focus-visible {
+  outline: 2px solid var(--accent, #426ec9);
+  outline-offset: 3px;
+}
+.subagent-chevron {
+  display: inline-block;
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+.subagent-details[open] > summary .subagent-chevron {
+  transform: rotate(90deg);
+}
+.subagent-collapse-hint,
+.subagent-details[open] .subagent-expand-hint {
+  display: none;
+}
+.subagent-details[open] .subagent-collapse-hint {
+  display: inline;
+}
+.subagent-details > summary .diagnostics-caption {
+  margin-left: auto;
+}
+.subagent-details > .diagnostics-facts {
+  margin-top: 14px;
+}
+.subagent-outcomes {
+  margin-top: 14px;
+  padding: 12px 0;
+  border-top: 1px solid #eef0f4;
+  border-bottom: 1px solid #eef0f4;
+}
+.subagent-checks,
+.subagent-tools {
+  margin-top: 16px;
+}
+.subagent-check-list,
+.subagent-tool-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.subagent-check-list > li,
+.subagent-tool-list > li {
+  padding: 12px 0;
+  border-top: 1px solid #eef0f4;
+}
+.subagent-tool-list .diagnostics-facts {
+  margin-top: 8px;
+  gap: 6px 12px;
+}
+.subagent-tool-list strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.subagent-check-list p {
+  margin: 5px 0;
+  font-size: 11px;
+}
+.subagent-check-heading {
+  font-size: 11px;
+}
+.subagent-rules {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 11px;
+}
+.subagent-rules caption {
+  text-align: left;
+  color: #858d9a;
+  font-size: 10px;
+}
+.subagent-rules th,
+.subagent-rules td {
+  padding: 5px 8px;
+  border: 1px solid #eef0f4;
+  text-align: left;
+  vertical-align: top;
+}
+.subagent-rules th {
+  color: #7c899c;
+  background: #f8f9fb;
+  font-weight: 500;
+}
+.subagent-diagnostics .diagnostics-status[data-status='completed']::before {
+  background: #6c9c85;
+}
+.subagent-diagnostics .diagnostics-status[data-status='waiting_model']::before,
+.subagent-diagnostics .diagnostics-status[data-status='queued']::before {
+  background: #b89964;
+}
+@media (max-width: 480px) {
+  .subagent-attribution > section,
+  .subagent-card {
+    padding: 12px;
+  }
+  .subagent-details .diagnostics-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .subagent-tool-list .diagnostics-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.subagent-tools > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #536782;
+}
+.subagent-check-trend {
+  font-variant-numeric: tabular-nums;
+  color: #536782;
+}

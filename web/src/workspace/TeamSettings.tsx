@@ -210,14 +210,13 @@ export function TeamSelect({
   );
 }
 
-/** 归属和创建人合并为一行，历史数据缺少创建人时不展示空标签。 */
+/** 名称后统一括号标注归属，仅使用当前可访问团队目录，未知团队保留兜底。 */
 export function WorkspaceAttribution({ workspace }: { workspace: Workspace }) {
   const { teams } = useTeams();
-  const owner = workspace.creatorName || workspace.createdUserId;
   const team = workspace.teamId
     ? teams.find((team) => team.teamId === workspace.teamId)?.name || '团队'
     : '个人';
-  return <span className="workspace-attribution">{[team, owner].filter(Boolean).join(' · ')}</span>;
+  return <span className="workspace-attribution">（{team}）</span>;
 }
 
 /** 团队成员只向创建者提供管理入口；服务端仍负责最终鉴权。 */

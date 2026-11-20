@@ -5,6 +5,7 @@ import type { TimelineEntry } from './types';
 export type Sharing = { public: boolean; shareId: string | null; canManage: boolean };
 export type SharedSession = {
   shareId: string;
+  coverUrl?: string | null;
   sessionId: string;
   name: string;
   target: 'h5' | 'rn';

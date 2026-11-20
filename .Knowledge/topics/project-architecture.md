@@ -1,10 +1,10 @@
 ---
 id: project-architecture
-revision: 1
-sourceDoc: .Knowledge/stock-docs/项目架构终稿.md
+revision: 2
 summary: "Fastify全栈入口、登录、日志、数据连接与部署"
 primary: module
 confidence: inferred
+sourceDoc: ".Knowledge/stock-docs/项目架构终稿.md"
 ---
 # 项目架构
 
@@ -32,3 +32,7 @@ Node.js 24 在一个 Fastify 应用中提供 React 页面、API 和预览资源�
 ## 详细资料
 
 [项目架构终稿](../stock-docs/项目架构终稿.md)
+
+## 数据库错误日志
+
+`common/databaseDiagnostics.ts`沿cause/parent/original有界提取固定数据库错误码、数值错误号与合法SQLState，HTTP访问日志和后台执行共用该安全投影。错误正文、SQL、绑定值、密钥及堆栈保持私有；预览工具的数据库失败保留工具归属。大字段查询的读取策略见[工作区主题](d2c-workspace-foundation.md#大字段排序与数据库诊断)。

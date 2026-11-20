@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { appendSessionEvent } from '../session/service';
 import { createGalleryService } from './gallery';
 import { createHash, randomUUID } from 'node:crypto';
@@ -81,7 +82,10 @@ export function createVersionService(
 
   /** 读取冻结文件，并校验文件元数据；完整字节由打包器和存储客户端核对。 */
   async function frozen(versionId: string): Promise<ArchiveFile[]> {
-    const rows = await versionFiles.findAll({ where: { versionId }, order: [['pathHash', 'ASC']] });
+    const rows = await findOrderedRows(versionFiles, 'pathHash', {
+      where: { versionId },
+      order: [['pathHash', 'ASC']],
+    });
     return rows.map((row) => {
       if (
         !row.path ||
@@ -134,7 +138,7 @@ export function createVersionService(
   async function recover() {
     if (closed || recovering) return recovering;
     recovering = (async () => {
-      const rows = await versions.findAll({
+      const rows = await findOrderedRows(versions, 'versionId', {
         where: { status: 'saving' },
         order: [['createdAt', 'ASC']],
         limit: 100,
@@ -249,7 +253,7 @@ export function createVersionService(
           throw new SessionError(409, 'FILE_REVISION_CONFLICT', '文件已更新，请刷新后再暂存');
         if (!workspace.activeResourceRevisionId || !session.target)
           throw new SessionError(503, 'RESOURCE_UNAVAILABLE', '工作区固定资源尚未就绪');
-        const rows = await files.findAll({
+        const rows = await findOrderedRows(files, 'pathHash', {
           where: { sessionId },
           transaction,
           lock: transaction.LOCK.UPDATE,
@@ -469,7 +473,7 @@ export function createVersionService(
       )
         throw new SessionError(422, 'INVALID_PAGE', '分页参数无效');
       const where = { sessionId, workspaceId: workspace.workspaceId };
-      const rows = await versions.findAll({
+      const rows = await findOrderedRows(versions, 'versionId', {
         where,
         order: [
           ['createdAt', 'DESC'],

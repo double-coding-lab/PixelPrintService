@@ -36,6 +36,7 @@ export async function messageFixture() {
         MODEL_NAME: 'internal-model',
         MODEL_API_KEY: 'test-model-key-not-for-production',
         contextBudgetTokens: 16000,
+        requestTimeoutMs: 180000,
       },
     ],
     d2c: {

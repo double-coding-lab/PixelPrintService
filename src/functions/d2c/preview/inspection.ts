@@ -28,6 +28,7 @@ export function createPreviewInspection(input: {
   let pending: Promise<unknown> | undefined;
   const images = new Map<string, AgentImage>();
   const checked = new Map<string, string>();
+  const reportedBuildFailures = new Set<string>();
 
   /** 等待真实队列构建，保留取消和租约检查，不调用宿主编译或对象上传。 */
   async function ready(entryPath?: string) {
@@ -69,6 +70,37 @@ export function createPreviewInspection(input: {
       scheduled.unref();
     },
     tools: {
+      /** 复用自动预览的真实失败结果；不轮询、不新增构建，也不使用旧修订猜测当前错误。 */
+      async feedback() {
+        if (!dirty) return;
+        await input.assertLease();
+        input.signal.throwIfAborted();
+        const state = await input.service.existingSession(
+          input.userId,
+          input.sessionId,
+          selectedEntry,
+        );
+        const current = state.current;
+        if (!current || current.status !== 'failed' || !current.error) return;
+        const key = JSON.stringify([
+          current.previewId,
+          current.validatedFileRevision,
+          current.error,
+        ]);
+        if (reportedBuildFailures.has(key)) return;
+        reportedBuildFailures.add(key);
+        if (reportedBuildFailures.size > 64)
+          reportedBuildFailures.delete(reportedBuildFailures.values().next().value!);
+        return JSON.stringify({
+          type: 'preview_feedback',
+          previewId: current.previewId,
+          entryPath: current.entryPath,
+          fileRevision: current.validatedFileRevision,
+          diagnostic: current.error,
+          message:
+            '现有自动预览尚未编译成功，请按真实诊断定点处理。源码检查通过不代表编译通过；环境故障如实说明，不为环境故障反复改源码。',
+        });
+      },
       /** 自动收尾仅检查本轮实际修改过的文件；普通聊天不重复截图。 */
       async needsInspection() {
         return dirty;

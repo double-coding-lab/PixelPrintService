@@ -1,3 +1,4 @@
+import { modelNetworkFailure } from './modelRetry';
 import { createSubagentProgress } from './subagentCheckpoint';
 import type { GuidanceReader } from './guidance';
 import type { ImageResolver } from './images';
@@ -58,7 +59,11 @@ export function deepGenerationFailure(error: unknown, signal: AbortSignal) {
         )
       )
         return current;
-      genericFailure ??= current;
+      if (
+        !genericFailure ||
+        (genericFailure.code === 'SUBAGENT_FAILED' && current.code === 'MODEL_REQUEST_FAILED')
+      )
+        genericFailure = current;
     }
     if (current instanceof SubagentExecutionError) {
       genericFailure =
@@ -75,7 +80,11 @@ export function deepGenerationFailure(error: unknown, signal: AbortSignal) {
             );
     }
     if (current instanceof SequelizeError)
-      return new RunExecutionError('STORAGE_FAILED', { stage: 'storage' }, error);
+      return new RunExecutionError(
+        'STORAGE_FAILED',
+        { ...genericFailure?.context, stage: 'storage' },
+        error,
+      );
     if (
       current instanceof HistoryConversionError ||
       /^DEEP_(?:CHECKPOINT|NEW_MESSAGE|MESSAGE_ALREADY)/.test(message)
@@ -102,10 +111,21 @@ export function deepGenerationFailure(error: unknown, signal: AbortSignal) {
       return new RunExecutionError('MODEL_AUTH_FAILED', { stage: 'model' }, error);
     if (status === 429)
       return new RunExecutionError('MODEL_RATE_LIMITED', { stage: 'model' }, error);
-    if (typeof status === 'number' && status >= 400 && status <= 599)
-      genericFailure ??= new RunExecutionError('MODEL_REQUEST_FAILED', { stage: 'model' }, error);
+    if (
+      typeof status === 'number' &&
+      status >= 400 &&
+      status <= 599 &&
+      (!genericFailure || genericFailure.code === 'SUBAGENT_FAILED')
+    )
+      genericFailure = new RunExecutionError('MODEL_REQUEST_FAILED', { stage: 'model' }, error);
     current = 'cause' in current ? current.cause : undefined;
   }
+  const network = modelNetworkFailure(error);
+  if (
+    network &&
+    (!genericFailure || ['MODEL_REQUEST_FAILED', 'SUBAGENT_FAILED'].includes(genericFailure.code))
+  )
+    return new RunExecutionError(network, { stage: 'model' }, error);
   return genericFailure ?? new RunExecutionError('EXECUTION_FAILED', { stage: 'worker' }, error);
 }
 

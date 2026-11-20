@@ -1,4 +1,5 @@
 import type { MessageAttachment } from './attachments';
+import type { AgentDiagnostics } from '../../../shared/agentDiagnostics';
 
 export type Target = 'h5' | 'rn';
 
@@ -178,7 +179,8 @@ export type TimelineEntry = {
     completed?: number;
     failed?: number;
     reused?: number;
-    agentId?: string;
+    agentId?: string | null;
+    message?: { role: 'user' | 'assistant'; text: string };
     tool?: 'list_files' | 'read_file' | 'write_file' | 'edit_file' | 'figma';
     reason?: string;
     name?: string;
@@ -223,6 +225,7 @@ export type DiagnosticsStep = {
   durationMs: number | null;
 };
 export type SessionDiagnostics = {
+  agentDiagnostics?: AgentDiagnostics;
   sessionElapsedMs?: number | null;
   sessionRunningCount?: number;
   sessionId: string;

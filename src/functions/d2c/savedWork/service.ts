@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { createHash, randomUUID } from 'node:crypto';
 import { UniqueConstraintError, type Sequelize, type Transaction } from 'sequelize';
 import type { D2cSavedWork } from '../../../models/D2cSavedWork';
@@ -197,7 +198,7 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
   }
   /** Read a single permanent revision, never current upstream rows. */
   async function frozen(row: D2cSavedWork, settings: SavedWorkLimits, transaction?: Transaction) {
-    const rows = await files.findAll({
+    const rows = await findOrderedRows(files, 'pathHash', {
       where: { ownerEid: row.ownerEid, workId: row.workId, workRevision: row.revision },
       transaction,
       order: [['pathHash', 'ASC']],

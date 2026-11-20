@@ -1,3 +1,6 @@
+import { uiPrerequisites } from './uiPrerequisites';
+import { editArgumentDetail } from '../editFile';
+import { createRuleRepairMiddleware, ruleRepairReport, type RuleRepairState } from './ruleRepair';
 import { runGraphWithRecovery } from './graphRecovery';
 import { createBackgroundDelegations } from './backgroundDelegations';
 import {
@@ -100,6 +103,9 @@ export type AgentRunInput = {
   inspectDelivery?: () => Promise<DeliverySnapshot>;
   deliveryAdmissionId?: string;
   onDeliveryRecovery?: (value: DeliveryRecovery) => void;
+  /** UI规则修复连续无进展时交回父级，保留真实失败与文件。 */
+  onRuleRepair?: (value: RuleRepairState, stalled: string[]) => void;
+  resetRuleRepair?: boolean;
   /** 图触顶后仅复核已保存文件的最新检查，不创建模型请求。 */
   onGraphStepLimit?: () => Promise<void>;
   saveScanSnapshot?: (
@@ -129,6 +135,8 @@ export type AgentRunInput = {
   onMessage?: (message: BaseMessage, streamId?: string) => Promise<void>;
   onText?: (snapshot: AgentTextSnapshot) => Promise<void>;
   onModelActivity?: (event: ModelActivity) => Promise<void>;
+  /** 仅由平台为子图注入，模型不能选择归属。 */
+  agentId?: string;
   sanitizePartialText?: (text: string) => string;
   transformMessage?: (message: BaseMessage) => BaseMessage;
   recordSubagent?: (event: SubagentEvent) => Promise<void>;
@@ -159,6 +167,9 @@ export async function runAgent(input: AgentRunInput): Promise<{
   contextRestored: boolean;
   waiting?: AgentQuestion;
 }> {
+  const publishModelActivity = input.onModelActivity
+    ? (event: ModelActivity) => input.onModelActivity!({ ...event, agentId: input.agentId ?? null })
+    : undefined;
   const controller = new AbortController();
   const signal = AbortSignal.any([input.signal, controller.signal]);
   const delegationScheduler = createDelegationScheduler({
@@ -590,6 +601,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
     { role, task, writePaths, nodeId, resumeAgentId }: DelegationInput,
     restored?: { agentId: string; status: 'pending' | 'settled'; result?: string },
   ) {
+    let blockedUiDependencies: Awaited<ReturnType<typeof uiPrerequisites>> = [];
     const key = createHash('sha256')
       .update(JSON.stringify([role, nodeId ?? '', [...writePaths].sort(), task]))
       .digest('hex');
@@ -613,8 +625,35 @@ export async function runAgent(input: AgentRunInput): Promise<{
         stage: 'tool',
         tool: 'delegate_agent',
       });
-    if (role === 'ui' && restored?.status !== 'settled')
+    if (role === 'ui' && restored?.status !== 'settled') {
       await assertUiDelegation(input.tools, nodeId);
+      // 正式执行器提供 scanRules；不启动缺少有效区块报告的 UI 模型。
+      if (input.tools.scanRules) {
+        const dependencies = await uiPrerequisites(
+          input.tools,
+          writePaths,
+          nodeId,
+          input.resources?.target ?? 'h5',
+        );
+        blockedUiDependencies = dependencies;
+        if (dependencies.length && !restored)
+          return JSON.stringify({
+            success: false,
+            role: 'ui',
+            reason: 'UI_PREREQUISITES_REQUIRED',
+            nodeId,
+            ...(resumeAgentId ? { resumeAgentId } : {}),
+            dependencies,
+            nextAction: {
+              role: 'rule_scan',
+              nodeId,
+              writePaths: dependencies.map((item) => item.path),
+            },
+            message:
+              'UI尚未启动。先为上述区块派发rule_scan，等待真实报告完成并收取结果后再启动UI；整页报告不能代替区块报告。不要让UI补写报告，不要原样重复当前委派。已有源码保留。',
+          });
+      }
+    }
     const production = role === 'rule_scan' || role === 'ui';
     /** 原任务恢复不是新委派，不重复消耗委派次数；模型请求仍使用共享预算。 */
     if (!resumeAgentId) {
@@ -708,6 +747,11 @@ export async function runAgent(input: AgentRunInput): Promise<{
     }
     const event = {
       stage: 'subagent' as const,
+      diagnosticVersion: 1 as const,
+      task: (input.transformMessage?.(new HumanMessage(task)) ?? new HumanMessage(task)).text.slice(
+        0,
+        600,
+      ),
       agentId: progress?.state.agentId ?? randomUUID(),
       role,
       ...(nodeId ? { nodeId } : {}),
@@ -728,6 +772,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
     const executeChild = async () => {
       const handoff = createChildHandoff(progress?.state.handoff);
       let deliveryRecovery: DeliveryRecovery | undefined;
+      let ruleRepair: { state: RuleRepairState; stalled: string[] } | undefined;
       /** 以稳定文件摘要、显式部分标记和最新检查推进，不以模型文字当作交付。 */
       async function inspectDelivery(): Promise<DeliverySnapshot> {
         const problems: string[] = [];
@@ -813,6 +858,14 @@ export async function runAgent(input: AgentRunInput): Promise<{
         }
         handoff.state.contextPath = contextPath;
         await progress?.saveHandoff(handoff.state);
+        await publish('failed', undefined, {
+          delivery: {
+            success: false,
+            reason,
+            files: [...saved],
+            missingFiles: writePaths.filter((path) => !saved.has(path)),
+          },
+        });
         return JSON.stringify({
           success: false,
           role,
@@ -843,6 +896,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
         });
       }
       const activities = new Map<string, Pick<SubagentEvent, 'callId' | 'detail'>>();
+      const rulePaths = new Map<string, string>();
       let childFeedback: Pick<SubagentEvent, 'tool' | 'callId' | 'detail' | 'feedback'> | undefined;
       /** 仅投影脱敏动作摘要和固定反馈，不保存完整子工具参数或文件正文。 */
       async function publish(
@@ -850,7 +904,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
         tool?: SubagentEvent['tool'],
         metadata: Pick<
           SubagentEvent,
-          'callId' | 'detail' | 'feedback' | 'message' | 'reasoning'
+          'callId' | 'detail' | 'feedback' | 'message' | 'reasoning' | 'delivery' | 'ruleCheck'
         > = {},
       ) {
         await guard();
@@ -861,6 +915,45 @@ export async function runAgent(input: AgentRunInput): Promise<{
           ...metadata,
         });
       }
+      /** 只保存规则/节点摘要和比较签名，完整报告继续留在私有工具历史中。 */
+      function describeRuleCheck(value: unknown, path: string): SubagentEvent['ruleCheck'] {
+        const check = ruleRepairReport(value);
+        if (!check) return;
+        let body = typeof value === 'string' ? JSON.parse(value) : value;
+        if (body?.report) body = JSON.parse(body.report);
+        const violations = body?.violations ?? [];
+        return {
+          path,
+          passed: check.passed,
+          count: violations.length,
+          ...(!check.passed ? { signature: check.signature } : {}),
+          violations: violations.slice(0, 64).map((item: { rule: string; nodeId?: string }) => ({
+            rule: item.rule.slice(0, 80),
+            nodeId: String(item.nodeId ?? '').slice(0, 200),
+          })),
+          omittedViolations: Math.max(0, violations.length - 64),
+        };
+      }
+      /** 平台恢复边界的直接复核也记录真实起止，不能遗漏到诊断之外。 */
+      async function platformRuleCheck(directory: string) {
+        const callId = `platform-check-${randomUUID()}`;
+        const detail = `区块恢复复核：${directory}`;
+        await publish('tool_started', 'check_rules', { callId, detail });
+        try {
+          const result = await childTools.rules(directory, 'block');
+          const issue = readToolFeedback(result);
+          await publish(issue ? 'tool_feedback' : 'tool_completed', 'check_rules', {
+            callId,
+            detail,
+            ...(issue ? { feedback: issue } : {}),
+            ruleCheck: describeRuleCheck(result, directory),
+          });
+          return result;
+        } catch (error) {
+          if (!signal.aborted) await publish('tool_failed', 'check_rules', { callId, detail });
+          throw error;
+        }
+      }
       await publish('started');
       const delegatedTask =
         input.transformMessage?.(new HumanMessage(task)) ?? new HumanMessage(task);
@@ -868,6 +961,19 @@ export async function runAgent(input: AgentRunInput): Promise<{
         message: { role: 'user', text: delegatedTask.text.slice(0, 65536) },
       });
       try {
+        // 已持久化的旧后台任务仍须经原结果落盘和交接，不能遗留悬空启动描述。
+        if (role === 'ui' && blockedUiDependencies.length) {
+          return incomplete('UI_PREREQUISITES_REQUIRED', {
+            dependencies: blockedUiDependencies,
+            nextAction: {
+              role: 'rule_scan',
+              nodeId,
+              writePaths: blockedUiDependencies.map((item) => item.path),
+            },
+            message:
+              '缺少有效区块报告，UI模型未执行。由父级完成rule_scan并收取报告后沿用原任务上下文继续；已有源码保留。',
+          });
+        }
         if (role === 'rule_scan' && input.tools.scanRules) {
           for (const path of writePaths) {
             await guard();
@@ -924,15 +1030,19 @@ export async function runAgent(input: AgentRunInput): Promise<{
               result: '程序扫描已完成，当前范围无待模型判断的疑难项；尚未执行代码规则校验。',
             });
             await progress?.complete(result);
-            await publish('completed');
+            await publish('completed', undefined, {
+              delivery: { success: true, files: [...saved], missingFiles: [] },
+            });
             return result;
           }
         }
         if (progress?.state.result) {
           for (const directory of childTools.requiredRuleChecks())
-            await childTools.rules(directory, 'block');
+            await platformRuleCheck(directory);
           if (!(await inspectDelivery()).problems.length) {
-            await publish('completed');
+            await publish('completed', undefined, {
+              delivery: { success: true, files: [...saved], missingFiles: [] },
+            });
             return progress.state.result;
           }
         }
@@ -949,7 +1059,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
               });
               let result: string;
               try {
-                result = await childTools.rules(directory, 'block');
+                result = await platformRuleCheck(directory);
               } catch (error) {
                 if (
                   !(error instanceof ToolIssue) ||
@@ -983,6 +1093,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           reasoningAdmissionId: progress?.restored ? undefined : progress?.admissionId,
           reasoningContext: input.reasoningContext,
           onModelActivity: input.onModelActivity,
+          agentId: event.agentId,
           messages: [
             new HumanMessage({
               content: progress?.restored
@@ -1095,6 +1206,10 @@ export async function runAgent(input: AgentRunInput): Promise<{
           resolveImage: input.resolveImage,
           transformMessage: input.transformMessage,
           specialist: role,
+          resetRuleRepair: recoveryChanged,
+          onRuleRepair: (state, stalled) => {
+            ruleRepair = { state, stalled };
+          },
           sanitizePartialText: input.sanitizePartialText,
           onText: async (snapshot) => {
             if (snapshot.channel === 'reasoning' && snapshot.status !== 'discarded')
@@ -1131,6 +1246,8 @@ export async function runAgent(input: AgentRunInput): Promise<{
                   }),
                 };
                 activities.set(call.id!, metadata);
+                if (call.name === 'check_rules' && call.id && typeof call.args.path === 'string')
+                  rulePaths.set(call.id, call.args.path);
                 await publish('tool_started', call.name as SubagentEvent['tool'], metadata);
               }
             if (
@@ -1142,6 +1259,11 @@ export async function runAgent(input: AgentRunInput): Promise<{
                 callId: message.tool_call_id,
               };
               const issue = readToolFeedback(message.content);
+              const rulePath = rulePaths.get(message.tool_call_id);
+              const ruleCheck =
+                message.name === 'check_rules' && rulePath
+                  ? describeRuleCheck(message.content, rulePath)
+                  : undefined;
               if (issue)
                 childFeedback = {
                   ...metadata,
@@ -1157,11 +1279,25 @@ export async function runAgent(input: AgentRunInput): Promise<{
                     ? 'tool_failed'
                     : 'tool_completed',
                 message.name as SubagentEvent['tool'],
-                { ...metadata, ...(issue ? { feedback: issue } : {}) },
+                {
+                  ...metadata,
+                  ...(issue ? { feedback: issue } : {}),
+                  ...(ruleCheck ? { ruleCheck } : {}),
+                },
               );
             }
           },
         });
+        if (ruleRepair?.stalled.length) {
+          await publish('failed');
+          return incomplete('RULE_REPAIR_STALLED', {
+            ruleRepair: ruleRepair.state,
+            stalledScopes: ruleRepair.stalled,
+            ...(childFeedback ? { failure: childFeedback } : {}),
+            message:
+              '同一区块连续两轮检查的违规未改善，已停止子任务重复修复。主Agent读取contextPath及现有文件，核对实际源码引用与资源清单后定点接管；保留失败结果，不能把交接当作验收通过，也不要原样重派。',
+          });
+        }
         if (!production && Buffer.byteLength(child.output) > subagentLimits.outputBytes)
           throw new Error('DEEP_SUBAGENT_OUTPUT_LIMIT');
         if (production && (await inspectDelivery()).problems.length > 0) {
@@ -1177,7 +1313,6 @@ export async function runAgent(input: AgentRunInput): Promise<{
               '子任务已在原上下文尝试补交，仍有缺口或无持久化进展；已停止自动补交，保留原上下文及文件。不要重新全量扫描，按delivery.problems核对剩余项。',
           });
         }
-        await publish('completed');
         const result = production
           ? JSON.stringify({
               success: true,
@@ -1190,6 +1325,9 @@ export async function runAgent(input: AgentRunInput): Promise<{
             })
           : child.output;
         await progress?.complete(result);
+        await publish('completed', undefined, {
+          delivery: { success: true, files: [...saved], missingFiles: [] },
+        });
         return result;
       } catch (error) {
         /** 最近一次纠错可能已经修复，不能拿旧工具反馈解释当前未知异常。 */
@@ -1285,7 +1423,11 @@ export async function runAgent(input: AgentRunInput): Promise<{
     if (!input.subagentProgress || !progress) return executeChild();
     const job = { agentId: event.agentId, key, role, writePaths, ...(nodeId ? { nodeId } : {}) };
     const persist = {
-      started: () => subagentBoundary('start', () => progress.startBackground(key, task)),
+      started: () =>
+        subagentBoundary('start', async () => {
+          await progress.startBackground(key, task);
+          await input.recordSubagent!({ ...event, status: 'queued' });
+        }),
       settled: (result: string) =>
         subagentBoundary('settle', () => progress.settleBackground(result)),
       /** 下一模型节点的检查点屏障之后标记已交付；崩溃保留尚未收取的结果。 */
@@ -1329,7 +1471,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           tool((params: DelegationInput) => track(launchDelegation(params)), {
             name: 'delegate_agent',
             description:
-              '有持久化子任务时本工具只启动后台工作并返回accepted/agentId，尚未完成。主Agent继续实现自己的区域，为独立子区块保留接口/占位；需要子产物或进行组合、全局检查、预览前用wait_subagents(wait=true)收集结果，不要立刻等待或循环查状态。局部失败返回handoff和resumeAgentId；优先沿用原role/nodeId/writePaths并传resumeAgentId恢复，接管前读取contextPath，不丢弃已有进度。委派独立子Agent：rule_scan扫描规则并保存rule-hits.json；ui仅为真实sub-图层生成区块源码和assets.txt，必须提供nodeId；无sub-整页由主Agent自己出码，Rule-Scan页面根虚拟block不允许委派ui；writePaths列出本次允许保存的全部精确相对文件路径。design/review仍只读。所有子Agent不继承聊天历史、不递归或运行任意脚本，独立且writePaths不重叠的委派可同轮并行调用，最多两个同时执行，共享总预算；UI子Agent须对授权blocks/<alias>目录执行check_rules(block)，修复后重新检查；不能merge或检查越界目录。父Agent只负责自己的区域与组合，最后一次机械merge不重复深入子区域语义校验；全局单agent复验仅用户主动请求时执行。已知框架检查需要区块目录，与精确writePaths不兼容时保守拒绝，不能扩大写权限。task最多8000个UTF-8字节，中文通常每字3字节；只给目标nodeId、h5/rn、Skill/配置/全局清单/缓存/报告路径及必要约束，不复制源码、规则正文或节点JSON，详情由子Agent读取；rule_scan按rules/README.md原文读取全部规则（不硬编码数量），ui读取扫描报告落实assets.txt消费证明；内层sub返回父级继续派发。',
+              '有持久化子任务时本工具只启动后台工作并返回accepted/agentId，尚未完成。主Agent继续实现自己的区域，为独立子区块保留接口/占位；需要子产物或进行组合、全局检查、预览前用wait_subagents(wait=true)收集结果，不要立刻等待或循环查状态。局部失败返回handoff和resumeAgentId；优先沿用原role/nodeId/writePaths并传resumeAgentId恢复，接管前读取contextPath，不丢弃已有进度。委派独立子Agent：rule_scan扫描规则并保存rule-hits.json；ui仅为真实sub-图层生成区块源码和assets.txt，必须提供nodeId；无sub-整页由主Agent自己出码，Rule-Scan页面根虚拟block不允许委派ui；writePaths列出本次允许保存的全部精确相对文件路径。design/review仍只读。所有子Agent不继承聊天历史、不递归或运行任意脚本，独立且writePaths不重叠的委派可同轮并行调用，最多两个同时执行，共享总预算；UI子Agent须对授权blocks/<alias>目录执行check_rules(block)，修复后重新检查；同一违规连续两轮未改善以RULE_REPAIR_STALLED交回，父级定点接管，不原样重派；不能merge或检查越界目录。父Agent只负责自己的区域与组合，最后一次机械merge不重复深入子区域语义校验；全局单agent复验仅用户主动请求时执行。已知框架检查需要区块目录，与精确writePaths不兼容时保守拒绝，不能扩大写权限。task最多8000个UTF-8字节，中文通常每字3字节；只给目标nodeId、h5/rn、Skill/配置/全局清单/缓存/报告路径及必要约束，不复制源码、规则正文或节点JSON，详情由子Agent读取；rule_scan按rules/README.md原文读取全部规则（不硬编码数量），ui读取扫描报告落实assets.txt消费证明；内层sub返回父级继续派发。',
             schema: z.object({
               role: z.enum(['design', 'review', 'rule_scan', 'ui']),
               resumeAgentId: z.string().uuid().nullable().optional(),
@@ -1487,6 +1629,16 @@ export async function runAgent(input: AgentRunInput): Promise<{
     requestAttempts = 0,
   ): Promise<AIMessage> {
     await flushBackgroundObservations();
+    if (!input.specialist) {
+      const previewFeedback = await input.tools.preview?.feedback?.();
+      if (previewFeedback) {
+        const note = new HumanMessage(previewFeedback);
+        request = {
+          ...request,
+          messages: [...request.messages, input.transformMessage?.(note) ?? note],
+        };
+      }
+    }
     await beforeRequest();
     request = {
       ...request,
@@ -1541,15 +1693,18 @@ export async function runAgent(input: AgentRunInput): Promise<{
             throw error;
           }
         },
-        input.onModelActivity,
+        publishModelActivity,
         signal,
         (error) => {
           retry = turns < input.maxTurns ? modelRetryPlan(error, requestAttempts) : undefined;
           return retry;
         },
-        decision
-          ? { requestedReasoningEffort: decision.effort, reasoningEscalated: decision.escalated }
-          : undefined,
+        {
+          retryIndex: requestAttempts,
+          ...(decision
+            ? { requestedReasoningEffort: decision.effort, reasoningEscalated: decision.escalated }
+            : {}),
+        },
       );
     } catch (error) {
       await guard();
@@ -1839,7 +1994,9 @@ export async function runAgent(input: AgentRunInput): Promise<{
                             ? request.toolCall.args.resource
                             : undefined,
                       }
-                    : {},
+                    : name === 'edit_file'
+                      ? { detail: editArgumentDetail(request.toolCall.args) }
+                      : {},
                 ),
                 new RunExecutionError('TOOL_FAILED', {
                   stage: 'tool',
@@ -1938,17 +2095,13 @@ export async function runAgent(input: AgentRunInput): Promise<{
         signal,
         beforeRequest,
         recordUsage,
-        observe: (action, retry) =>
-          observeModelRequest(
-            'summary',
-            action,
-            input.onModelActivity,
-            signal,
-            retry,
-            input.reasoningModels
+        observe: (action, retry, retryIndex) =>
+          observeModelRequest('summary', action, publishModelActivity, signal, retry, {
+            retryIndex,
+            ...(input.reasoningModels
               ? { requestedReasoningEffort: 'low', reasoningEscalated: false }
-              : undefined,
-          ),
+              : {}),
+          }),
         transformMessage: input.transformMessage,
         overhead: () => promptOverhead,
         view: (messages) => completedWriteView(messages, input.contextBudgetTokens),
@@ -2007,6 +2160,15 @@ export async function runAgent(input: AgentRunInput): Promise<{
         ...(input.reasoningModels ? { stateSchema: reasoningStateSchema } : {}),
         wrapModelCall: guardModelCall,
       }),
+      ...(input.specialist === 'ui'
+        ? [
+            createRuleRepairMiddleware({
+              admissionId: input.deliveryAdmissionId,
+              reset: input.resetRuleRepair,
+              observe: (value, stalled) => input.onRuleRepair?.(value, stalled),
+            }),
+          ]
+        : []),
       ...(input.inspectDelivery
         ? [
             createDeliveryMiddleware({

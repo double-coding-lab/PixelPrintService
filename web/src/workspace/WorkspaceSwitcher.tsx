@@ -34,17 +34,20 @@ export default function WorkspaceSwitcher({
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const [open, setOpen] = useState(false);
-  const [selectedName, setSelectedName] = useState('');
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+  const currentWorkspace =
+    list.rows.find((workspace) => workspace.workspaceId === selected) ??
+    (selectedWorkspace?.workspaceId === selected ? selectedWorkspace : null);
   useEffect(() => {
     if (!selected) {
-      setSelectedName('');
+      setSelectedWorkspace(null);
       return;
     }
     const controller = new AbortController();
-    /** 翻页后仍保留当前工作区名称，不将名称写入地址栏。 */
+    /** 翻页后仍保留当前工作区名称与归属，不将名称写入地址栏。 */
     data<Workspace>(`/workspaces/${id(selected)}`, { signal: controller.signal }).then(
       (workspace) => {
-        if (!controller.signal.aborted) setSelectedName(workspace.name);
+        if (!controller.signal.aborted) setSelectedWorkspace(workspace);
       },
       () => {},
     );
@@ -220,9 +223,9 @@ export default function WorkspaceSwitcher({
                         <Icon name="folder" />
                         <span className="nav-item-name" title={workspace.name}>
                           {workspace.name}
+                          <WorkspaceAttribution workspace={workspace} />
                         </span>
                       </strong>
-                      <WorkspaceAttribution workspace={workspace} />
                     </button>
                     <button
                       className="row-delete icon-button"
@@ -267,8 +270,8 @@ export default function WorkspaceSwitcher({
         >
           <Icon name="folder" />
           <span>
-            {list.rows.find((workspace) => workspace.workspaceId === selected)?.name ??
-              (selected ? selectedName || '当前工作区' : '选择工作区')}
+            {currentWorkspace?.name ?? (selected ? '当前工作区' : '选择工作区')}
+            {currentWorkspace && <WorkspaceAttribution workspace={currentWorkspace} />}
           </span>
           <Icon name="chevron" />
         </button>

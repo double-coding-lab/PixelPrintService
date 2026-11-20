@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { decisionInstructions } from './decisions';
 import { modelActivitySchema, type ModelActivity } from './agent/modelActivity';
 import { updateModelUsage } from './agent/usage';
@@ -31,6 +32,7 @@ const modelSchema = z
     MODEL_BASE_URL: z.string().url(),
     MODEL_NAME: z.string().min(1),
     contextBudgetTokens: z.number().int().positive(),
+    requestTimeoutMs: z.number().int().min(1000).max(600000).default(180000),
     reasoningPolicy: z.enum(['adaptive', 'provider-default']).optional(),
     /** 兼容旧快照；单次输出上限已交由模型网关决定，读取时丢弃。 */
     maxOutputTokens: z.unknown().optional(),
@@ -157,12 +159,16 @@ export function createRunPersistence(
           throw new Error('DEEP_CHECKPOINT_RESUME_INVALID');
         const { entries, repaired } = interaction
           ? {
-              entries: await (mysql.models.D2cTimeline as typeof D2cTimeline).findAll({
-                where: { sessionId: session.sessionId },
-                order: [['seq', 'ASC']],
-                transaction,
-                lock: transaction.LOCK.UPDATE,
-              }),
+              entries: await findOrderedRows(
+                mysql.models.D2cTimeline as typeof D2cTimeline,
+                'seq',
+                {
+                  where: { sessionId: session.sessionId },
+                  order: [['seq', 'ASC']],
+                  transaction,
+                  lock: transaction.LOCK.UPDATE,
+                },
+              ),
               repaired: false,
             }
           : await repairToolHistory(mysql, session, transaction);
@@ -190,7 +196,7 @@ export function createRunPersistence(
             ),
         );
         const blocked = legacy.length
-          ? await runs.findAll({
+          ? await findOrderedRows(runs, 'runId', {
               where: {
                 sessionId: lease.sessionId,
                 resourceRevisionId: run.resourceRevisionId,

@@ -1,3 +1,4 @@
+import PhonePreview, { PhonePreviewButton, usePhonePreview } from './PhonePreview';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Segmented } from 'antd';
 import { data, errorMessage, id } from './api';
@@ -112,6 +113,7 @@ export default function PreviewPanel({
       : null;
   const ticket =
     preview && ticketState?.url.split('/')[2] === id(preview.previewId) ? ticketState : null;
+  const phone = usePhonePreview(active && !!ticket && !expired && !closed);
   const inspector = usePreviewInspector(
     `${versionId}:${selectedEntry}:${ticket?.url ?? ''}:${width}`,
     active && !!ticket && !expired && !closed,
@@ -346,6 +348,7 @@ export default function PreviewPanel({
             {closed ? '显示预览' : '刷新预览'}
           </Button>
           <PreviewInspectorButton inspector={inspector} />
+          <PhonePreviewButton preview={phone} />
           <Segmented
             aria-label="预览宽度"
             value={width}
@@ -364,17 +367,19 @@ export default function PreviewPanel({
         <Alert type="warning" title="预览票据已到期，请手动点击刷新预览" showIcon />
       )}
       {ticket && !expired && (
-        <div className="version-preview-viewport">
-          <iframe
-            key={`${ticket.url}:${width}`}
-            ref={inspector.frameRef}
-            title="已保存版本浏览器预览"
-            src={ticket.url}
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
-            style={{ width: width === 'auto' ? '100%' : width }}
-          />
-        </div>
+        <PhonePreview preview={phone}>
+          <div className="version-preview-viewport">
+            <iframe
+              key={`${ticket.url}:${width}`}
+              ref={inspector.frameRef}
+              title="已保存版本浏览器预览"
+              src={ticket.url}
+              sandbox="allow-scripts"
+              referrerPolicy="no-referrer"
+              style={{ width: width === 'auto' ? '100%' : width }}
+            />
+          </div>
+        </PhonePreview>
       )}
     </section>
   );

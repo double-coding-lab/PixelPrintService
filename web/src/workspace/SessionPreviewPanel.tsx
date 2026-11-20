@@ -1,3 +1,4 @@
+import PhonePreview, { PhonePreviewButton, usePhonePreview } from './PhonePreview';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Segmented, Skeleton, Spin } from 'antd';
 import { data, errorMessage, id } from './api';
@@ -85,6 +86,7 @@ export default function SessionPreviewPanel({
   const [shown, setShown] = useState<Frame | null>(null);
   const [incoming, setIncoming] = useState<Frame | null>(null);
   const [width, setWidth] = useState<string | number>(375);
+  const phone = usePhonePreview(active && !!shown);
   const watcher = useRef<ReturnType<typeof watchSessionPreview> | null>(null);
   const ready = state?.current?.status === 'ready' ? state.current : state?.lastReady;
   const building = previewBuilding(state);
@@ -183,6 +185,7 @@ export default function SessionPreviewPanel({
           刷新
         </Button>
         <PreviewInspectorButton inspector={inspector} />
+        <PhonePreviewButton preview={phone} />
         <Segmented
           size="small"
           aria-label="当前预览宽度"
@@ -248,16 +251,18 @@ export default function SessionPreviewPanel({
             </div>
           ))}
         <PreviewInspector inspector={inspector} onLocateSource={onLocateSource} />
-        <SessionPreviewFrames
-          inspectorRef={inspector.frameRef}
-          shown={shown}
-          incoming={incoming}
-          width={width}
-          onReady={(frame) => {
-            setShown(frame);
-            setIncoming(null);
-          }}
-        />
+        <PhonePreview preview={phone}>
+          <SessionPreviewFrames
+            inspectorRef={inspector.frameRef}
+            shown={shown}
+            incoming={incoming}
+            width={width}
+            onReady={(frame) => {
+              setShown(frame);
+              setIncoming(null);
+            }}
+          />
+        </PhonePreview>
       </div>
     </section>
   );

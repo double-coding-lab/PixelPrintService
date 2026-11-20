@@ -17,6 +17,21 @@
     "执行诊断",
     "checkpointPayload",
     "writePayload",
-    "检查点占用"
+    "检查点占用",
+    "子模型超时",
+    "模型请求失败",
+    "SDK超时",
+    "有限重试",
+    "重复修复",
+    "无进展",
+    "RULE_REPAIR_STALLED",
+    "图片证据",
+    "子任务用量",
+    "子Agent诊断",
+    "规则检查变化",
+    "UI_PREREQUISITES_REQUIRED",
+    "区块报告",
+    "expectedSha256",
+    "编译反馈"
   ]
 }

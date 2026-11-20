@@ -1,3 +1,4 @@
+import { findOrderedPage } from '../utils/orderedRead';
 import { randomUUID } from 'node:crypto';
 import { Op, type Sequelize, type Transaction } from 'sequelize';
 import type { D2cWorkspace } from '@/models/D2cWorkspace';
@@ -366,7 +367,7 @@ export function createWorkspaceService(mysql: Sequelize, options: WorkspaceServi
         !Number.isSafeInteger((page - 1) * pageSize)
       )
         throw new WorkspaceError(400, 'INVALID_PAGE', '分页参数无效');
-      const { rows, count } = await workspaces.findAndCountAll({
+      const { rows, count } = await findOrderedPage(workspaces, 'workspaceId', {
         where: await visibleWorkspaceWhere(mysql, userId, filter),
         order: [
           ['createdAt', 'DESC'],

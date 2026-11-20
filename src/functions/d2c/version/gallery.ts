@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { createHash } from 'node:crypto';
 import { Op, type Sequelize } from 'sequelize';
 import type { D2cVersion } from '@/models/D2cVersion';
@@ -113,7 +114,7 @@ export function createGalleryService(
         ...(scope === 'mine' ? { createdUserId: userId } : {}),
         ...(workspaceIds ? { workspaceId: { [Op.in]: workspaceIds } } : {}),
       };
-      const rows = await versions.findAll({
+      const rows = await findOrderedRows(versions, 'versionId', {
         where,
         order: [
           ['createdAt', 'DESC'],
@@ -127,7 +128,10 @@ export function createGalleryService(
     /** 版本详情与冻结文件清单不读取源会话，也不公开原始模型上下文。 */
     async get(userId: string, versionId: string) {
       const row = await ready(userId, versionId);
-      const rows = await files.findAll({ where: { versionId }, order: [['pathHash', 'ASC']] });
+      const rows = await findOrderedRows(files, 'pathHash', {
+        where: { versionId },
+        order: [['pathHash', 'ASC']],
+      });
       return {
         ...metadata(row),
         files: rows.filter((file) => file.kind !== 'internal').map(fileMetadata),

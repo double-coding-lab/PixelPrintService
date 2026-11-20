@@ -4,8 +4,8 @@
 // 期望: assets.txt 有切图记录 且 产物引用(<Image>/require/uri)
 // 保守: RECTANGLE/ELLIPSE/LINE 等可 style 化的简单形状不计入「必切」信号;阈值 ≥3 真矢量
 
-import fs from 'node:fs';
-import path from 'node:path';
+import { loadAssetEvidence } from '../lib/assetEvidence.mjs';
+import { buildNodeIdToStyleKey } from '../lib/nodeIdToStyleKey.mjs';
 import { collectRuleBodies } from '../lib/styleMatch.mjs';
 
 export const id = 'R03';
@@ -21,7 +21,9 @@ const HARD_VECTOR_THRESHOLD = 3;
 
 export function check({ cache, product, classMap }) {
   const violations = [];
-  const assetsText = readAssets(product);
+  const evidence = loadAssetEvidence(product);
+  product = evidence.product;
+  classMap = buildNodeIdToStyleKey(product.jsx);
 
   for (const [nodeId, node] of Object.entries(cache.nodes)) {
     if (node._inBakedSubtree || node._hidden || node._templateDup) continue;
@@ -32,7 +34,7 @@ export function check({ cache, product, classMap }) {
     if (!stat.ok) continue;
     if (stat.hardVectorCount < HARD_VECTOR_THRESHOLD) continue;
 
-    const inAssets = assetsText.includes(nodeId);
+    const inAssets = evidence.hasNode(nodeId);
     const productRef = mentionsAsset(product, nodeId, classMap);
     if (!inAssets && !productRef) {
       violations.push({
@@ -72,15 +74,6 @@ function scanSubtree(root) {
     if (Array.isArray(c.children)) stack.push(...c.children);
   }
   return { ok, hardVectorCount };
-}
-
-function readAssets(product) {
-  try {
-    const p = path.join(product.root, 'assets.txt');
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
-  } catch {
-    return '';
-  }
 }
 
 function mentionsAsset(product, nodeId, classMap) {

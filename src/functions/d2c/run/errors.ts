@@ -1,3 +1,4 @@
+import { databaseDiagnostics } from '@/common/databaseDiagnostics';
 import {
   SliceDiagnosticError,
   sliceDiagnosticSchema,
@@ -202,6 +203,9 @@ export const frameworkErrorCodes = [
 export type FrameworkCode = (typeof frameworkErrorCodes)[number];
 const frameworkCodeSchema = z.enum(frameworkErrorCodes);
 const errorTypeSchema = z.enum([
+  'APIConnectionTimeoutError',
+  'APIConnectionError',
+  'APIUserAbortError',
   'Error',
   'TypeError',
   'RangeError',
@@ -315,6 +319,9 @@ export type RunFailureReport = {
       subagentRole?: SubagentExecutionContext['role'];
       subagentPhase?: SubagentExecutionContext['phase'];
       causeCode?: string;
+      databaseCode?: string;
+      databaseErrno?: number;
+      databaseSqlState?: string;
       statusCode?: number;
       exitCode?: number;
       location?: string;
@@ -394,7 +401,7 @@ export function diagnoseRunFailure(
   let current = error;
   let classified: RunExecutionError | undefined;
   const seen = new Set<unknown>();
-  const diagnostics: RunFailureReport['diagnostics'] = {};
+  const diagnostics: RunFailureReport['diagnostics'] = databaseDiagnostics(error);
   const genericCodes = new Set<FailureCode>([
     'EXECUTION_FAILED',
     'MODEL_REQUEST_FAILED',
@@ -515,7 +522,14 @@ export function diagnoseRunFailure(
     const frameworkCode = framework.success ? framework : frameworkCodeSchema.safeParse(value.code);
     if (frameworkCode.success) diagnostics.frameworkCode = frameworkCode.data;
     const errorType = errorTypeSchema.safeParse(
-      current instanceof StorageOperationError ? 'StorageOperationError' : value.name,
+      current instanceof StorageOperationError
+        ? 'StorageOperationError'
+        : current instanceof Error &&
+            ['APIConnectionTimeoutError', 'APIConnectionError', 'APIUserAbortError'].includes(
+              current.constructor.name,
+            )
+          ? current.constructor.name
+          : value.name,
     );
     if (errorType.success) diagnostics.errorType = errorType.data;
     const status = value.statusCode ?? value.status;

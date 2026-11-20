@@ -1,6 +1,7 @@
 import './community.css';
 import './editWorkspace.css';
-import { useEffect, useState } from 'react';
+import './conversationRound.css';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Pagination, Skeleton } from 'antd';
 import { data, errorMessage, id } from './api';
 import {
@@ -12,11 +13,12 @@ import {
   type SharedSession,
   type PersonalWork,
 } from './sharing';
-import type { SessionDiagnostics, TimelineEntry, TimelinePage } from './types';
+import type { SessionDiagnostics, TimelineEntry } from './types';
 import { mergeTimeline, describeEvent } from './timeline';
 import { groupConversationRounds } from './roundProjection';
 import ConversationRound from './ConversationRound';
-import MarkdownMessage from '../components/MarkdownMessage';
+import MarkdownMessage, { safeMarkdownImageUrl } from '../components/MarkdownMessage';
+import { readPublicHistory } from './communityHistory';
 import MessageImages from './MessageImages';
 import EditWorkspace, { EditWorkspaceSurface } from './EditWorkspace';
 import { diagnosticNumber, diagnosticTokens, totalDuration } from './DiagnosticsPanel';
@@ -70,6 +72,9 @@ export function PublicSession({
   if (!detail) return <Skeleton active />;
   return (
     <SessionReadRoot.Provider value={root}>
+      <div className="community-detail-back">
+        <Button onClick={onBack}>← 返回广场</Button>
+      </div>
       <div className="community-detail-heading">
         <div className="community-detail-identity">
           <h2>{detail.name}</h2>
@@ -78,7 +83,6 @@ export function PublicSession({
           </span>
         </div>
         <div className="community-actions">
-          <Button onClick={onBack}>返回广场</Button>
           <Button onClick={() => setPanel('usage')}>用量</Button>
           <Button onClick={() => setPanel('chat')}>查看对话</Button>
         </div>
@@ -99,7 +103,9 @@ export function PublicSession({
         size={760}
         className="community-detail-drawer"
       >
-        {panel === 'chat' && <PublicConversation root={root} detail={detail} shareId={shareId} />}
+        {panel === 'chat' && (
+          <PublicConversation key={root} root={root} detail={detail} shareId={shareId} />
+        )}
         {panel === 'usage' && <PublicUsage root={root} />}
       </Drawer>
     </SessionReadRoot.Provider>
@@ -117,64 +123,61 @@ function PublicConversation({
   shareId: string;
 }) {
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
-  const [previousSeq, setPreviousSeq] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
   const [pending, setPending] = useState(true);
   const [error, setError] = useState('');
-  const [failedCursor, setFailedCursor] = useState(0);
+  const [pages, setPages] = useState(0);
   const [reload, setReload] = useState(0);
-  const [request] = useState(() => ({ current: null as AbortController | null }));
-  async function load(beforeSeq = 0) {
-    if (request.current) return;
+  const cursor = useRef(0);
+  useEffect(() => {
     const controller = new AbortController();
-    request.current = controller;
     setPending(true);
     setError('');
-    try {
-      const page = await data<TimelinePage>(`${root}/timeline?beforeSeq=${beforeSeq}&limit=500`, {
-        signal: controller.signal,
-      });
-      if (controller.signal.aborted) return;
-      const before = page.previousSeq ?? page.entries[0]?.seq ?? 0;
-      if (page.hasMore && (!before || (beforeSeq > 0 && before >= beforeSeq)))
-        throw new Error('历史记录游标无效');
+    void readPublicHistory(root, cursor.current, controller.signal, (page, before) => {
       setEntries((current) => mergeTimeline(page.entries, current, detail.sessionId, Infinity));
-      setPreviousSeq(before);
-      setHasMore(page.hasMore);
-    } catch (reason) {
-      if (!controller.signal.aborted) {
-        setFailedCursor(beforeSeq);
-        setError(errorMessage(reason));
-      }
-    } finally {
-      if (!controller.signal.aborted) setPending(false);
-      if (request.current === controller) request.current = null;
-    }
-  }
-  useEffect(() => {
-    void load();
-    return () => {
-      request.current?.abort();
-      request.current = null;
-    };
-  }, [root, reload]);
+      cursor.current = before;
+      setPages((current) => current + 1);
+    }).then(
+      () => {
+        if (!controller.signal.aborted) setPending(false);
+      },
+      (reason) => {
+        if (!controller.signal.aborted) {
+          setError(errorMessage(reason));
+          setPending(false);
+        }
+      },
+    );
+    return () => controller.abort();
+  }, [root, detail.sessionId, reload]);
   return (
     <div className="community-conversation">
       <div className="community-conversation-actions">
-        {hasMore && (
-          <Button loading={pending} onClick={() => void load(previousSeq)}>
-            加载更早记录
-          </Button>
-        )}
-        <Button disabled={pending} onClick={() => setReload((n) => n + 1)}>
+        <span role="status" aria-live="polite">
+          {pending ? '正在自动读取对话' : error ? '读取已暂停' : '已读取全部对话'}
+          {` · ${pages} 页 · ${entries.length} 条记录`}
+        </span>
+        <Button
+          disabled={pending}
+          onClick={() => {
+            cursor.current = 0;
+            setPages(0);
+            setReload((n) => n + 1);
+          }}
+        >
           刷新对话
         </Button>
       </div>
       {error && (
         <Alert
           type="error"
+          showIcon
           title={error}
-          action={<Button onClick={() => void load(failedCursor)}>重试</Button>}
+          description="已读取的记录已保留，重试将从失败的分页继续。"
+          action={
+            <Button disabled={pending} onClick={() => setReload((n) => n + 1)}>
+              重试
+            </Button>
+          }
         />
       )}
       {pending && !entries.length && <Skeleton active />}
@@ -256,11 +259,7 @@ function PublicMessage({ entry }: { entry: TimelineEntry }) {
     <>
       <MessageImages attachments={entry.data.attachments} />
       {entry.kind === 'message' || entry.kind === 'text_delta' ? (
-        entry.data.role === 'user' ? (
-          <span className="event-content">{entry.data.text}</span>
-        ) : (
-          <MarkdownMessage text={entry.data.text ?? ''} />
-        )
+        <MarkdownMessage text={entry.data.text ?? ''} />
       ) : (
         <span className="event-content">{describeEvent(entry)}</span>
       )}
@@ -312,14 +311,13 @@ export default function CommunityPanel({
   kind,
   resourceId,
   onSelect,
-  onVersions,
   onDirty,
   onBusy,
 }: {
   kind: Kind;
   resourceId: string;
   onSelect: (value: string) => void;
-  onVersions: () => void;
+  onVersions?: () => void;
   onDirty?: (value: boolean) => void;
   onBusy?: (value: boolean) => void;
 }) {
@@ -353,18 +351,21 @@ export default function CommunityPanel({
     );
     return () => controller.abort();
   }, [kind, resourceId, page, reload]);
-  const title = kind === 'plaza' ? '广场' : '我的作品';
+  const title = kind === 'plaza' ? '广场' : '已保存作品';
   return (
     <section
       className={`works-panel community-panel${kind === 'plaza' && resourceId ? ' community-panel-detail' : ''}`}
     >
       <div className="works-heading">
-        <h1>{title}</h1>
-        <div className="community-actions">
+        <div className="works-heading-leading">
           {resourceId && kind !== 'plaza' && (
-            <Button onClick={() => onSelect('')}>返回{title}</Button>
+            <Button type="text" onClick={() => onSelect('')}>
+              ← 返回{title}
+            </Button>
           )}
-          {kind === 'my-works' && <Button onClick={onVersions}>暂存版本</Button>}
+          <h1>{title}</h1>
+        </div>
+        <div className="community-actions">
           {!resourceId && (
             <Button loading={loading} onClick={() => setReload((n) => n + 1)}>
               刷新
@@ -393,6 +394,14 @@ export default function CommunityPanel({
               const resource = 'shareId' in item ? item.shareId : item.workId;
               return (
                 <article className="work-card" key={resource}>
+                  {'shareId' in item && (
+                    <CommunityCover
+                      // coverUrl 由广场元数据提供，不额外扫描私有会话图片。
+                      url={item.coverUrl}
+                      name={item.name}
+                      onOpen={() => onSelect(resource)}
+                    />
+                  )}
                   <h2>
                     <Button type="link" onClick={() => onSelect(resource)}>
                       {item.name}
@@ -415,7 +424,18 @@ export default function CommunityPanel({
             })}
           </div>
           {list && !list.total && (
-            <Empty description={kind === 'plaza' ? '暂无公开会话' : '暂无作品'} />
+            <Empty
+              description={
+                kind === 'plaza' ? (
+                  '暂无公开会话'
+                ) : (
+                  <span>
+                    暂无已保存作品。前往<a href="/plaza">广场</a>打开作品并编辑，
+                    点击“保存为作品”后即可在这里查看。
+                  </span>
+                )
+              }
+            />
           )}
           {list && list.total > 12 && (
             <Pagination
@@ -429,5 +449,42 @@ export default function CommunityPanel({
         </>
       )}
     </section>
+  );
+}
+
+/** 封面沿用安全图片地址规则；原生按钮支持键盘打开，失效图片回退占位。 */
+function CommunityCover({
+  url,
+  name,
+  onOpen,
+}: {
+  url?: string | null;
+  name: string;
+  onOpen: () => void;
+}) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const src = safeMarkdownImageUrl(url);
+  return (
+    <button
+      type="button"
+      className="community-cover"
+      onClick={onOpen}
+      aria-label={`打开作品：${name}`}
+    >
+      {src && failedUrl !== src ? (
+        <img
+          src={src}
+          alt={`${name}运行截图`}
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailedUrl(src)}
+        />
+      ) : (
+        <span className="community-cover-placeholder">
+          <span aria-hidden="true">▧</span>
+          <span>暂无运行截图</span>
+        </span>
+      )}
+    </button>
   );
 }

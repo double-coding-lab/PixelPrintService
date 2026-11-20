@@ -1,3 +1,4 @@
+import { findOrderedRows, findOrderedOne } from '../utils/orderedRead';
 import { randomUUID } from 'node:crypto';
 import { Op, type Sequelize, type Transaction } from 'sequelize';
 import type { D2cTimeline } from '@/models/D2cTimeline';
@@ -36,7 +37,7 @@ export async function readMessageQueue(
   transaction?: Transaction,
   options: { lock?: boolean; runId?: string } = {},
 ) {
-  const rows = await (mysql.models.D2cTimeline as typeof D2cTimeline).findAll({
+  const rows = await findOrderedRows(mysql.models.D2cTimeline as typeof D2cTimeline, 'seq', {
     where: {
       sessionId,
       kind: 'stage',
@@ -272,7 +273,7 @@ export function createMessageQueueService(
     async promote(limit = 20) {
       const timeline = mysql.models.D2cTimeline as typeof D2cTimeline;
       /** Scan only persisted queue events. The cursor bounds each tick and wraps after exhaustion. */
-      const candidates = await timeline.findAll({
+      const candidates = await findOrderedRows(timeline, 'entryId', {
         where: {
           kind: 'stage',
           'displayPayload.action': 'message_queue',
@@ -321,7 +322,7 @@ export function createMessageQueueService(
             });
             if (!session) return;
             if (session.activeRunId || (await active(session, transaction))) return;
-            const latest = await runs.findOne({
+            const latest = await findOrderedOne(runs, 'runId', {
               where: { sessionId: session.sessionId },
               order: [
                 ['createdAt', 'DESC'],

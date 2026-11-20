@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import path from 'node:path';
 import type { PreviewDiagnostic } from './diagnostics';
 import { createHash } from 'node:crypto';
@@ -89,7 +90,7 @@ export async function sessionPreviewInput(
       });
   if (!session.target || !workspace?.activeResourceRevisionId)
     throw new SessionError(503, 'RESOURCE_UNAVAILABLE', '会话固定资源尚未就绪');
-  const rows = await (mysql.models.D2cFile as typeof D2cFile).findAll({
+  const rows = await findOrderedRows(mysql.models.D2cFile as typeof D2cFile, 'pathHash', {
     where: { sessionId: session.sessionId },
     transaction,
     order: [['pathHash', 'ASC']],

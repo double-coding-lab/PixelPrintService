@@ -49,8 +49,17 @@ function writablePath(role: SubagentRole, value: string): string {
   const name = value.split('/').at(-1)!;
   if (role === 'rule_scan') return name === 'rule-hits.json' ? value : denied();
   if (role !== 'ui') return denied(value);
+  if (name === 'rule-hits.json')
+    throw toolIssue(
+      'FILE_WRITE_NOT_ALLOWED',
+      'VALIDATION_FAILED',
+      { stage: 'validation' },
+      {
+        path: value,
+        detail: 'UI不能修改规则报告。将缺失报告交回主Agent，由rule_scan保存并收取结果后继续UI。',
+      },
+    );
   if (
-    name === 'rule-hits.json' ||
     /^(?:package(?:-lock)?\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?)$/i.test(
       name,
     ) ||
@@ -125,7 +134,24 @@ export function createSubagentTools(
     pendingRuleChecks: () => [...directories].filter((value) => !checked.has(value)),
     requiredRuleChecks: () => [...directories].filter((value) => !attempted.has(value)),
     list: tools.list,
-    read: tools.read,
+    read:
+      role !== 'ui'
+        ? tools.read
+        : async (relative, resource, offset, length) => {
+            if (resource && /(?:^|\/)bin\//.test(relative))
+              throw toolIssue(
+                'INVALID_ARGUMENT',
+                'VALIDATION_FAILED',
+                { stage: 'tool', tool: 'read_file' },
+                {
+                  path: relative,
+                  resource: true,
+                  detail:
+                    'UI实现请读取本区块rule-hits.json、rules中的规则说明和真实节点。检查器实现由主Agent排查，不通过阅读程序源码修复缺失报告。',
+                },
+              );
+            return tools.read(relative, resource, offset, length);
+          },
     outputPlan: tools.outputPlan,
     ...(role === 'ui' && tools.edit
       ? {

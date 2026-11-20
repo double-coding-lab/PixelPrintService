@@ -1,3 +1,4 @@
+import { databaseDiagnostics } from '@/common/databaseDiagnostics';
 import type { FastifyInstance } from 'fastify';
 
 declare module 'fastify' {
@@ -12,7 +13,10 @@ export function registerAccessLog(app: FastifyInstance) {
     await request.getUid();
   });
   app.addHook('onError', async (request, _reply, error) => {
-    app.logging.error({ message: 'HTTP request failed', errorName: error.name }, request);
+    app.logging.error(
+      { message: 'HTTP request failed', errorName: error.name, ...databaseDiagnostics(error) },
+      request,
+    );
   });
   app.addHook('onResponse', async (request, reply) => {
     app.logging.info(

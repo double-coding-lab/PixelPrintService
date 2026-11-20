@@ -63,6 +63,7 @@ export const modelConfigsSchema = z
       MODEL_NAME: z.string().trim().min(1),
       MODEL_API_KEY: secretReference,
       contextBudgetTokens: z.number().int().min(1024),
+      requestTimeoutMs: z.number().int().min(1000).max(600000).default(180000),
       reasoningPolicy: z.enum(['adaptive', 'provider-default']).optional(),
     }),
   )

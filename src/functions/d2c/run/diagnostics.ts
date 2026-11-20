@@ -1,3 +1,5 @@
+import { findOrderedRows } from '../utils/orderedRead';
+import { buildAgentDiagnostics } from './subagentDiagnostics';
 import { createHash } from 'node:crypto';
 import type { Sequelize } from 'sequelize';
 import { Op } from 'sequelize';
@@ -236,7 +238,7 @@ export async function readRunDiagnostics(
   if (runId && (!run || run.runId !== runId || run.sessionId !== sessionId))
     throw new SessionError(404, 'RUN_NOT_FOUND', '执行轮次不存在');
   const rows = run
-    ? await timeline.findAll({
+    ? await findOrderedRows(timeline, 'seq', {
         where: {
           sessionId,
           runId,
@@ -247,6 +249,45 @@ export async function readRunDiagnostics(
         limit: 201,
       })
     : [];
+  /** 分离模型元数据和子任务元数据窗口，避免工具噪声截断模型统计；不读取SDK正文。 */
+  const [modelRows, agentRows] = run
+    ? await Promise.all([
+        findOrderedRows(timeline, 'seq', {
+          where: { sessionId, runId, kind: 'model_status' },
+          attributes: ['seq', 'createdAt', 'displayPayload'],
+          order: [['seq', 'DESC']],
+          limit: 4001,
+        }),
+        findOrderedRows(timeline, 'seq', {
+          where: {
+            sessionId,
+            runId,
+            kind: 'stage',
+            'displayPayload.stage': 'subagent',
+            [Op.or]: [
+              {
+                'displayPayload.status': {
+                  [Op.in]: [
+                    'queued',
+                    'started',
+                    'completed',
+                    'failed',
+                    'tool_started',
+                    'tool_completed',
+                    'tool_feedback',
+                    'tool_failed',
+                  ],
+                },
+              },
+              { 'displayPayload.status': 'message', 'displayPayload.message.role': 'user' },
+            ],
+          },
+          attributes: ['seq', 'createdAt', 'displayPayload'],
+          order: [['seq', 'DESC']],
+          limit: 8001,
+        }),
+      ])
+    : [[], []];
   const hasMore = rows.length > 200;
   const steps = executionSteps(rows.slice(0, 200).reverse(), run?.status ?? 'unknown');
   const checkpoint = checkpoints
@@ -306,6 +347,16 @@ export async function readRunDiagnostics(
       })),
     current: active ? { type: active.type, name: active.name, startedAt: active.startedAt } : null,
     steps,
+    agentDiagnostics: buildAgentDiagnostics({
+      models: modelRows.slice(0, 4000).reverse(),
+      stages: agentRows.slice(0, 8000).reverse(),
+      status: run?.status ?? 'unknown',
+      finishedAt,
+      observedAt,
+      modelName:
+        typeof model === 'string' && /^[A-Za-z0-9_.:/-]{1,128}$/.test(model) ? model : null,
+      complete: modelRows.length <= 4000 && agentRows.length <= 8000,
+    }),
     hasMore,
     checkpoint: {
       available: !!savedAt,

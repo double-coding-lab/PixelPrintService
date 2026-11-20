@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { previewDiagnostic, previewFailureDiagnostic, previewFailureDetails } from './diagnostics';
 import { PreviewBuildError } from './runner';
 import { missingPreviewFile } from './session';
@@ -206,7 +207,7 @@ export function createPreviewService(
   async function inputs(row: D2cPreview, signal: AbortSignal, onFile?: (path: string) => void) {
     const rows = row.sessionId
       ? (row.buildManifest as Manifest).snapshot
-      : await versionFiles.findAll({
+      : await findOrderedRows(versionFiles, 'pathHash', {
           where: { versionId: row.versionId },
           order: [['pathHash', 'ASC']],
         });
@@ -381,7 +382,7 @@ export function createPreviewService(
           transaction,
         });
         if (!workspace || !session.target) return null;
-        const rows = await previews.findAll({
+        const rows = await findOrderedRows(previews, 'previewId', {
           where: { sessionId, runtimeRevision: runtimeRevision(session.target) },
           attributes: headAttributes,
           order: [
@@ -478,7 +479,7 @@ export function createPreviewService(
         );
         const revision = runtimeRevision(input.session.target!);
         const inputHash = sha(JSON.stringify([input.fingerprint, input.entryPath, revision]));
-        const rows = await previews.findAll({
+        const rows = await findOrderedRows(previews, 'previewId', {
           where: { sessionId },
           attributes: headAttributes,
           order: [
@@ -678,7 +679,7 @@ export function createPreviewService(
         if (entry?.path !== entryPath)
           throw new SessionError(422, 'INVALID_ENTRY', '版本中不存在该源码入口');
         const revision = runtimeRevision(version.target);
-        const existingRows = await previews.findAll({
+        const existingRows = await findOrderedRows(previews, 'previewId', {
           where: { versionId, status: { [Op.in]: ['queued', 'building', 'ready'] } },
           order: [['createdAt', 'DESC']],
           transaction,
@@ -729,7 +730,7 @@ export function createPreviewService(
       });
       if (entry?.path !== entryPath)
         throw new SessionError(422, 'INVALID_ENTRY', '版本中不存在该源码入口');
-      const rows = await previews.findAll({
+      const rows = await findOrderedRows(previews, 'previewId', {
         where: {
           versionId,
           runtimeRevision: runtimeRevision(version.target),

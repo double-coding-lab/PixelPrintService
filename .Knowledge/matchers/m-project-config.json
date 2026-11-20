@@ -15,6 +15,8 @@
     "配置生效",
     "textFileBytes",
     "写入上限",
-    "100MiB"
+    "100MiB",
+    "requestTimeoutMs",
+    "单次请求超时"
   ]
 }

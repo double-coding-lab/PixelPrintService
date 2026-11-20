@@ -5,8 +5,8 @@
 //        nodeId 或其 `-` 归一形出现在 jsx/style 即算引用——与 h5 同口径)
 // 排斥: x- 前缀忽略;baked/hidden/templateDup 跳过(禁 DOM 交 R17)
 
-import fs from 'node:fs';
-import path from 'node:path';
+import { loadAssetEvidence } from '../lib/assetEvidence.mjs';
+import { buildNodeIdToStyleKey } from '../lib/nodeIdToStyleKey.mjs';
 import { collectRuleBodies } from '../lib/styleMatch.mjs';
 
 export const id = 'R02';
@@ -16,8 +16,9 @@ export function check({ cache, product, classMap }) {
   const violations = [];
   const ignorePrefix = 'x-';
 
-  const assetsPath = path.join(product.root, 'assets.txt');
-  const assetsText = fs.existsSync(assetsPath) ? fs.readFileSync(assetsPath, 'utf8') : '';
+  const evidence = loadAssetEvidence(product);
+  product = evidence.product;
+  classMap = buildNodeIdToStyleKey(product.jsx);
 
   for (const [nodeId, node] of Object.entries(cache.nodes)) {
     if (!Array.isArray(node.fills) || node.fills.length === 0) continue;
@@ -28,7 +29,7 @@ export function check({ cache, product, classMap }) {
     if (node._hidden) continue;
     if (node._templateDup) continue;
 
-    const inAssets = assetsText.includes(nodeId);
+    const inAssets = evidence.hasNode(nodeId);
     const productMention = mentionsNodeIdAsset(product, nodeId, classMap);
 
     if (!inAssets && !productMention.hit) {

@@ -254,32 +254,34 @@ test(
     page.on('pageerror', (error: Error) => pageErrors.push(error.stack ?? error.message));
     const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
     await page.goto(`${origin}/?view=plaza`);
-    await page.getByRole('button', { name: '查看会话', exact: true }).click();
+    await page.getByRole('button', { name: '打开作品', exact: true }).click();
+    await page.getByRole('textbox', { name: '测试副本源码' }).waitFor();
+    assert.equal(new URL(page.url()).pathname, '/plaza/share');
+    await page.goBack();
+    await page.getByRole('button', { name: '打开作品', exact: true }).waitFor();
+    assert.equal(new URL(page.url()).pathname, '/plaza');
+    await page.goForward();
+    await page.getByRole('textbox', { name: '测试副本源码' }).waitFor();
+    await page.reload();
+    await page.getByRole('textbox', { name: '测试副本源码' }).waitFor();
+    await page.getByRole('button', { name: '查看对话', exact: true }).click();
     await page.getByText('页面已生成', { exact: true }).waitFor();
     assert.equal(await page.locator('.composer').count(), 0);
     assert.equal(await page.getByRole('button', { name: '应用到当前工作区' }).count(), 0);
-    await page.getByRole('button', { name: '加载更早记录' }).click();
     await page.getByText('更早的需求', { exact: true }).waitFor();
     await page.locator('.conversation-round-process summary').first().click();
     await page.getByRole('button', { name: /查看子 Agent/ }).click();
     await page.locator('.subagent-drawer').waitFor();
     await page.locator('.subagent-drawer .ant-drawer-close').click();
-    await page.getByRole('tab', { name: '产物 (2)', exact: true }).click();
-    await page.getByText('export default 1;', { exact: false }).waitFor();
-    await page.getByRole('combobox', { name: '选择产物' }).click();
-    await page
-      .locator('.ant-select-item-option-content')
-      .getByText('image.png', { exact: true })
-      .click();
-    await page.locator('img[src="/api/d2c/plaza/sessions/share/files/image"]').waitFor();
+    await page.locator('img[src="/api/d2c/plaza/sessions/share/attachments/attachment"]').waitFor();
+    await page.locator('.community-detail-drawer .ant-drawer-close').click();
     assert.equal(
       calls.some((call) => /^\/sessions\//.test(call.path)),
       false,
     );
-    await page.getByRole('button', { name: '在线编辑', exact: true }).click();
     await page.getByRole('textbox', { name: '测试副本源码' }).fill('my independent edit');
     assert.equal(await page.getByRole('button', { name: '应用到当前工作区' }).count(), 0);
-    await page.getByRole('button', { name: '保存到我的作品', exact: true }).click();
+    await page.getByRole('button', { name: '保存为作品', exact: true }).click();
     await page.getByRole('link', { name: '查看作品', exact: true }).waitFor();
     assert.equal(work.revision, 1);
     assert.ok(
@@ -290,7 +292,7 @@ test(
     await page.getByRole('link', { name: '查看作品', exact: true }).click();
     await page.getByRole('button', { name: '再次编辑', exact: true }).click();
     await page.getByRole('textbox', { name: '测试副本源码' }).fill('reedit my work');
-    await page.getByRole('button', { name: '保存到我的作品', exact: true }).click();
+    await page.getByRole('button', { name: '保存为作品', exact: true }).click();
     await page.getByRole('link', { name: '查看作品', exact: true }).waitFor();
     assert.equal(work.revision, 2);
     assert.ok(
@@ -304,7 +306,7 @@ test(
     );
     await page.getByRole('button', { name: '退出', exact: true }).click();
     // 同一作品库集合能重新找到保存副本。
-    await page.getByRole('button', { name: '返回我的作品', exact: true }).click();
+    await page.getByRole('button', { name: '← 返回已保存作品', exact: true }).click();
     await page.getByRole('button', { name: '我的副本', exact: true }).waitFor();
     // 发布开关只在服务端判定创建者时出现。
     await page.goto(`${origin}/?workspace=ws&session=original`);

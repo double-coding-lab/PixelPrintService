@@ -23,6 +23,13 @@
     "代码存储",
     "存储占用",
     "d2c_file",
+    "ER_OUT_OF_SORTMEMORY",
+    "大字段排序",
+    "排序内存",
+    "LONGTEXT",
+    "导图缓存",
+    "补切改名",
+    "FIGMA_EXPORT_FILE_MISSING",
     "切图诊断",
     "Figma请求失败"
   ]

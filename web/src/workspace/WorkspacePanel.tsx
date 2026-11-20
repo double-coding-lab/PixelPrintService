@@ -237,11 +237,11 @@ export default function WorkspacePanel({
               }}
             >
               <strong>{workspace?.name ?? '工作区'}</strong>
+              {workspace && <WorkspaceAttribution workspace={workspace} />}
             </button>
           )}
           <span className="context-slash">/</span>
           <span>会话</span>
-          {workspace && <WorkspaceAttribution workspace={workspace} />}
           {workspace?.isOwner && (
             <Button
               type="text"

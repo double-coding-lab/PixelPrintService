@@ -59,6 +59,8 @@ function fixture() {
   function match(row: Row, where: Row = {}): boolean {
     return Reflect.ownKeys(where).every((key) => {
       if (key === Op.and) {
+        const conditions = (where as Record<symbol, any>)[key];
+        if (Array.isArray(conditions)) return conditions.every((part: Row) => match(row, part));
         assert.match(
           (where as Record<symbol, any>)[key].val,
           /EXISTS .*d2c_session.*d2c_workspace.*deletedAt.*D2cSessionShare/s,
@@ -102,7 +104,16 @@ function fixture() {
   function project(row: Row, options: Row): Row {
     const attrs = options.attributes;
     const projected = Array.isArray(attrs)
-      ? Object.fromEntries(attrs.map((key: string) => [key, row[key]]))
+      ? Object.fromEntries(
+          attrs.map((key: string | [unknown, string]) => {
+            if (typeof key === 'string') return [key, row[key]];
+            if (key[1] !== 'displayPayload') return [key[1], row[key[1]]];
+            const value = row.displayPayload;
+            if (row.kind !== 'stage' || value?.stage !== 'subagent') return [key[1], value];
+            const { message: _message, reasoning: _reasoning, ...overview } = value;
+            return [key[1], overview];
+          }),
+        )
       : { ...row };
     return Object.assign(projected, {
       async update(values: Row) {
@@ -347,6 +358,7 @@ test('metadata returns only explicit latest display fields', async () => {
     Object.keys(value).sort(),
     [
       'shareId',
+      'coverUrl',
       'sessionId',
       'name',
       'target',
@@ -391,7 +403,8 @@ test('list paginates and counts alive rows in DB, queries bounded page metadata 
   assert.equal(result.page, 2);
   assert.equal(result.pageSize, 12);
   assert.equal(result.items[0].sessionId, 'session-27');
-  assert.equal(f.queries.length, 4);
+  assert.equal(f.queries.length, 5);
+  assert.ok(result.items.every((item) => item.coverUrl === null));
   const query = f.queries[0];
   assert.equal(query.operation, 'findAndCountAll');
   assert.equal(query.options.limit, 12);

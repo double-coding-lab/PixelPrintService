@@ -113,7 +113,7 @@ export function VersionEntry({
         {version.status === 'ready' && (
           <Button
             size="small"
-            href={`?view=works&version=${id(version.versionId)}`}
+            href={`/works/versions/${id(version.versionId)}`}
             target="_blank"
             rel="noopener noreferrer"
           >

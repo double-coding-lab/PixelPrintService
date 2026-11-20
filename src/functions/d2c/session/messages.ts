@@ -1,3 +1,4 @@
+import { findOrderedOne } from '../utils/orderedRead';
 import { automaticRecoveryPlan } from '../run/automaticRecovery';
 import { readMessageQueue } from './queue';
 import { linkMessageAttachments, validateAttachmentIds } from './attachments';
@@ -79,7 +80,7 @@ export function createMessageService(
     content?: string,
     attachmentIds?: string[],
   ) {
-    const entry = await timeline.findOne({
+    const entry = await findOrderedOne(timeline, 'seq', {
       where: {
         sessionId: run.sessionId,
         runId: run.runId,
@@ -269,7 +270,7 @@ export function createMessageService(
             : null;
           /** 团队共享会话不共享个人凭据，改由当前发起人的有效凭据执行。 */
           if (credential?.ownerUserId !== userId)
-            credential = await credentials.findOne({
+            credential = await findOrderedOne(credentials, 'credentialId', {
               where: { ownerUserId: userId, kind: 'figma', status: 'active' },
               order: [['revision', 'DESC']],
               transaction,
@@ -324,6 +325,7 @@ export function createMessageService(
               MODEL_BASE_URL: model.MODEL_BASE_URL,
               MODEL_NAME: model.MODEL_NAME,
               contextBudgetTokens: model.contextBudgetTokens,
+              requestTimeoutMs: model.requestTimeoutMs ?? 180000,
               ...(model.reasoningPolicy !== undefined
                 ? { reasoningPolicy: model.reasoningPolicy }
                 : {}),

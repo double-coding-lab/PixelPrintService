@@ -7,8 +7,44 @@
   max-width: 100%;
 }
 .collapsible-nav.session-navigation {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 103px);
+  min-height: 0;
+  overflow: hidden;
   background: #fafafa;
   border-right: 1px solid var(--line);
+}
+/** 标题、搜索和分页保留在栏内；只有超出的会话列表滚动。 */
+.session-navigation .nav-toggle-bar {
+  flex-shrink: 0;
+}
+.session-navigation .nav-contents {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+.session-navigation .sessions {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.session-navigation .sessions > * {
+  flex-shrink: 0;
+}
+.session-navigation .sessions > .item-list {
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
 }
 /** 限制会话标题的 Grid/Flex 最小宽度，长名称省略且不挤占操作按钮。 */
 .session-navigation .item-list,
@@ -107,6 +143,13 @@
   padding: 10px 7px;
 }
 @media (max-width: 950px) {
+  .collapsible-nav.session-navigation {
+    position: static;
+    height: min(420px, 50dvh);
+  }
+  .collapsible-nav.session-navigation[data-collapsed='true'] {
+    height: auto;
+  }
   .workspace-body .session-layout.nav-collapsed {
     grid-template-columns: minmax(0, 1fr);
   }
