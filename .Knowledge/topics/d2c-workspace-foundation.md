@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 7
+revision: 8
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -63,3 +63,8 @@ confidence: inferred
 - ER_OUT_OF_SORTMEMORY可由带大字段的查询排序触发，不能仅据STORAGE_FAILED判断为写库失败。后台和HTTP日志保留白名单数据库码、数值错误号及合法SQLState；SQL、绑定值、凭据和异常正文保持私有。
 
 跨会话队列候选扫描使用全局唯一的entryId作为分页与正文回填标识；只有已按sessionId限定范围的时间线读取才可使用seq，避免不同会话同序号记录相互覆盖。
+
+## 会话导航高度与滚动
+
+- web/src/workspace/navigation.css 将桌面会话栏限制为视口减顶部两层栏的可用高度；标题、创建、搜索和分页保留在栏内，长会话列表通过纵向滚动访问。导航内容保持挂载，列表滚动不带动外层页面。
+- 950px及以下会话栏改为正常文档流，高度取420px与半屏高度的较小值；折叠后仅保留操作栏。极短窗口中导航内容可滚动，保留控件访问能力。浏览器以真实样式、二十条隔离示例数据核验桌面1280×720和窄屏390×600，不代表线上业务联调。
