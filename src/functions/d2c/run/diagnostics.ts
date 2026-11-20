@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { buildAgentDiagnostics } from './subagentDiagnostics';
 import { createHash } from 'node:crypto';
 import type { Sequelize } from 'sequelize';
@@ -237,7 +238,7 @@ export async function readRunDiagnostics(
   if (runId && (!run || run.runId !== runId || run.sessionId !== sessionId))
     throw new SessionError(404, 'RUN_NOT_FOUND', '执行轮次不存在');
   const rows = run
-    ? await timeline.findAll({
+    ? await findOrderedRows(timeline, 'seq', {
         where: {
           sessionId,
           runId,
@@ -251,13 +252,13 @@ export async function readRunDiagnostics(
   /** 分离模型元数据和子任务元数据窗口，避免工具噪声截断模型统计；不读取SDK正文。 */
   const [modelRows, agentRows] = run
     ? await Promise.all([
-        timeline.findAll({
+        findOrderedRows(timeline, 'seq', {
           where: { sessionId, runId, kind: 'model_status' },
           attributes: ['seq', 'createdAt', 'displayPayload'],
           order: [['seq', 'DESC']],
           limit: 4001,
         }),
-        timeline.findAll({
+        findOrderedRows(timeline, 'seq', {
           where: {
             sessionId,
             runId,

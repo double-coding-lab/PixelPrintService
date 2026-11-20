@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { decisionInstructions } from './decisions';
 import { modelActivitySchema, type ModelActivity } from './agent/modelActivity';
 import { updateModelUsage } from './agent/usage';
@@ -158,12 +159,16 @@ export function createRunPersistence(
           throw new Error('DEEP_CHECKPOINT_RESUME_INVALID');
         const { entries, repaired } = interaction
           ? {
-              entries: await (mysql.models.D2cTimeline as typeof D2cTimeline).findAll({
-                where: { sessionId: session.sessionId },
-                order: [['seq', 'ASC']],
-                transaction,
-                lock: transaction.LOCK.UPDATE,
-              }),
+              entries: await findOrderedRows(
+                mysql.models.D2cTimeline as typeof D2cTimeline,
+                'seq',
+                {
+                  where: { sessionId: session.sessionId },
+                  order: [['seq', 'ASC']],
+                  transaction,
+                  lock: transaction.LOCK.UPDATE,
+                },
+              ),
               repaired: false,
             }
           : await repairToolHistory(mysql, session, transaction);
@@ -191,7 +196,7 @@ export function createRunPersistence(
             ),
         );
         const blocked = legacy.length
-          ? await runs.findAll({
+          ? await findOrderedRows(runs, 'runId', {
               where: {
                 sessionId: lease.sessionId,
                 resourceRevisionId: run.resourceRevisionId,

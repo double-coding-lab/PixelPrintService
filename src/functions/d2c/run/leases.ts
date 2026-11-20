@@ -125,6 +125,7 @@ export function createRunLeases(
       if (admission && options.concurrency !== undefined) {
         /** 固定首行作为全实例领取互斥锚点；软删除保留该行，禁止直接物理清理。 */
         const anchor = await workspaces.findOne({
+          attributes: ['workspaceId'],
           order: [['id', 'ASC']],
           /** 软删除仍保留准入锚点，不能随工作区隐藏而更换全局锁。 */
           paranoid: false,

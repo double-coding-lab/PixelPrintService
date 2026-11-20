@@ -1,3 +1,4 @@
+import { databaseDiagnostics } from '@/common/databaseDiagnostics';
 import { StorageError } from '@/hooks/tools/storage';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -312,6 +313,9 @@ export type RunFailureReport = {
       subagentRole?: SubagentExecutionContext['role'];
       subagentPhase?: SubagentExecutionContext['phase'];
       causeCode?: string;
+      databaseCode?: string;
+      databaseErrno?: number;
+      databaseSqlState?: string;
       statusCode?: number;
       exitCode?: number;
       location?: string;
@@ -391,7 +395,7 @@ export function diagnoseRunFailure(
   let current = error;
   let classified: RunExecutionError | undefined;
   const seen = new Set<unknown>();
-  const diagnostics: RunFailureReport['diagnostics'] = {};
+  const diagnostics: RunFailureReport['diagnostics'] = databaseDiagnostics(error);
   const genericCodes = new Set<FailureCode>([
     'EXECUTION_FAILED',
     'MODEL_REQUEST_FAILED',

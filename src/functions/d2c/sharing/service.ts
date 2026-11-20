@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { publicOverviewPayload } from './overview';
 import { createHash, randomUUID } from 'node:crypto';
 import { Op, literal, type Sequelize } from 'sequelize';
@@ -449,7 +450,7 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(agentId)
       )
         throw new SessionError(422, 'INVALID_IDENTIFIER', '子会话标识无效');
-      const rows = await timeline.findAll({
+      const rows = await findOrderedRows(timeline, 'seq', {
         where: {
           sessionId: session.sessionId,
           ...(agentId

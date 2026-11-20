@@ -1,3 +1,4 @@
+import { findOrderedPage, findOrderedRows } from '../utils/orderedRead';
 import { modelActivitySchema } from '../run/agent/modelActivity';
 import { defaultSessionName } from './name';
 import { userQuestionSchema, publicQuestion } from '../run/interaction';
@@ -418,7 +419,7 @@ export function createSessionService(mysql: Sequelize) {
       ) {
         throw new SessionError(422, 'INVALID_PAGE', '分页参数无效');
       }
-      const result = await sessions.findAndCountAll({
+      const result = await findOrderedPage(sessions, 'sessionId', {
         where: { workspaceId },
         order: [
           ['createdAt', 'DESC'],
@@ -470,7 +471,7 @@ export function createSessionService(mysql: Sequelize) {
       if (beforeSeq !== undefined) requireRevision(beforeSeq);
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
         throw new SessionError(422, 'INVALID_PAGE', '时间线分页无效');
-      const rows = await timeline.findAll({
+      const rows = await findOrderedRows(timeline, 'seq', {
         where: {
           sessionId: id,
           ...(agentId

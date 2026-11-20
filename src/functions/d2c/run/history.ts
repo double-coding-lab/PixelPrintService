@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { decisionMessages } from './decisions';
 import type { StoredAgentMessage } from './types';
 import { Op, type Sequelize, type Transaction } from 'sequelize';
@@ -146,7 +147,7 @@ export async function repairToolHistory(
   transaction: Transaction,
   scopeRunId?: string,
 ) {
-  const entries = await (mysql.models.D2cTimeline as typeof D2cTimeline).findAll({
+  const entries = await findOrderedRows(mysql.models.D2cTimeline as typeof D2cTimeline, 'seq', {
     where: { sessionId: session.sessionId, ...(scopeRunId ? { runId: scopeRunId } : {}) },
     order: [['seq', 'ASC']],
     transaction,

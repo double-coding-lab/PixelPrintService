@@ -80,7 +80,11 @@ export function deepGenerationFailure(error: unknown, signal: AbortSignal) {
             );
     }
     if (current instanceof SequelizeError)
-      return new RunExecutionError('STORAGE_FAILED', { stage: 'storage' }, error);
+      return new RunExecutionError(
+        'STORAGE_FAILED',
+        { ...genericFailure?.context, stage: 'storage' },
+        error,
+      );
     if (
       current instanceof HistoryConversionError ||
       /^DEEP_(?:CHECKPOINT|NEW_MESSAGE|MESSAGE_ALREADY)/.test(message)

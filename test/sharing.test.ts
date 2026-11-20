@@ -59,6 +59,8 @@ function fixture() {
   function match(row: Row, where: Row = {}): boolean {
     return Reflect.ownKeys(where).every((key) => {
       if (key === Op.and) {
+        const conditions = (where as Record<symbol, any>)[key];
+        if (Array.isArray(conditions)) return conditions.every((part: Row) => match(row, part));
         assert.match(
           (where as Record<symbol, any>)[key].val,
           /EXISTS .*d2c_session.*d2c_workspace.*deletedAt.*D2cSessionShare/s,

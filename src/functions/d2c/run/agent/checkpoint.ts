@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../../utils/orderedRead';
 import type { createRunLeases, RunLease } from '../leases';
 import { SessionError } from '../../session/access';
 import { executionError } from '../errors';
@@ -212,7 +213,7 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
     return this.sequelize.transaction(
       { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
       async (transaction) => {
-        const rows = await this.checkpoints.findAll({
+        const rows = await findOrderedRows(this.checkpoints, ['namespaceHash', 'checkpointId'], {
           where: { ...scope.where, ...(scope.id ? { checkpointId: scope.id } : {}) },
           transaction,
           raw: true,
@@ -263,7 +264,7 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
               : []),
           ];
           /** 先分页读取元数据，只有匹配项才加载完整状态与 pending writes。 */
-          const rows = await this.checkpoints.findAll({
+          const rows = await findOrderedRows(this.checkpoints, ['namespaceHash', 'checkpointId'], {
             where: { [Op.and]: conditions },
             attributes: [
               'sessionId',

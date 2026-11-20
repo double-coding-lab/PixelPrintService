@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { createMessageService } from '../session/messages';
 import { automaticRecoveryPlan } from './automaticRecovery';
 import type { D2cRun } from '@/models/D2cRun';
@@ -62,7 +63,7 @@ export function createGenerationWorker(options: {
   }
   /** 分页查找基础设施中断；资格在继续事务内重新校验，旧owner不能写入新轮次。 */
   async function recoverAutomatically() {
-    const rows = await (options.mysql.models.D2cRun as typeof D2cRun).findAll({
+    const rows = await findOrderedRows(options.mysql.models.D2cRun as typeof D2cRun, 'runId', {
       where: {
         status: 'interrupted',
         stopRequested: false,

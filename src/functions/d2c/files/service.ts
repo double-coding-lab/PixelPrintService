@@ -1,3 +1,4 @@
+import { findOrderedRows } from '../utils/orderedRead';
 import { assetUrl } from '../utils/assetUrls';
 import { createHash, randomUUID } from 'node:crypto';
 import { Op, type Sequelize, type Transaction } from 'sequelize';
@@ -195,7 +196,7 @@ export function createFileService(
     /** 文件树返回产物直链，不携带正文或完整对象定位。 */
     async list(userId: string, sessionId: string) {
       const { session } = await ownedSession(mysql, userId, sessionId);
-      const rows = await files.findAll({
+      const rows = await findOrderedRows(files, 'pathHash', {
         where: { sessionId },
         order: [['pathHash', 'ASC']],
         attributes: [
