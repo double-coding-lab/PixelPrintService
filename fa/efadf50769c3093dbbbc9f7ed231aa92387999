@@ -1,0 +1,37 @@
+.Knowledge/topics/d2c-workspace-foundation.md
+  s_e16f52fd1de115::t_f8e1555db995a6 3
+  s_e16f52fd1de115::t_1d4f971d2f7217 78-84
+.Knowledge/topics/deep-agents-execution.md
+  s_f084de538b079d::t_156e0096bd7683 3
+.Knowledge/matchers/m-d2c-workspace-foundation.json
+  s_e16f52fd1de115::t_1d4f971d2f7217 33-34
+  s_e16f52fd1de115::t_f8e1555db995a6 32
+.Knowledge/stock-docs/d2c-workspace-foundation.md
+  s_e16f52fd1de115::t_1d4f971d2f7217 81-82
+.Knowledge/index.md
+  s_e16f52fd1de115::t_f8e1555db995a6 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "faefadf50769c3093dbbbc9f7ed231aa92387999",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    },
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
