@@ -289,7 +289,12 @@ export function createRunPersistence(
                   ...(entry.kind === 'tool_result'
                     ? { feedback: readToolFeedback(safeItem.output) }
                     : {}),
-                  status: entry.kind === 'tool_call' ? 'started' : 'completed',
+                  status:
+                    entry.kind === 'tool_call'
+                      ? 'started'
+                      : safeItem.status === 'error'
+                        ? 'failed'
+                        : 'completed',
                 },
         });
         notify(session, transaction);

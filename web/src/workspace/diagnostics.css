@@ -658,3 +658,99 @@
   font-variant-numeric: tabular-nums;
   color: #536782;
 }
+
+.error-diagnostic-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.error-diagnostic-filters label {
+  display: grid;
+  flex: 1 1 140px;
+  gap: 5px;
+  min-width: 0;
+  color: #7c899c;
+  font-size: 11px;
+}
+.error-diagnostic-filters select {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #e3e9f3;
+  border-radius: 6px;
+  background: #fff;
+  color: #536782;
+  font: inherit;
+}
+.error-diagnostic-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.error-diagnostic-list {
+  padding: 0;
+  margin: 12px 0;
+  list-style: none;
+}
+.error-diagnostic-record {
+  padding: 14px 0;
+  border-top: 1px solid #eef0f4;
+  overflow-wrap: anywhere;
+}
+.error-diagnostic-heading,
+.error-diagnostic-meta {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 8px;
+}
+.error-diagnostic-heading strong {
+  color: #59677c;
+  font-size: 11px;
+  font-weight: 500;
+}
+.error-diagnostic-heading > span,
+.error-diagnostic-meta {
+  color: #858d9a;
+  font-size: 10px;
+}
+.error-diagnostic-record details {
+  margin-top: 12px;
+}
+.error-diagnostic-record summary {
+  width: fit-content;
+  color: #63728e;
+  cursor: pointer;
+}
+.error-diagnostic-record details .diagnostics-facts {
+  margin: 12px 0;
+}
+.error-diagnostic-button {
+  padding: 4px 9px;
+  border: 1px solid #e3e9f3;
+  border-radius: 6px;
+  background: #f8f9fb;
+  color: #63728e;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.error-diagnostic-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.error-diagnostic-button + [role='status'] {
+  margin-left: 8px;
+}
+.error-diagnostic-warning {
+  padding: 8px 10px;
+  border-radius: 5px;
+  color: #8c6836;
+  background: #fff8ed;
+  font-size: 11px;
+}
+.error-diagnostics :is(button, select, summary):focus-visible {
+  outline: 2px solid var(--accent, #426ec9);
+  outline-offset: 3px;
+}

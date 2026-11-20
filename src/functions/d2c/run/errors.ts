@@ -350,6 +350,40 @@ export class StorageOperationError extends Error {
   }
 }
 
+/** 只关联一次失败的对象身份；不保留错误正文，也不延长错误对象生命周期。 */
+const failureOccurrences = new WeakMap<object, string>();
+
+/** 有界遍历 cause，防止循环引用或异常 getter 阻断原有失败处理。 */
+function failureChain(error: unknown): object[] {
+  const chain: object[] = [];
+  const seen = new Set<object>();
+  let current = error;
+  while (current && typeof current === 'object' && chain.length < 16 && !seen.has(current)) {
+    seen.add(current);
+    chain.push(current);
+    try {
+      current = 'cause' in current ? current.cause : undefined;
+    } catch {
+      break;
+    }
+  }
+  return chain;
+}
+
+/** 每次实际模型请求失败都创建新身份，即使 SDK 重用了同一个 Error 对象。 */
+export function beginFailureOccurrence(error: unknown): void {
+  const id = randomUUID();
+  for (const item of failureChain(error)) failureOccurrences.set(item, id);
+}
+
+/** 同一错误向外包装或跨层记录时复用排查编号，避免把一次失败算成多次。 */
+function failureOccurrenceId(error: unknown): string {
+  const chain = failureChain(error);
+  const id = chain.map((item) => failureOccurrences.get(item)).find(Boolean) ?? randomUUID();
+  for (const item of chain) failureOccurrences.set(item, id);
+  return id;
+}
+
 /** 仅允许平台自己定义的固定原因，拒绝任意异常正文与上游响应。 */
 const storageReasons = new Set([
   'Storage 文件服务环境无效',
@@ -583,7 +617,7 @@ export function diagnoseRunFailure(
       selectedCode = 'MODEL_RATE_LIMITED';
   }
   const failure = runFailureSchema.parse({
-    errorId: randomUUID(),
+    errorId: failureOccurrenceId(error),
     code: selectedCode,
     ...selectedContext,
     ...(diagnostics.statusCode ? { statusCode: diagnostics.statusCode } : {}),

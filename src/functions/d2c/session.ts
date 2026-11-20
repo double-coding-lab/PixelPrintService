@@ -3,6 +3,7 @@ import { recordPreviewUpdate } from './preview/events';
 import attachmentRoutes from './attachments';
 import { createAttachmentService, type AttachmentService } from './session/attachments';
 import { readRunDiagnostics } from './run/diagnostics';
+import { readSessionErrors } from './run/errorDiagnostics';
 import responseData from '@/common/response';
 import { createD2cConfigReader } from '@/config/d2c';
 import type { FastifyInstance } from 'fastify';
@@ -272,6 +273,40 @@ export default async function sessionRoutes(
       .parse(request.query);
     return responseData.success({
       data: await readRunDiagnostics(app.mysql, (await request.getUser()).userId, id, runId),
+    });
+  });
+
+  /** GET /sessions/:id/errors：会话全部轮次的安全错误统计与冻结快照分页。 */
+  app.get('/sessions/:id/errors', async (request) => {
+    const { id } = params.parse(request.params);
+    const query = z
+      .object({
+        runId: z.string().min(1).max(64).optional(),
+        category: z
+          .enum([
+            'model',
+            'tool',
+            'subagent',
+            'storage',
+            'preview',
+            'database',
+            'execution',
+            'rule',
+          ])
+          .optional(),
+        scope: z.enum(['main', 'subagent', 'unknown']).optional(),
+        before: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+        snapshotSeq: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+        snapshotToken: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
+        pageSize: z.coerce.number().int().min(1).max(100).optional(),
+      })
+      .strict()
+      .parse(request.query);
+    return responseData.success({
+      data: await readSessionErrors(app.mysql, (await request.getUser()).userId, id, query),
     });
   });
 

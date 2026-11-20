@@ -32,6 +32,10 @@
     "UI_PREREQUISITES_REQUIRED",
     "区块报告",
     "expectedSha256",
-    "编译反馈"
+    "编译反馈",
+    "错误统计",
+    "错误明细",
+    "会话错误",
+    "errorDiagnostics"
   ]
 }
