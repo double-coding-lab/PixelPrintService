@@ -55,6 +55,7 @@ const definitions = {
     'adjust',
     '根节点缓存不完整，请先 figma fetch-node 获取会话绑定的完整根节点（不要传 depth），再 inspect-node 或检查规则；不能把被截断节点当作空节点。',
   ],
+  FIGMA_ARGUMENT_CONFLICT: ['adjust', 'Figma 参数组合无效，本次未执行。请按具体字段提示调整。'],
   INVALID_ARGUMENT: ['adjust', '工具参数无效，请按工具约定调整参数后再调用。'],
   RULES_FAILED: ['adjust', '规则检查未通过，请读取检查报告并修复源码后重查。'],
   NETWORK_RETRY: ['retry', '目标服务暂时不可用，可有限重试；写入结果未知时先核对已有文件。'],

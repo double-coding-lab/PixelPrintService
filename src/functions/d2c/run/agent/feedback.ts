@@ -7,6 +7,15 @@ import {
 } from '../errors';
 import { ToolIssue, readToolFeedback, toolFeedback } from '../toolFeedback';
 
+const knownCommands: readonly FailureCommand[] = [
+  'verify-token',
+  'cache-check',
+  'fetch-node',
+  'inspect-node',
+  'export-image',
+  'screenshot',
+];
+
 /**
  * 创建每轮独立的工具反馈执行层，不依赖模型框架，也不自行重放工具操作。
  * schema 校验问题可由调用方在 action 中显式抛出 INVALID_ARGUMENT ToolIssue。
@@ -35,13 +44,25 @@ export function createDeepToolFeedback(input: {
   }
 
   /** 共享预算与用户阻塞覆盖返回反馈和显式 ToolIssue；保留可信工具的完整报告。 */
-  async function respondToIssue(name: FailureTool, issue: ToolIssue, original?: string) {
+  async function respondToIssue(
+    name: FailureTool,
+    issue: ToolIssue,
+    command?: FailureCommand,
+    original?: string,
+  ) {
     let feedback = issue.feedback;
     const counts = feedback.action === 'retry' ? retries : adjustments;
+    // 纠错按调用方可信命令分组；临时故障仍共享工具级重试预算。
     const key =
       feedback.action === 'retry'
         ? name
-        : JSON.stringify([name, feedback.code, feedback.path ?? '', feedback.resource ?? null]);
+        : JSON.stringify([
+            name,
+            command ?? '',
+            feedback.code,
+            feedback.path ?? '',
+            feedback.resource ?? null,
+          ]);
     if (feedback.action !== 'user' && feedback.code !== 'RULES_FAILED') {
       const count = (counts.get(key) ?? 0) + 1;
       counts.set(key, count);
@@ -78,6 +99,9 @@ export function createDeepToolFeedback(input: {
     action: () => Promise<T>,
     command?: FailureCommand,
   ): Promise<T | string> {
+    // schema校验前也可能进入反馈层；未知命令共用一个分组，不能用任意字符串刷新预算。
+    if (name !== 'figma' || command === undefined || !knownCommands.includes(command))
+      command = undefined;
     try {
       signal.throwIfAborted();
       if (userBlock && name !== 'read_file' && name !== 'list_files') throw userBlock;
@@ -88,8 +112,8 @@ export function createDeepToolFeedback(input: {
       } catch (error) {
         if (!(error instanceof ToolIssue)) throw error;
         error.failure.context.tool ??= name;
-        if (command) error.failure.context.command ??= command;
-        return await respondToIssue(name, error);
+        if (command) error.failure.context.command = command;
+        return await respondToIssue(name, error, command);
       }
       signal.throwIfAborted();
       const feedback = readToolFeedback(value);
@@ -103,6 +127,7 @@ export function createDeepToolFeedback(input: {
               { stage: 'tool', tool: name, ...(command ? { command } : {}), requiresUser: true },
             ),
           ),
+          command,
           typeof value === 'string' ? value : undefined,
         );
       await assertLease();

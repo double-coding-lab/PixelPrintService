@@ -1,3 +1,4 @@
+import { normalizeFigmaArguments } from '../figmaArguments';
 import { invalidBlockDirectory } from '../../utils/blockPaths';
 import { assertArtifactPath, normalizeRelativePath } from '../../utils/paths';
 import type { SubagentRole } from '../subagent';
@@ -177,15 +178,10 @@ export function createSubagentTools(
         Object.keys(args).some(
           (key) => !['nodeId', 'depth', 'subtree', 'offset', 'limit'].includes(key),
         ) ||
-        (args.depth !== undefined && args.depth !== 1 && args.depth !== 2) ||
-        (args.subtree !== undefined && typeof args.subtree !== 'boolean') ||
-        (args.offset !== undefined && (!Number.isSafeInteger(args.offset) || args.offset < 0)) ||
-        (args.limit !== undefined &&
-          (!Number.isSafeInteger(args.limit) || args.limit < 1 || args.limit > 100)) ||
-        ((args.offset !== undefined || args.limit !== undefined) && args.subtree !== true)
+        (args.depth != null && args.depth !== 1 && args.depth !== 2)
       )
         return denied();
-      return tools.figma(command, args);
+      return tools.figma(command, normalizeFigmaArguments(command, args));
     },
     async remove() {
       return denied();

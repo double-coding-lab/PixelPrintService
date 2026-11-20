@@ -222,6 +222,8 @@ for (const kind of ['h5', 'rn'] as const) {
         filename: target,
         format: 'png',
         scale: 2,
+        offset: 0,
+        subtree: false,
       }),
     );
     assert.equal(result.ok, true);

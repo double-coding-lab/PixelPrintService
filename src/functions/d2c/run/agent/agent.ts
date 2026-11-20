@@ -555,7 +555,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       {
         name: 'figma',
         description:
-          'Figma 受控操作。主Agent可用figmaUrl选择官方HTTPS设计链接（须带node-id），rootNodeId选择同文件查询根，不改变会话绑定。fetch-node完整缓存目标根；inspect-node只读该根缓存，返回真实attributes/childIds，depth=1或2；subtree=true分页读取全部后代，offset=0、limit默认40（最多100），沿nextOffset直到null。节点返回省略locked/exportSettings/overrides、指定空元数据、空描边/阴影/文字覆盖及与fills完全相同的background，非空渲染属性和有效交互/绑定保留；全部原始属性仍在紧凑JSON缓存，优先用inspect-node读取生成所需节点。子Agent只能inspect原绑定根缓存，不得指定新设计。其余命令使用服务端凭据调用固定脚本。',
+          'Figma 受控操作。主Agent可用figmaUrl选择官方HTTPS设计链接（须带node-id），rootNodeId选择同文件查询根，不改变会话绑定。fetch-node完整缓存目标根；inspect-node只读该根缓存，返回真实attributes/childIds，depth=1或2；subtree=true分页读取全部后代，offset=0、limit默认40（最多100），沿nextOffset直到null。浅层inspect-node使用depth并省略offset/limit；export-image等其他命令不使用subtree/offset/limit。节点返回省略locked/exportSettings/overrides、指定空元数据、空描边/阴影/文字覆盖及与fills完全相同的background，非空渲染属性和有效交互/绑定保留；全部原始属性仍在紧凑JSON缓存，优先用inspect-node读取生成所需节点。子Agent只能inspect原绑定根缓存，不得指定新设计。其余命令使用服务端凭据调用固定脚本。',
         schema: z.object({
           command: input.specialist
             ? z.literal('inspect-node')
@@ -570,9 +570,26 @@ export async function runAgent(input: AgentRunInput): Promise<{
           figmaUrl: input.specialist ? z.null().optional() : z.string().nullable().optional(),
           rootNodeId: input.specialist ? z.null().optional() : z.string().nullable().optional(),
           nodeId: z.string().nullable(),
-          subtree: z.boolean().nullable().optional(),
-          offset: z.number().int().min(0).nullable().optional(),
-          limit: z.number().int().min(1).max(100).nullable().optional(),
+          subtree: z
+            .boolean()
+            .nullable()
+            .optional()
+            .describe('仅inspect-node使用；true读取子树并支持分页，false或null为浅层读取。'),
+          offset: z
+            .number()
+            .int()
+            .min(0)
+            .nullable()
+            .optional()
+            .describe('仅inspect-node且subtree=true时使用；其他情况省略或null。'),
+          limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(100)
+            .nullable()
+            .optional()
+            .describe('仅inspect-node且subtree=true时使用；默认40，其他情况省略或null。'),
           depth: input.specialist
             ? z.union([z.literal(1), z.literal(2)]).nullable()
             : z.number().int().min(1).max(30).nullable(),

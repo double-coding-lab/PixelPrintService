@@ -1,3 +1,4 @@
+import { normalizeFigmaArguments } from './figmaArguments';
 import { materializeExportImage } from './exportImage';
 import { SliceDiagnosticError } from './sliceDiagnostics';
 import { hasLocalImageUrl, modelImageConfig } from './imagePolicy';
@@ -1048,6 +1049,7 @@ export async function createGenerationTools(input: {
     async figma(command, args) {
       if (!figmaCommands.some((value) => value === command))
         throw new RunExecutionError('VALIDATION_FAILED', { stage: 'tool', tool: 'figma' });
+      args = normalizeFigmaArguments(command, args);
       let target;
       try {
         if (!args.figmaUrl && !input.figmaUrl) throw new Error('Missing design');
@@ -1060,13 +1062,6 @@ export async function createGenerationTools(input: {
       }
       const { fileKey, rootNodeId: defaultNode } = target;
       const assetUrlsPath = `.d2c-cache/${fileKey}/asset-urls.json`;
-      if (
-        (args.subtree === true || args.offset !== undefined || args.limit !== undefined) &&
-        command !== 'inspect-node'
-      )
-        throw toolIssue('INVALID_ARGUMENT', 'VALIDATION_FAILED', { stage: 'tool', tool: 'figma' });
-      if ((args.offset !== undefined || args.limit !== undefined) && args.subtree !== true)
-        throw toolIssue('INVALID_ARGUMENT', 'VALIDATION_FAILED', { stage: 'tool', tool: 'figma' });
       const nodeId = args.nodeId ?? defaultNode;
       if (
         nodeId &&

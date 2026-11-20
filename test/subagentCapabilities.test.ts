@@ -206,8 +206,14 @@ test('扫描和UI可分批读完整缓存子树，仍拒绝无界分页和网络
     const args = { nodeId: '1:2', subtree: true, offset: 40, limit: 40 };
     await tools.figma('inspect-node', args);
     assert.deepEqual(f.actions, [['figma', 'inspect-node', args]]);
-    await assert.rejects(tools.figma('inspect-node', { subtree: true, limit: 101 }), invalid);
-    await assert.rejects(tools.figma('inspect-node', { offset: 40 }), invalid);
+    await assert.rejects(
+      tools.figma('inspect-node', { subtree: true, limit: 101 }),
+      (error) => error instanceof ToolIssue && error.feedback.code === 'FIGMA_ARGUMENT_CONFLICT',
+    );
+    await assert.rejects(
+      tools.figma('inspect-node', { offset: 40 }),
+      (error) => error instanceof ToolIssue && error.feedback.code === 'FIGMA_ARGUMENT_CONFLICT',
+    );
     await assert.rejects(tools.figma('fetch-node', args), invalid);
   }
 });

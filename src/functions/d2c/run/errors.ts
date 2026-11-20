@@ -50,6 +50,10 @@ const reasons = {
     '已接入自动摘要；请检查单条输入、固定提示及摘要结果是否超过本轮预算。',
   ],
   TOOL_FAILED: ['受控工具执行失败', '请结合工具名称和排查编号检查服务端日志。'],
+  TOOL_ARGUMENT_INVALID: [
+    '工具参数组合无效',
+    '请按工具反馈核对命令与参数组合，已保存产物保留；此错误不代表页面规则检查失败。',
+  ],
   SCRIPT_OUTPUT_INVALID: [
     '固定脚本输出不完整或格式无效',
     '请检查脚本输出是否完整且符合 JSON 契约；无需重复确认切图。',
@@ -495,7 +499,7 @@ export function diagnoseRunFailure(
     if (current instanceof RunExecutionError && current.context.feedback) {
       const feedback = current.context.feedback;
       const allowedFeedback =
-        /^(?:FILE_NOT_FOUND|NON_TEXT_FILE|FILE_DELETE_NOT_ALLOWED|FIGMA_CACHE_INCOMPLETE|FIGMA_NODE_NOT_FOUND|FIGMA_IMAGE_NOT_FOUND|INVALID_ARGUMENT|RULES_FAILED|NETWORK_RETRY|RATE_LIMITED|RATE_LIMIT_WAIT|ACCESS_REQUIRED|RESOURCE_UNAVAILABLE|TLS_REQUIRED|CONFIRMATION_REQUIRED|RETRY_EXHAUSTED|ADJUSTMENT_EXHAUSTED)$/;
+        /^(?:FILE_NOT_FOUND|NON_TEXT_FILE|FILE_DELETE_NOT_ALLOWED|FIGMA_CACHE_INCOMPLETE|FIGMA_NODE_NOT_FOUND|FIGMA_IMAGE_NOT_FOUND|INVALID_ARGUMENT|FIGMA_ARGUMENT_CONFLICT|RULES_FAILED|NETWORK_RETRY|RATE_LIMITED|RATE_LIMIT_WAIT|ACCESS_REQUIRED|RESOURCE_UNAVAILABLE|TLS_REQUIRED|CONFIRMATION_REQUIRED|RETRY_EXHAUSTED|ADJUSTMENT_EXHAUSTED)$/;
       if (allowedFeedback.test(feedback.code)) diagnostics.feedbackCode ??= feedback.code;
       if (allowedFeedback.test(feedback.originalCode))
         diagnostics.originalFeedbackCode ??= feedback.originalCode;
