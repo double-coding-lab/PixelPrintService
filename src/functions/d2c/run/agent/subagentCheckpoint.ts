@@ -90,12 +90,20 @@ export class SubagentCheckpoint extends BaseCheckpointSaver implements AgentChec
   }
 }
 
+type SubagentRecovery = {
+  inputChanged: boolean;
+  changedPaths: string[];
+  missingPaths: string[];
+};
+
 type ChildProgress = {
   agentId: string;
   role: string;
   nodeId?: string;
   writePaths: string[];
   taskHash?: string;
+  contextHash?: string;
+  recovery?: SubagentRecovery;
   files: Record<string, string>;
   partialFiles?: string[];
   result?: string;
@@ -108,6 +116,14 @@ type ChildProgress = {
     observed: boolean;
   };
 };
+
+/** 显式恢复只允许当前 job 的原身份和原授权，不允许降级成新任务。 */
+export class SubagentResumeError extends Error {
+  constructor(public readonly reason: 'NOT_FOUND' | 'SCOPE_CHANGED') {
+    super(`DEEP_SUBAGENT_RESUME_${reason}`);
+    this.name = 'SubagentResumeError';
+  }
+}
 
 type BackgroundSubagent = {
   agentId: string;
@@ -137,14 +153,52 @@ const backgroundSchema = z
   .refine((value) =>
     value.status === 'settled' ? value.result !== undefined : value.result === undefined,
   );
-const backgroundProgressSchema = z.object({
-  agentId: z.string().uuid(),
-  role: z.enum(['design', 'review', 'rule_scan', 'ui']),
-  nodeId: z.string().min(1).max(200).optional(),
-  writePaths: z.array(z.string().min(1).max(1024)).max(32),
-  files: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
-  background: backgroundSchema,
-});
+const childProgressSchema = z
+  .object({
+    agentId: z.string().uuid(),
+    role: z.enum(['design', 'review', 'rule_scan', 'ui']),
+    nodeId: z.string().min(1).max(200).optional(),
+    writePaths: z.array(z.string().min(1).max(1024)).max(32),
+    files: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
+    taskHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    contextHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    recovery: z
+      .object({
+        inputChanged: z.boolean(),
+        changedPaths: z.array(z.string()),
+        missingPaths: z.array(z.string()),
+      })
+      .optional(),
+    partialFiles: z.array(z.string()).optional(),
+    result: z.string().optional(),
+    handoff: z
+      .object({
+        verifiedTools: z.array(z.object({ tool: z.string() }).passthrough()),
+        omitted: z.number(),
+      })
+      .passthrough()
+      .optional(),
+    background: backgroundSchema.optional(),
+  })
+  .passthrough();
+const backgroundProgressSchema = childProgressSchema.extend({ background: backgroundSchema });
+
+/** 旧记录无需 contextHash；损坏记录必须阻断恢复，不能被当作新任务覆盖。 */
+function readProgress(tuple: CheckpointTuple): ChildProgress {
+  const parsed = childProgressSchema.safeParse(tuple.checkpoint.channel_values.progress);
+  if (!/^[a-f0-9]{64}$/.test(tuple.checkpoint.id) || !parsed.success)
+    throw new Error('DEEP_SUBAGENT_PROGRESS_CORRUPT');
+  const state = parsed.data as ChildProgress;
+  if (Object.keys(state.files).some((path) => !state.writePaths.includes(path)))
+    throw new Error('DEEP_SUBAGENT_PROGRESS_CORRUPT');
+  return structuredClone(state);
+}
 const progressQueues = new WeakMap<AgentCheckpoint, Map<string, Promise<unknown>>>();
 
 /** 同一保存器的同一任务串行提交；失败仅拒绝本次调用，不阻断后续重试。 */
@@ -168,8 +222,9 @@ function serializeProgress<T>(
 /** 读取实际完整文本摘要；只用于授权子任务已写文件的复核，不把正文加入额外提示。 */
 async function fileHash(tools: GenerationTools, path: string) {
   const page = JSON.parse(await tools.read(path, false, 0, Number.MAX_SAFE_INTEGER));
+  if (page.ok === false && page.code === 'FILE_NOT_FOUND') return undefined;
   if (page.ok === false || typeof page.content !== 'string' || page.nextOffset !== null)
-    return undefined;
+    throw new Error('DEEP_SUBAGENT_FILE_READ_INVALID');
   return typeof page.sha256 === 'string' && /^[a-f0-9]{64}$/.test(page.sha256)
     ? page.sha256
     : digest(page.content);
@@ -236,14 +291,31 @@ export async function createSubagentProgress(
     await checkpoint.put(pointer, value, { source: 'update', step: 0, parents: {} }, {});
   }
   const ns = `__pixelprint_subagent_progress/${digest(JSON.stringify([jobId, options.identity]))}`;
+  /** list 可能包含子 namespace；必须同时精确匹配当前 thread 与 job namespace。 */
+  async function findAgent(agentId: string) {
+    let found: { key: string; state: ChildProgress } | undefined;
+    for await (const tuple of checkpoint.list(checkpoint.config(ns))) {
+      if (
+        tuple.config.configurable?.checkpoint_ns !== ns ||
+        tuple.config.configurable?.thread_id !== checkpoint.config(ns).configurable?.thread_id
+      )
+        continue;
+      const state = readProgress(tuple);
+      if (state.agentId !== agentId) continue;
+      if (found) throw new Error('DEEP_SUBAGENT_PROGRESS_CORRUPT');
+      found = { key: tuple.checkpoint.id, state };
+    }
+    return found;
+  }
   return {
     /** 任务文字允许在纠错时变化；角色、节点、写入授权与真实输入摘要共同决定同一个子任务。 */
     async open(
       task: { role: string; nodeId?: string; writePaths: string[]; description?: string },
       context: string,
       tools: GenerationTools,
+      resumeAgentId?: string,
     ) {
-      const key = digest(
+      const inputKey = digest(
         JSON.stringify([
           task.role,
           task.nodeId ?? '',
@@ -252,10 +324,33 @@ export async function createSubagentProgress(
           ['design', 'review'].includes(task.role) ? digest(task.description ?? '') : '',
         ]),
       );
+      const original = resumeAgentId === undefined ? undefined : await findAgent(resumeAgentId);
+      if (resumeAgentId !== undefined && !original) throw new SubagentResumeError('NOT_FOUND');
+      const key = original?.key ?? inputKey;
       return serializeProgress(checkpoint, `${ns}/${key}`, async () => {
         const config = checkpoint.config(ns);
         const tuple = await checkpoint.getTuple(checkpoint.config(ns, key));
-        let state = tuple?.checkpoint.channel_values.progress as ChildProgress | undefined;
+        let state = tuple ? readProgress(tuple) : undefined;
+        if (resumeAgentId !== undefined) {
+          if (!state || state.agentId !== resumeAgentId) throw new SubagentResumeError('NOT_FOUND');
+          if (
+            state.role !== task.role ||
+            state.nodeId !== task.nodeId ||
+            JSON.stringify([...state.writePaths].sort()) !==
+              JSON.stringify([...task.writePaths].sort())
+          )
+            throw new SubagentResumeError('SCOPE_CHANGED');
+        }
+        const recovery = {
+          inputChanged: Boolean(
+            state &&
+              (state.contextHash !== undefined
+                ? state.contextHash !== digest(context)
+                : key !== inputKey),
+          ),
+          changedPaths: [] as string[],
+          missingPaths: [] as string[],
+        };
         if (state) {
           for (const [path, sha] of Object.entries(state.files)) {
             if (!task.writePaths.includes(path)) {
@@ -264,6 +359,7 @@ export async function createSubagentProgress(
             }
             const currentHash = await fileHash(tools, path);
             if (currentHash === sha) continue;
+            (currentHash === undefined ? recovery.missingPaths : recovery.changedPaths).push(path);
             /** 文件已提交、进度回执未提交时，先核对原图的未知写入，不能误判用户改源后重建子图。 */
             const graph = new SubagentCheckpoint(checkpoint, `${ns}/${state.agentId}/`);
             const messages = (await graph.getTuple(graph.config()))?.checkpoint.channel_values
@@ -306,6 +402,11 @@ export async function createSubagentProgress(
                   ),
               );
             if (!verified && !(pendingEdit && currentHash)) {
+              if (resumeAgentId !== undefined) {
+                delete state.files[path];
+                state.partialFiles = state.partialFiles?.filter((value) => value !== path);
+                continue;
+              }
               state = undefined;
               break;
             }
@@ -314,6 +415,16 @@ export async function createSubagentProgress(
             if (state.role === 'rule_scan')
               state.partialFiles = [...new Set([...(state.partialFiles ?? []), path])];
           }
+        }
+        /** 差异持续保留到真实执行结算；open/start 后中断也不能丢失子图尚未收到的复核提示。 */
+        if (state?.recovery) {
+          recovery.inputChanged ||= state.recovery.inputChanged;
+          recovery.changedPaths = [
+            ...new Set([...state.recovery.changedPaths, ...recovery.changedPaths]),
+          ];
+          recovery.missingPaths = [
+            ...new Set([...state.recovery.missingPaths, ...recovery.missingPaths]),
+          ];
         }
         const restored = Boolean(state);
         state ??= {
@@ -324,6 +435,10 @@ export async function createSubagentProgress(
           files: {},
         };
         const current = state;
+        if (recovery.inputChanged || recovery.changedPaths.length || recovery.missingPaths.length)
+          delete current.result;
+        current.recovery = structuredClone(recovery);
+        current.contextHash = digest(context);
         const taskHash = digest(task.description ?? '');
         if (task.role === 'ui' && current.taskHash !== taskHash) delete current.result;
         current.taskHash = taskHash;
@@ -355,6 +470,7 @@ export async function createSubagentProgress(
         return {
           state: current,
           restored,
+          recovery,
           /** 同一用户输入内重派不能重置补交；显式新一轮继续允许重新尝试。 */
           admissionId: options.messageId,
           checkpoint: new SubagentCheckpoint(checkpoint, `${ns}/${current.agentId}/`),
@@ -366,7 +482,7 @@ export async function createSubagentProgress(
               next.background = { key, task, status: 'pending', observed: false };
             });
           },
-          /** 结算原始结果，包括失败或不完整 JSON，不影响成功结果缓存。 */
+          /** 真实执行结算原始结果（包括失败或不完整 JSON）后清除恢复提示，不影响成功结果缓存。 */
           async settleBackground(result: string): Promise<void> {
             if (!backgroundResult.safeParse(result).success)
               throw new Error('DEEP_SUBAGENT_BACKGROUND_INVALID');
@@ -374,6 +490,7 @@ export async function createSubagentProgress(
               if (!backgroundSchema.safeParse(next.background).success)
                 throw new Error('DEEP_SUBAGENT_BACKGROUND_MISSING');
               next.background = { ...next.background!, status: 'settled', result };
+              delete next.recovery;
             });
           },
           /** 主模型已收到结果后标记交付，继续保留后台描述供审计和重派。 */
@@ -429,6 +546,28 @@ export async function createSubagentProgress(
             });
           },
         };
+      });
+    },
+    /** 被拒绝的自动恢复在父图保存交付后调用；不创建记录，也不改写原后台结果。 */
+    async observeBackground(agentId: string): Promise<void> {
+      const found = await findAgent(agentId);
+      if (!found) return;
+      await serializeProgress(checkpoint, `${ns}/${found.key}`, async () => {
+        const tuple = await checkpoint.getTuple(checkpoint.config(ns, found.key));
+        if (!tuple) return;
+        const state = readProgress(tuple);
+        if (state.agentId !== agentId) throw new Error('DEEP_SUBAGENT_PROGRESS_CHANGED');
+        if (!state.background || state.background.observed) return;
+        state.background.observed = true;
+        const value = emptyCheckpoint();
+        value.id = found.key;
+        value.channel_values = { progress: state };
+        await checkpoint.put(
+          checkpoint.config(ns),
+          value,
+          { source: 'update', step: 0, parents: {} },
+          {},
+        );
       });
     },
     /** 只投影当前 job 精确 namespace 内有效且尚未交付的后台描述，不读取子图或其他作用域。 */
