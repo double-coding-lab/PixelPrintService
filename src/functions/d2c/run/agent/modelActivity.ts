@@ -24,6 +24,8 @@ const durationSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGE
 /** 只记录模型调用元数据，摘要、工具参数和供应商正文均不进入诊断事件。 */
 export const modelActivitySchema = z.object({
   operationId: z.string().uuid(),
+  agentId: z.string().uuid().nullable().optional(),
+  retryIndex: z.number().int().min(0).max(2).optional(),
   scope: z.enum(['generation', 'summary', 'design', 'review', 'rule_scan', 'ui']),
   status: z.enum(['started', 'completed', 'failed']),
   requestedReasoningEffort: z.enum(['low', 'high']).optional(),
@@ -45,7 +47,7 @@ export type ModelActivity = z.infer<typeof modelActivitySchema>;
 /** 提交给网关的请求参数，不表示供应商已采纳或实际使用的思考强度。 */
 export type ModelRequestMetadata = Pick<
   ModelActivity,
-  'requestedReasoningEffort' | 'reasoningEscalated'
+  'requestedReasoningEffort' | 'reasoningEscalated' | 'retryIndex'
 >;
 
 /** 异步请求各自隔离，仅保留单调时钟与安全编号，不保存任何分片正文。 */
@@ -103,7 +105,7 @@ export async function observeModelRequest<T>(
 ): Promise<T> {
   if (!publish) return action();
   const requestMetadata = modelActivitySchema
-    .pick({ requestedReasoningEffort: true, reasoningEscalated: true })
+    .pick({ requestedReasoningEffort: true, reasoningEscalated: true, retryIndex: true })
     .parse(metadata ?? {});
   const operationId = randomUUID();
   await publish({ operationId, scope, status: 'started', ...requestMetadata });

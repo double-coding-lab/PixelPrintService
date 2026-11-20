@@ -20,6 +20,7 @@ export const subagentEventSchema = z.object({
   agentId: z.string().uuid(),
   role: z.enum(['design', 'review', 'rule_scan', 'ui']),
   status: z.enum([
+    'queued',
     'started',
     'message',
     'reasoning',
@@ -30,6 +31,34 @@ export const subagentEventSchema = z.object({
     'completed',
     'failed',
   ]),
+  diagnosticVersion: z.literal(1).optional(),
+  task: z.string().max(600).optional(),
+  delivery: z
+    .object({
+      success: z.boolean(),
+      reason: z
+        .string()
+        .regex(/^[A-Z0-9_]{1,80}$/)
+        .optional(),
+      files: z.array(z.string().max(1024)).max(32),
+      missingFiles: z.array(z.string().max(1024)).max(32),
+    })
+    .optional(),
+  ruleCheck: z
+    .object({
+      path: z.string().max(1024),
+      passed: z.boolean(),
+      count: z.number().int().nonnegative(),
+      signature: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/)
+        .optional(),
+      violations: z
+        .array(z.object({ rule: z.string().max(80), nodeId: z.string().max(200) }))
+        .max(64),
+      omittedViolations: z.number().int().nonnegative(),
+    })
+    .optional(),
   nodeId: z.string().max(200).optional(),
   writePaths: z.array(z.string().max(1024)).max(32).optional(),
   message: z

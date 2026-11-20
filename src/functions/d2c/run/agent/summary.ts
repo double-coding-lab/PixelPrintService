@@ -82,6 +82,7 @@ export function createContextSummary(input: {
   observe?: (
     action: () => Promise<AIMessage>,
     retry?: (error: unknown) => ModelRetryPlan | undefined,
+    retryIndex?: number,
   ) => Promise<AIMessage>;
   transformMessage?: (message: BaseMessage) => BaseMessage;
   overhead?: () => number;
@@ -144,7 +145,7 @@ export function createContextSummary(input: {
           return retry;
         };
         try {
-          raw = await (input.observe ? input.observe(invoke, planRetry) : invoke());
+          raw = await (input.observe ? input.observe(invoke, planRetry, attempt) : invoke());
         } catch (error) {
           input.signal.throwIfAborted();
           input.archive.assertHealthy();

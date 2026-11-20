@@ -261,6 +261,8 @@ test('父图收到无进展交接后可继续接管，已有文件和上下文�
     identity: 'repair-job',
     messageId: 'input-1',
   });
+  const modelEvents: import('../src/functions/d2c/run/agent/modelActivity').ModelActivity[] = [];
+  const stageEvents: import('../src/functions/d2c/run/subagent').SubagentEvent[] = [];
   const result = await runAgent({
     model,
     tools: f.tools,
@@ -272,7 +274,12 @@ test('父图收到无进展交接后可继续接管，已有文件和上下文�
     contextBudgetTokens: 1000000,
     signal: new AbortController().signal,
     assertLease: async () => {},
-    recordSubagent: async () => {},
+    onModelActivity: async (event) => {
+      modelEvents.push(event);
+    },
+    recordSubagent: async (event) => {
+      stageEvents.push(event);
+    },
   });
   assert.match(result.output, /主Agent已接手/);
   assert.equal(handed?.success, false);
@@ -281,4 +288,32 @@ test('父图收到无进展交接后可继续接管，已有文件和上下文�
   assert.deepEqual(handed?.files, [`${path}/assets.txt`]);
   assert.ok(handed?.handoff.contextPath.startsWith('/history/'));
   assert.equal(childCalls, 6);
+  assert.ok(
+    modelEvents
+      .filter((event) => event.scope === 'generation')
+      .every((event) => event.agentId === null),
+  );
+  assert.ok(
+    modelEvents
+      .filter((event) => event.scope === 'ui')
+      .every((event) => event.agentId === handed?.agentId),
+  );
+  assert.equal(
+    modelEvents.filter((event) => event.scope === 'ui' && event.status === 'started').length,
+    6,
+  );
+  assert.ok(
+    modelEvents
+      .filter((event) => event.status === 'started')
+      .every((event) => event.retryIndex === 0),
+  );
+  assert.equal(stageEvents.filter((event) => event.status === 'queued').length, 1);
+  const checks = stageEvents.flatMap((event) => (event.ruleCheck ? [event.ruleCheck] : []));
+  assert.deepEqual(
+    checks.map((check) => check.count),
+    [1, 1, 1],
+  );
+  assert.equal(new Set(checks.map((check) => check.signature)).size, 1);
+  assert.equal(stageEvents.at(-1)?.delivery?.reason, 'RULE_REPAIR_STALLED');
+  assert.deepEqual(stageEvents.at(-1)?.delivery?.files, [`${path}/assets.txt`]);
 });
