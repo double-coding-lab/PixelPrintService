@@ -1,0 +1,21 @@
+src/functions/d2c/run/toolFeedback.ts
+  s_e16f52fd1de115::t_e7734deb1b6126 50-53
+src/functions/d2c/run/tools.ts
+  s_e16f52fd1de115::t_e7734deb1b6126 1,1265-1278,1340-1345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "72a53e5b465fe051a0b05647045e526bd1c919df",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
