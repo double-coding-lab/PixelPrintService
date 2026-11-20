@@ -2,6 +2,7 @@ import type { ModelRetryPlan } from './modelRetry';
 import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { diagnoseGatewayFailure } from '../gatewayDiagnostics';
+import { beginFailureOccurrence, diagnoseRunFailure, runFailureSchema } from '../errors';
 import { performance } from 'node:perf_hooks';
 import { z } from 'zod';
 
@@ -28,6 +29,7 @@ export const modelActivitySchema = z.object({
   retryIndex: z.number().int().min(0).max(2).optional(),
   scope: z.enum(['generation', 'summary', 'design', 'review', 'rule_scan', 'ui']),
   status: z.enum(['started', 'completed', 'failed']),
+  diagnosticFailure: runFailureSchema.optional(),
   requestedReasoningEffort: z.enum(['low', 'high']).optional(),
   reasoningEscalated: z.boolean().optional(),
   durationMs: durationSchema.optional(),
@@ -137,10 +139,18 @@ export async function observeModelRequest<T>(
     );
     /** 原始模型/取消错误优先，失效租约不绕过事务补写失败事件。 */
     const plan = signal?.aborted ? undefined : retry?.(error);
+    let diagnosticFailure: ModelActivity['diagnosticFailure'];
+    if (!signal?.aborted) {
+      beginFailureOccurrence(error);
+      diagnosticFailure = diagnoseRunFailure(error, 'MODEL_REQUEST_FAILED', {
+        stage: 'model',
+      }).failure;
+    }
     await publish({
       operationId,
       scope,
       status: 'failed',
+      ...(diagnosticFailure ? { diagnosticFailure } : {}),
       ...requestMetadata,
       ...(plan
         ? { retryAfterMs: plan.delayMs, retryAttempt: plan.attempt, rateLimited: plan.rateLimited }

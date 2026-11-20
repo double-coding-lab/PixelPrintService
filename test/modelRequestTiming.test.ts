@@ -185,7 +185,7 @@ test('请求编号采用格式白名单，未知响应头/正文/错误内容不
     ),
   );
   assert.equal(events[1].gatewayRequestId, 'gw-safe-fallback');
-  assert.doesNotMatch(JSON.stringify(events), /PRIVATE|authorization|cookie|headers|error/);
+  assert.doesNotMatch(JSON.stringify(events), /PRIVATE|authorization|cookie|headers|"error":/);
   const base = { operationId: randomUUID(), scope: 'generation', status: 'completed' };
   assert.deepEqual(
     modelActivitySchema.parse({ ...base, headers: 'PRIVATE', body: 'PRIVATE' }),

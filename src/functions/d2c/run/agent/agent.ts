@@ -61,6 +61,7 @@ import { createDeepToolFeedback } from './feedback';
 import { ToolIssue, readToolFeedback, toolFeedback, toolIssue } from '../toolFeedback';
 import {
   RunExecutionError,
+  diagnoseRunFailure,
   SubagentExecutionError,
   executionError,
   type FailureTool,
@@ -904,7 +905,14 @@ export async function runAgent(input: AgentRunInput): Promise<{
         tool?: SubagentEvent['tool'],
         metadata: Pick<
           SubagentEvent,
-          'callId' | 'detail' | 'feedback' | 'message' | 'reasoning' | 'delivery' | 'ruleCheck'
+          | 'callId'
+          | 'detail'
+          | 'feedback'
+          | 'message'
+          | 'reasoning'
+          | 'delivery'
+          | 'ruleCheck'
+          | 'diagnosticFailure'
         > = {},
       ) {
         await guard();
@@ -1331,7 +1339,13 @@ export async function runAgent(input: AgentRunInput): Promise<{
         return result;
       } catch (error) {
         /** 最近一次纠错可能已经修复，不能拿旧工具反馈解释当前未知异常。 */
-        if (!signal.aborted) await publish('failed');
+        if (!signal.aborted)
+          await publish('failed', undefined, {
+            diagnosticFailure: diagnoseRunFailure(error, 'SUBAGENT_FAILED', {
+              stage: 'tool',
+              tool: 'delegate_agent',
+            }).failure,
+          });
         /** 子任务局部限额返回未完成及真实已存文件；共享预算、存储和租约失败继续向上抛出。 */
         let cause = error;
         const seen = new Set<unknown>();

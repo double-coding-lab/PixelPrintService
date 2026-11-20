@@ -6,6 +6,7 @@ import { data, id } from './api';
 import { getEventFailure } from './timeline';
 import type { SessionDiagnostics } from './types';
 import SubagentDiagnostics from './SubagentDiagnostics';
+import { ErrorDiagnosticsPanel } from './ErrorDiagnostics';
 
 /** 新增字段可缺省，兼容旧诊断接口；服务端只投影校验后的计时与编号。 */
 type ModelTimingStep = SessionDiagnostics['steps'][number] & {
@@ -175,6 +176,11 @@ export function DiagnosticsContent({
           }
         />
       )}
+      <ErrorDiagnosticsPanel
+        sessionId={snapshot.sessionId}
+        runId={snapshot.runId}
+        revision={snapshot.timelineSeq}
+      />
       {!snapshot.runId && <Empty description="暂无执行轮次" />}
       <section className="diagnostics-section" aria-label="执行状态">
         <div className="diagnostics-section-heading">
@@ -511,7 +517,7 @@ export default function DiagnosticsPanel({
             <span>读取执行诊断…</span>
           </div>
         )}
-        {visibleSnapshot && <DiagnosticsContent snapshot={visibleSnapshot} now={now} />}
+        {open && visibleSnapshot && <DiagnosticsContent snapshot={visibleSnapshot} now={now} />}
       </div>
     </Drawer>
   );
