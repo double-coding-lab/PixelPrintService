@@ -356,6 +356,7 @@ export async function executeGenerationRun(input: {
         name: selected.MODEL_NAME,
         apiKey: selected.MODEL_API_KEY,
         contextBudgetTokens: snapshot.model.contextBudgetTokens,
+        requestTimeoutMs: snapshot.model.requestTimeoutMs,
         ...(snapshot.model.reasoningPolicy !== undefined
           ? { reasoningPolicy: snapshot.model.reasoningPolicy }
           : {}),

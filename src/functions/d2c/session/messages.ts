@@ -324,6 +324,7 @@ export function createMessageService(
               MODEL_BASE_URL: model.MODEL_BASE_URL,
               MODEL_NAME: model.MODEL_NAME,
               contextBudgetTokens: model.contextBudgetTokens,
+              requestTimeoutMs: model.requestTimeoutMs ?? 180000,
               ...(model.reasoningPolicy !== undefined
                 ? { reasoningPolicy: model.reasoningPolicy }
                 : {}),

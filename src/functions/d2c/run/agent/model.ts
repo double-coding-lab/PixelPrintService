@@ -9,6 +9,7 @@ export type DeepModelConfig = {
   name: string;
   apiKey: string;
   contextBudgetTokens: number;
+  requestTimeoutMs?: number;
   reasoningPolicy?: 'adaptive' | 'provider-default';
 };
 
@@ -73,6 +74,9 @@ class ObservedChatCompletions extends ChatOpenAICompletions {
 
 /** 内网网关沿用 Chat Completions 协议，单次输出上限由网关默认值决定。 */
 export function createDeepModel(config: DeepModelConfig, effort?: 'low' | 'high') {
+  const requestTimeoutMs = config.requestTimeoutMs === undefined ? 180000 : config.requestTimeoutMs;
+  if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1000 || requestTimeoutMs > 600000)
+    throw new RangeError('requestTimeoutMs must be an integer between 1000 and 600000');
   const model = new ObservedChatCompletions({
     model: config.name,
     apiKey: config.apiKey,
@@ -88,7 +92,7 @@ export function createDeepModel(config: DeepModelConfig, effort?: 'low' | 'high'
     streaming: true,
     streamUsage: true,
     maxRetries: 0,
-    timeout: 60_000,
+    timeout: requestTimeoutMs,
     callbacks: [],
     ...(effort && supportsAdaptiveReasoning(config)
       ? { modelKwargs: { reasoning_effort: effort } }

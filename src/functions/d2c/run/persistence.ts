@@ -31,6 +31,7 @@ const modelSchema = z
     MODEL_BASE_URL: z.string().url(),
     MODEL_NAME: z.string().min(1),
     contextBudgetTokens: z.number().int().positive(),
+    requestTimeoutMs: z.number().int().min(1000).max(600000).default(180000),
     reasoningPolicy: z.enum(['adaptive', 'provider-default']).optional(),
     /** 兼容旧快照；单次输出上限已交由模型网关决定，读取时丢弃。 */
     maxOutputTokens: z.unknown().optional(),
