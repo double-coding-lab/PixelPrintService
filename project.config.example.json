@@ -87,6 +87,16 @@
           "activeKeyId": "body-primary",
           "keys": {}
         }
+      },
+      "checkpointStorage": {
+        "schemaReady": false,
+        "mode": "inline",
+        "thresholdBytes": 262144,
+        "concurrency": 2,
+        "encryption": {
+          "activeKeyId": "checkpoint-primary",
+          "keys": {}
+        }
       }
     }
   }

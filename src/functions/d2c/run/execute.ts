@@ -80,6 +80,7 @@ export async function executeGenerationRun(input: {
   const secrets = new Set([
     ...config.modelConfigs.map((model) => model.MODEL_API_KEY),
     ...Object.values(config.d2c.contentStorage?.encryption?.keys ?? {}),
+    ...Object.values(config.d2c.checkpointStorage?.encryption?.keys ?? {}),
   ]);
   /** 仅在当前轮次保留临时明文，用于阻止凭据进入文件、历史和页面。 */
   function redact(value: string) {
@@ -411,7 +412,7 @@ export async function executeGenerationRun(input: {
       testModel: input.testModel,
       message: snapshot.message,
       redact,
-      checkpoint: createRunCheckpointSaver(input.mysql, leases, lease),
+      checkpoint: createRunCheckpointSaver(input.mysql, leases, lease, signal),
       resources: { bundle: restored.bundle, bundleHash: restored.bundle.hash, target },
     });
     if (result.waiting) {

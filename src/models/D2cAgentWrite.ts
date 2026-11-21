@@ -26,6 +26,7 @@ export class D2cAgentWrite extends Model<
   declare channel: string | null;
   declare valueType: CreationOptional<string>;
   declare value: Buffer | null;
+  declare valueRef: CreationOptional<Record<string, unknown> | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -110,6 +111,12 @@ export function initD2cAgentWrite(sequelize: Sequelize) {
         allowNull: true,
         comment: 'typed pending write 值',
       },
+      valueRef: {
+        field: 'writeRef',
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: '私有不可变typed载荷引用',
+      },
       createdAt: {
         type: DataTypes.DATE(3),
         allowNull: false,
@@ -130,6 +137,8 @@ export function initD2cAgentWrite(sequelize: Sequelize) {
       tableName: 'd2c_agent_write',
       freezeTableName: true,
       timestamps: true,
+      defaultScope: { attributes: { exclude: ['valueRef'] } },
+      scopes: { checkpointBody: {} },
       charset: 'utf8mb4',
       collate: 'utf8mb4_bin',
       indexes: [

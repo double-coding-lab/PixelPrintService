@@ -26,6 +26,19 @@ import {
 import { Op, Transaction, type ModelStatic, type Sequelize, type WhereOptions } from 'sequelize';
 import type { D2cAgentCheckpoint } from '@/models/D2cAgentCheckpoint';
 import type { D2cAgentWrite } from '@/models/D2cAgentWrite';
+import {
+  checkpointModel,
+  checkpointAttributes,
+  checkpointPayloadScope,
+  prepareCheckpointPayload,
+  resolveCheckpointPayload,
+} from '../../content/checkpointRuntime';
+
+type FrozenTuple = {
+  row: D2cAgentCheckpoint;
+  pending: D2cAgentWrite[];
+  parentPending: D2cAgentWrite[];
+};
 
 /**
  * 调用方必须在此事务内锁定本 session/run 的租约行并验证 owner、有效期和会话归属，
@@ -41,6 +54,9 @@ export type D2cMySQLCheckpointOptions = {
   sequelize: Sequelize;
   withLease: WithCheckpointLease;
   serde?: SerializerProtocol;
+  signal?: AbortSignal;
+  /** Run factory keeps storage failures classified even when I/O precedes the lease transaction. */
+  onStorageError?: (error: unknown) => unknown;
 };
 
 /** UTF-8 hash 仅缩短索引；所有命中都继续核对原文。 */
@@ -75,6 +91,8 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
   private readonly withLease: WithCheckpointLease;
   private readonly checkpoints: ModelStatic<D2cAgentCheckpoint>;
   private readonly writes: ModelStatic<D2cAgentWrite>;
+  private readonly signal?: AbortSignal;
+  private readonly onStorageError?: (error: unknown) => unknown;
 
   /** sessionId 必须来自已鉴权服务端会话，不接受模型或请求自由切换 thread。 */
   constructor(options: D2cMySQLCheckpointOptions) {
@@ -85,6 +103,8 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
     this.threadId = `d2c:${options.sessionId}`;
     this.sequelize = options.sequelize;
     this.withLease = options.withLease;
+    this.signal = options.signal;
+    this.onStorageError = options.onStorageError;
     this.checkpoints = options.sequelize.models
       .D2cAgentCheckpoint as ModelStatic<D2cAgentCheckpoint>;
     this.writes = options.sequelize.models.D2cAgentWrite as ModelStatic<D2cAgentWrite>;
@@ -128,23 +148,49 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
     checkpointId(row.checkpointId);
   }
 
-  /** 所有修改只接受租约事务；本类不会另开事务或提前提交。 */
+  /** 所有修改只接受租约事务；额外事务仅冻结读取，不提前提交修改。 */
   private mutate<T>(callback: (transaction: Transaction) => Promise<T>): Promise<T> {
+    this.signal?.throwIfAborted();
     return this.withLease(async (transaction) => {
+      this.signal?.throwIfAborted();
       const state = transaction as Transaction & { sequelize?: Sequelize; finished?: string };
       if (!transaction || state.sequelize !== this.sequelize || state.finished)
         throw new Error('Checkpoint requires an active lease transaction on the same sequelize');
-      return callback(transaction);
+      const result = await callback(transaction);
+      this.signal?.throwIfAborted();
+      return result;
     });
   }
 
-  /** 读取同一快照下的有序 pending writes，保留 SDK 的特殊负序号语义。 */
-  private async pending(ns: string, id: string, transaction: Transaction) {
-    const rows = await this.writes.findAll({
-      where: { sessionId: this.sessionId, namespaceHash: hash(ns), checkpointId: id },
+  /** 外部存储异常沿用Run分类；调用者给出的取消保持原取消原因。 */
+  private async content<T>(action: () => Promise<T>): Promise<T> {
+    this.signal?.throwIfAborted();
+    try {
+      const result = await action();
+      this.signal?.throwIfAborted();
+      return result;
+    } catch (error) {
+      if (this.signal?.aborted) throw error;
+      throw this.onStorageError ? this.onStorageError(error) : error;
+    }
+  }
+
+  /** 同一数据库快照只复制存储描述；反序列化和对象读取均在事务结束后进行。 */
+  private async pendingRows(ns: string, id: string, transaction: Transaction, tasksOnly = false) {
+    return checkpointModel(this.sequelize, this.writes).findAll({
+      where: {
+        sessionId: this.sessionId,
+        namespaceHash: hash(ns),
+        checkpointId: id,
+        ...(tasksOnly ? { channel: TASKS } : {}),
+      },
       transaction,
       raw: true,
     });
+  }
+
+  /** 归属和task原文核验通过后才构造绑定typed编码的scope。 */
+  private async pending(rows: D2cAgentWrite[], ns: string) {
     for (const row of rows) {
       this.verify(row, ns);
       if (
@@ -152,7 +198,7 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
         row.taskHash !== hash(row.taskId) ||
         row.taskPath === null ||
         row.channel === null ||
-        row.value === null ||
+        (row.value == null && row.valueRef == null) ||
         !row.valueType
       )
         throw new Error('Incomplete checkpoint write');
@@ -164,35 +210,80 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
       ),
     );
     const result: CheckpointPendingWrite[] = [];
-    for (const row of rows)
-      result.push([
-        row.taskId!,
-        row.channel!,
-        await this.serde.loadsTyped(row.valueType, row.value!),
-      ]);
+    for (const row of rows) {
+      const bytes = await this.content(() =>
+        resolveCheckpointPayload(
+          this.sequelize,
+          { payload: row.value, reference: row.valueRef },
+          checkpointPayloadScope({
+            sessionId: this.sessionId,
+            namespaceHash: row.namespaceHash,
+            checkpointId: row.checkpointId,
+            kind: 'write',
+            type: row.valueType,
+            taskHash: row.taskHash,
+            idx: row.idx,
+          }),
+          this.signal,
+        ),
+      );
+      if (bytes === null) throw new Error('Incomplete checkpoint write');
+      result.push([row.taskId!, row.channel!, await this.serde.loadsTyped(row.valueType, bytes)]);
+    }
     return result;
   }
 
-  /** 从 typed bytes 还原 tuple；兼容 SDK v4 前 parent TASKS 的迁移语义。 */
-  private async tuple(row: D2cAgentCheckpoint, transaction: Transaction): Promise<CheckpointTuple> {
+  /** checkpoint、metadata、pending和旧SDK父TASKS的描述属于同一REPEATABLE_READ。 */
+  private async freeze(row: D2cAgentCheckpoint, transaction: Transaction): Promise<FrozenTuple> {
     this.verify(row);
-    if (
-      row.checkpoint === null ||
-      row.metadata === null ||
-      !row.checkpointType ||
-      !row.metadataType
-    )
-      throw new Error('Incomplete checkpoint payload');
-    const checkpoint = (await this.serde.loadsTyped(
-      row.checkpointType,
-      row.checkpoint,
-    )) as Checkpoint;
+    if (row.parentCheckpointId !== null) checkpointId(row.parentCheckpointId);
+    const ns = row.checkpointNs!;
+    return structuredClone({
+      row,
+      pending: await this.pendingRows(ns, row.checkpointId, transaction),
+      parentPending:
+        row.parentCheckpointId === null
+          ? []
+          : await this.pendingRows(ns, row.parentCheckpointId, transaction, true),
+    });
+  }
+
+  /** 每个载荷先核验行归属再按实际serdeType解密，旧inline始终优先。 */
+  private async payload(row: D2cAgentCheckpoint, kind: 'checkpoint' | 'metadata') {
+    this.verify(row);
+    const type = kind === 'checkpoint' ? row.checkpointType : row.metadataType;
+    if (!type) throw new Error('Incomplete checkpoint payload');
+    const bytes = await this.content(() =>
+      resolveCheckpointPayload(
+        this.sequelize,
+        {
+          payload: kind === 'checkpoint' ? row.checkpoint : row.metadata,
+          reference: kind === 'checkpoint' ? row.checkpointRef : row.metadataRef,
+        },
+        checkpointPayloadScope({
+          sessionId: this.sessionId,
+          namespaceHash: row.namespaceHash,
+          checkpointId: row.checkpointId,
+          kind,
+          type,
+        }),
+        this.signal,
+      ),
+    );
+    if (bytes === null) throw new Error('Incomplete checkpoint payload');
+    return this.serde.loadsTyped(type, bytes);
+  }
+
+  /** 从 typed bytes 还原 tuple；兼容 SDK v4 前 parent TASKS 的迁移语义。 */
+  private async tuple(frozen: FrozenTuple): Promise<CheckpointTuple> {
+    const { row } = frozen;
+    const checkpoint = (await this.payload(row, 'checkpoint')) as Checkpoint;
     if (checkpoint.id !== row.checkpointId) throw new Error('Checkpoint payload ID mismatch');
     const ns = row.checkpointNs!;
     const parent = row.parentCheckpointId;
     if (parent !== null) checkpointId(parent);
     if (checkpoint.v < 4 && parent !== null) {
-      checkpoint.channel_values[TASKS] = (await this.pending(ns, parent, transaction))
+      checkpoint.channel_values[TASKS] = (await this.pending(frozen.parentPending, ns))
         .filter((write) => write[1] === TASKS)
         .map((write) => write[2]);
       const versions = Object.values(checkpoint.channel_versions);
@@ -201,32 +292,42 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
     return {
       config: this.config(ns, row.checkpointId),
       checkpoint,
-      metadata: await this.serde.loadsTyped(row.metadataType, row.metadata),
+      metadata: (await this.payload(row, 'metadata')) as CheckpointMetadata,
       ...(parent === null ? {} : { parentConfig: this.config(ns, parent) }),
-      pendingWrites: await this.pending(ns, row.checkpointId, transaction),
+      pendingWrites: await this.pending(frozen.pending, ns),
     };
   }
 
   /** 返回指定或最新 checkpoint，ID 使用 UTF-8 字节降序，与 SQL binary 排序一致。 */
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const scope = this.scope(config);
-    return this.sequelize.transaction(
+    this.signal?.throwIfAborted();
+    const frozen = await this.sequelize.transaction(
       { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
       async (transaction) => {
-        const rows = await findOrderedRows(this.checkpoints, ['namespaceHash', 'checkpointId'], {
-          where: { ...scope.where, ...(scope.id ? { checkpointId: scope.id } : {}) },
-          transaction,
-          raw: true,
-          order: [['checkpointId', 'DESC']],
-          limit: 1,
-        });
+        const rows = await findOrderedRows(
+          checkpointModel(this.sequelize, this.checkpoints),
+          ['namespaceHash', 'checkpointId'],
+          {
+            where: { ...scope.where, ...(scope.id ? { checkpointId: scope.id } : {}) },
+            transaction,
+            raw: true,
+            order: [['checkpointId', 'DESC']],
+            limit: 1,
+          },
+        );
         for (const row of rows) this.verify(row, scope.ns);
-        return rows[0] ? this.tuple(rows[0], transaction) : undefined;
+        return rows[0] ? this.freeze(rows[0], transaction) : undefined;
       },
     );
+    return frozen ? this.tuple(frozen) : undefined;
   }
 
-  /** 可列出本会话全部 namespaces；filter 在反序列化后比较，limit 只计匹配项。 */
+  /**
+   * 分页冻结最多50条metadata描述，事务外filter；匹配项再单独冻结完整tuple并复核filter。
+   * 每个tuple内部一致；跨页/候选到tuple之间可见并发更新，已删除候选跳过，不保留长事务。
+   * 一次只还原一个tuple，limit只计实际yield的匹配项，不累积整份历史正文。
+   */
   async *list(
     config: RunnableConfig,
     options: CheckpointListOptions = {},
@@ -237,68 +338,80 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
       throw new Error('Invalid checkpoint list limit');
     if (options.limit === 0) return;
     const scopedNamespace = config.configurable?.checkpoint_ns !== undefined;
-    const tuples = await this.sequelize.transaction(
-      { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
-      async (transaction) => {
-        const result: CheckpointTuple[] = [];
-        let cursor: { checkpointId: string; namespaceHash: string } | undefined;
-        const size = options.filter ? 50 : Math.min(options.limit ?? 50, 50);
-        while (true) {
-          const conditions: WhereOptions[] = [
-            { sessionId: this.sessionId },
-            ...(scopedNamespace ? [{ namespaceHash: hash(scope.ns) }] : []),
-            ...(scope.id ? [{ checkpointId: scope.id }] : []),
-            ...(before ? [{ checkpointId: { [Op.lt]: before } }] : []),
-            ...(cursor
-              ? [
+    let cursor: { checkpointId: string; namespaceHash: string } | undefined;
+    let yielded = 0;
+    const size = options.filter ? 50 : Math.min(options.limit ?? 50, 50);
+    const matches = (metadata: Record<string, unknown> | undefined) =>
+      !options.filter ||
+      Object.entries(options.filter).every(([key, value]) =>
+        isDeepStrictEqual(metadata?.[key], value),
+      );
+    while (true) {
+      this.signal?.throwIfAborted();
+      const conditions: WhereOptions[] = [
+        { sessionId: this.sessionId },
+        ...(scopedNamespace ? [{ namespaceHash: hash(scope.ns) }] : []),
+        ...(scope.id ? [{ checkpointId: scope.id }] : []),
+        ...(before ? [{ checkpointId: { [Op.lt]: before } }] : []),
+        ...(cursor
+          ? [
+              {
+                [Op.or]: [
+                  { checkpointId: { [Op.lt]: cursor.checkpointId } },
                   {
-                    [Op.or]: [
-                      { checkpointId: { [Op.lt]: cursor.checkpointId } },
-                      {
-                        checkpointId: cursor.checkpointId,
-                        namespaceHash: { [Op.gt]: cursor.namespaceHash },
-                      },
-                    ],
+                    checkpointId: cursor.checkpointId,
+                    namespaceHash: { [Op.gt]: cursor.namespaceHash },
                   },
-                ]
-              : []),
-          ];
-          /** 先分页读取元数据，只有匹配项才加载完整状态与 pending writes。 */
-          const rows = await findOrderedRows(this.checkpoints, ['namespaceHash', 'checkpointId'], {
-            where: { [Op.and]: conditions },
-            attributes: [
-              'sessionId',
-              'threadId',
-              'namespaceHash',
-              'checkpointNs',
-              'checkpointId',
-              'metadataType',
-              'metadata',
-            ],
-            order: [
-              ['checkpointId', 'DESC'],
-              ['namespaceHash', 'ASC'],
-            ],
-            limit: size,
-            transaction,
-            raw: true,
-          });
-          for (const row of rows) {
-            this.verify(row, scopedNamespace ? scope.ns : undefined);
-            if (!row.metadataType || row.metadata === null)
-              throw new Error('Incomplete checkpoint metadata');
-            const metadata = (await this.serde.loadsTyped(
-              row.metadataType,
-              row.metadata,
-            )) as Record<string, unknown>;
-            if (
-              options.filter &&
-              !Object.entries(options.filter).every(([key, value]) =>
-                isDeepStrictEqual(metadata?.[key], value),
-              )
-            )
-              continue;
-            const full = await this.checkpoints.findOne({
+                ],
+              },
+            ]
+          : []),
+      ];
+      const rows = await this.sequelize.transaction(
+        { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+        async (transaction) => {
+          const rows = await findOrderedRows(
+            checkpointModel(this.sequelize, this.checkpoints),
+            ['namespaceHash', 'checkpointId'],
+            {
+              where: { [Op.and]: conditions },
+              attributes: checkpointAttributes(
+                this.sequelize,
+                [
+                  'sessionId',
+                  'threadId',
+                  'namespaceHash',
+                  'checkpointNs',
+                  'checkpointId',
+                  'metadataType',
+                  'metadata',
+                ],
+                ['metadataRef'],
+              ),
+              order: [
+                ['checkpointId', 'DESC'],
+                ['namespaceHash', 'ASC'],
+              ],
+              limit: size,
+              transaction,
+              raw: true,
+            },
+          );
+          for (const row of rows) this.verify(row, scopedNamespace ? scope.ns : undefined);
+          return structuredClone(rows);
+        },
+      );
+      for (const row of rows) {
+        if (
+          options.filter &&
+          !matches((await this.payload(row, 'metadata')) as Record<string, unknown>)
+        )
+          continue;
+        this.signal?.throwIfAborted();
+        const frozen = await this.sequelize.transaction(
+          { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+          async (transaction) => {
+            const full = await checkpointModel(this.sequelize, this.checkpoints).findOne({
               where: {
                 sessionId: this.sessionId,
                 namespaceHash: row.namespaceHash,
@@ -307,18 +420,22 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
               transaction,
               raw: true,
             });
-            if (!full) throw new Error('Checkpoint disappeared inside read transaction');
-            result.push(await this.tuple(full, transaction));
-            if (options.limit !== undefined && result.length >= options.limit) return result;
-          }
-          if (rows.length < size) break;
-          const last = rows[rows.length - 1];
-          cursor = { checkpointId: last.checkpointId, namespaceHash: last.namespaceHash };
-        }
-        return result;
-      },
-    );
-    yield* tuples;
+            if (!full) return undefined;
+            this.verify(full, row.checkpointNs!);
+            return this.freeze(full, transaction);
+          },
+        );
+        if (!frozen) continue;
+        const tuple = await this.tuple(frozen);
+        if (!matches(tuple.metadata as Record<string, unknown> | undefined)) continue;
+        yield tuple;
+        yielded++;
+        if (options.limit !== undefined && yielded >= options.limit) return;
+      }
+      if (rows.length < size) return;
+      const last = rows[rows.length - 1];
+      cursor = { checkpointId: last.checkpointId, namespaceHash: last.namespaceHash };
+    }
   }
 
   /** 保存完整 channel_values，newVersions 仅为 SDK 增量提示，不能据此丢弃未改变 channels。 */
@@ -329,12 +446,30 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
     _newVersions: ChannelVersions,
   ): Promise<RunnableConfig> {
     const scope = this.scope(config);
+    this.signal?.throwIfAborted();
     const id = checkpointId(checkpoint.id);
     if (scope.id === id) throw new Error('Checkpoint cannot be its own parent');
     const [[checkpointType, bytes], [metadataType, metadataBytes]] = await Promise.all([
       this.serde.dumpsTyped(checkpoint),
       this.serde.dumpsTyped(metadata),
     ]);
+    const identity = { sessionId: this.sessionId, namespaceHash: hash(scope.ns), checkpointId: id };
+    const prepared = await this.content(() =>
+      prepareCheckpointPayload(
+        this.sequelize,
+        checkpointPayloadScope({ ...identity, kind: 'checkpoint', type: checkpointType }),
+        bytes,
+        this.signal,
+      ),
+    );
+    const preparedMetadata = await this.content(() =>
+      prepareCheckpointPayload(
+        this.sequelize,
+        checkpointPayloadScope({ ...identity, kind: 'metadata', type: metadataType }),
+        metadataBytes,
+        this.signal,
+      ),
+    );
     await this.mutate(async (transaction) => {
       const where = { ...scope.where, checkpointId: id };
       const existing = await this.checkpoints.findOne({
@@ -349,9 +484,13 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
         checkpointNs: scope.ns,
         parentCheckpointId: scope.id || null,
         checkpointType,
-        checkpoint: Buffer.from(bytes),
+        checkpoint: prepared.payload,
+        ...(prepared.reference !== undefined ? { checkpointRef: prepared.reference } : {}),
         metadataType,
-        metadata: Buffer.from(metadataBytes),
+        metadata: preparedMetadata.payload,
+        ...(preparedMetadata.reference !== undefined
+          ? { metadataRef: preparedMetadata.reference }
+          : {}),
       };
       if (existing) await this.checkpoints.update(values, { where, transaction });
       else await this.checkpoints.create(values, { transaction });
@@ -367,33 +506,99 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
     taskPath = '',
   ): Promise<void> {
     const scope = this.scope(config);
+    this.signal?.throwIfAborted();
     if (!scope.id) throw new Error('putWrites requires checkpoint_id');
+    const id = scope.id;
     text(taskId, 'taskId');
     text(taskPath, 'taskPath');
-    const values = await Promise.all(
-      writes.map(async ([channel, value], index) => {
-        text(channel, 'channel');
-        const [valueType, bytes] = await this.serde.dumpsTyped(value);
-        return {
-          ...scope.where,
-          threadId: this.threadId,
-          checkpointNs: scope.ns,
-          checkpointId: scope.id,
-          taskHash: hash(taskId),
-          taskId,
-          taskPath,
-          idx: Object.hasOwn(WRITES_IDX_MAP, channel) ? WRITES_IDX_MAP[channel] : index,
-          channel,
-          valueType,
-          value: Buffer.from(bytes),
-        };
-      }),
-    );
+    const taskHash = hash(taskId);
+    const plan = writes.map(([channel, value], index) => {
+      text(channel, 'channel');
+      return {
+        channel,
+        value,
+        index,
+        idx: Object.hasOwn(WRITES_IDX_MAP, channel) ? WRITES_IDX_MAP[channel] : index,
+      };
+    });
+    // Ordinary replay must remain harmless when object storage is unavailable.
+    const skipped = new Set<number>();
+    if (plan.some((item) => item.idx >= 0))
+      await this.content(() =>
+        this.sequelize.transaction(
+          { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+          async (transaction) => {
+            for (const item of plan) {
+              if (item.idx < 0) continue;
+              const existing = await this.writes.findOne({
+                where: { ...scope.where, checkpointId: id, taskHash, idx: item.idx },
+                attributes: [
+                  'sessionId',
+                  'threadId',
+                  'checkpointNs',
+                  'namespaceHash',
+                  'checkpointId',
+                  'taskId',
+                  'taskHash',
+                  'idx',
+                ],
+                transaction,
+                raw: true,
+              });
+              if (!existing) continue;
+              this.verify(existing, scope.ns);
+              if (existing.taskId !== taskId) throw new Error('Checkpoint task hash mismatch');
+              skipped.add(item.index);
+            }
+          },
+        ),
+      );
+    const prepare = async ({ channel, value, index, idx }: (typeof plan)[number]) => {
+      const row = {
+        ...scope.where,
+        threadId: this.threadId,
+        checkpointNs: scope.ns,
+        checkpointId: id,
+        taskHash,
+        taskId,
+        taskPath,
+        idx,
+        channel,
+      };
+      if (skipped.has(index)) return { ...row, skipped: true as const };
+      const [valueType, bytes] = await this.serde.dumpsTyped(value);
+      const prepared = await this.content(() =>
+        prepareCheckpointPayload(
+          this.sequelize,
+          checkpointPayloadScope({
+            sessionId: this.sessionId,
+            namespaceHash: row.namespaceHash,
+            checkpointId: row.checkpointId,
+            kind: 'write',
+            type: valueType,
+            taskHash: row.taskHash,
+            idx: row.idx,
+          }),
+          bytes,
+          this.signal,
+        ),
+      );
+      return {
+        ...row,
+        skipped: false as const,
+        valueType,
+        value: prepared.payload,
+        ...(prepared.reference !== undefined ? { valueRef: prepared.reference } : {}),
+      };
+    };
+    // Serialize/upload one value at a time so this batch cannot exhaust the store's bounded queue.
+    const values: Awaited<ReturnType<typeof prepare>>[] = [];
+    for (const item of plan) values.push(await prepare(item));
     await this.mutate(async (transaction) => {
       for (const value of values) {
         const where = {
           ...scope.where,
-          checkpointId: scope.id,
+          checkpointId: id,
           taskHash: value.taskHash,
           idx: value.idx,
         };
@@ -406,8 +611,12 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
           this.verify(existing, scope.ns);
           if (existing.taskId !== taskId) throw new Error('Checkpoint task hash mismatch');
           if (value.idx >= 0) continue;
-          await this.writes.update(value, { where, transaction });
-        } else await this.writes.create(value, { transaction });
+        }
+        // A skipped first-wins row disappearing during preparation cannot silently lose this write.
+        if (value.skipped) throw new Error('Checkpoint write disappeared during preparation');
+        const { skipped: _skipped, ...stored } = value;
+        if (existing) await this.writes.update(stored, { where, transaction });
+        else await this.writes.create(stored, { transaction });
       }
     });
   }
@@ -433,10 +642,13 @@ export function createRunCheckpointSaver(
   mysql: Sequelize,
   leases: Pick<ReturnType<typeof createRunLeases>, 'commit'>,
   lease: RunLease,
+  signal?: AbortSignal,
 ) {
   return new D2cMySQLCheckpointSaver({
     sequelize: mysql,
     sessionId: lease.sessionId,
+    signal,
+    onStorageError: (error) => executionError(error, 'STORAGE_FAILED', { stage: 'storage' }),
     withLease: async (action) => {
       try {
         return await leases.commit(lease, async (session, transaction) => {
@@ -445,6 +657,7 @@ export function createRunCheckpointSaver(
           return action(transaction);
         });
       } catch (error) {
+        signal?.throwIfAborted();
         if (error instanceof SessionError && error.reason === 'LEASE_LOST')
           throw executionError(error, 'LEASE_LOST', { stage: 'worker' });
         throw executionError(error, 'STORAGE_FAILED', { stage: 'storage' });

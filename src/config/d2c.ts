@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { contentStorageSchema } from '../functions/d2c/content/runtime';
+import { checkpointStorageSchema } from '../functions/d2c/content/checkpointRuntime';
 import { z } from 'zod';
 
 /** 校验服务器使用的 HTTP 地址，禁止将账号密码写入 URL。 */
@@ -100,6 +101,7 @@ const runtimeSchema = z.object({
     storage: storageSchema.optional(),
     secrets: secretKeysSchema.optional(),
     contentStorage: contentStorageSchema.optional(),
+    checkpointStorage: checkpointStorageSchema.optional(),
     limits: z.object({
       textFileBytes: z.number().int().min(1),
       filesPerSession: z.number().int().min(1),

@@ -56,7 +56,7 @@ const referenceSchema = z
 export type TextContentReference = z.infer<typeof referenceSchema>;
 
 /** 定位按描述符复制有限JSON；完整引用仅增加元数据预算，拒绝反射异常及任意getter。 */
-function safeLocator(value: unknown, enclosingReference = false): Record<string, unknown> {
+export function safeLocator(value: unknown, enclosingReference = false): Record<string, unknown> {
   try {
     if (!value || typeof value !== 'object' || Array.isArray(value))
       throw new TextContentError('INVALID_REFERENCE');
@@ -107,12 +107,12 @@ export function parseTextContentReference(value: unknown): TextContentReference 
 }
 
 /** 明确取消与普通存储失败分开，避免把正常停止统计为一次执行错误。 */
-function checkAbort(signal?: AbortSignal): void {
+export function checkAbort(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException('正文操作已取消', 'AbortError');
 }
 
 /** 校验固定32字节标准Base64密钥，使用后清空临时密钥Buffer。 */
-function keyFor(config: TextContentKeys, keyId: string): Buffer {
+export function keyFor(config: TextContentKeys, keyId: string): Buffer {
   const material =
     config?.keys && Object.hasOwn(config.keys, keyId) ? config.keys[keyId] : undefined;
   if (typeof material !== 'string' || !/^[a-zA-Z0-9+/]{43}=$/.test(material))
@@ -142,7 +142,7 @@ function authenticatedData(ref: Omit<TextContentReference, 'locator'>): Buffer {
 }
 
 /** 有界FIFO并发；排队取消不占用后续槽位，失败必释放，未启动的动作不上传。 */
-function limiter(maximum: number, maxPendingBytes: number) {
+export function limiter(maximum: number, maxPendingBytes: number) {
   let pendingBytes = 0;
   let active = 0;
   const waiting: Array<{ start: () => void; cancel: () => void }> = [];
