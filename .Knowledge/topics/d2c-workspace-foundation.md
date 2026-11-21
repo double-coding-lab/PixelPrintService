@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 12
+revision: 13
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -91,5 +91,5 @@ confidence: inferred
 - `content/store.ts`以AES-256-GCM、可信scope、独立版本密钥、随机不可变对象、上传回读及大小/摘要核验保护正文；底层复用平台文件客户端，有界并发/排队和流式下载限额，不缓存正文。引用/密钥/定位只在服务端，浏览器与编辑DTO仍返回授权字符串。
 - 上传和正文还原在业务事务外执行，提交前重验权限、修订及租约/CAS；版本、作品、预览复用同一不可变对象。数据库失败保留旧状态及未引用对象；当前阶段不做GC。
 - `content:audit`仅生成容量SELECT；`content:migrate`提供固定表组、默认dry-run、BIGINT分页、逐行正文、原子私有游标、分批resume及restore回填。外置apply要求显式确认；冲突/活动预览/故障保留失败行之前游标。目标库DDL、迁移和性能验证由部署方执行。
-- 回滚旧程序前先停止外置写入、恢复全部所需inline并核验，保留元数据/对象/历史正文密钥；仅关mode不能让旧程序读取引用。执行时间线、检查点和pending writes格式继续沿用当前实现。
-- 可执行配置、迁移顺序和第二阶段评估见[工作区基础终稿](../stock-docs/d2c-workspace-foundation.md#大正文文件存储)。
+- 回滚旧程序前先停止外置写入、恢复全部所需inline并核验，保留元数据/对象/历史正文密钥；仅关mode不能让旧程序读取引用。执行时间线保持现有存储；检查点与pending writes的独立外置开关及恢复边界见执行专题。
+- 可执行配置、迁移顺序及阶段划分见[工作区基础终稿](../stock-docs/d2c-workspace-foundation.md#大正文文件存储)。

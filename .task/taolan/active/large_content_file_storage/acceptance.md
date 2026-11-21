@@ -17,3 +17,17 @@
 - [ ] shadow灰度、历史迁移、真实性能对比、跨部署/备份恢复和旧程序restore演练。
 
 这些运行验收移交user-todos.md，任务保持active；本轮完成本地分支提交，不推送或部署，不自动切换线上配置。
+
+## 第二阶段代码验收（2026-11-21）
+- [x] 两仓独立分支codex/content-storage-phase2，第一阶段提交保持独立。
+- [x] 旧schema默认投影/INSERT不选新列；checkpointStorage独立默认关闭，旧BLOB优先，三模式及历史引用回退可读。
+- [x] 任意typed bytes压缩加密往返、独立范围/编码绑定、摘要及下载/解压限额、取消与密钥轮换。
+- [x] checkpoint/metadata/writes事务外准备与还原，租约事务提交、普通first-wins/特殊last-wins、父链/归档和分页列表语义保留。
+- [x] 等待租约期间取消、update/最后write/delete后取消均回滚，调用者取消不误标STORAGE_FAILED；交叉审查P1已关闭。
+- [x] 普通重复write避免无用上传，72个大值逐项准备无BUSY；真实LangGraph外置暂停续作及失败兄弟任务恢复均跨saver验证，已完成节点不重复运行。
+- [x] 迁移无锁dry-run、固定BIGINT上界、行级CAS、活动会话阻断、原更新时间保留、原子私有游标、取消和精确BLOB restore。
+- [x] 内仓相关回归297项及新增外置失败重试专项1项通过；外仓第二阶段最终89项通过。
+- [x] 两仓应用/前端类型与构建通过，内仓测试和公共仓新增测试严格类型通过；源码格式与diff检查通过。
+- [x] 两仓知识库revision预演/apply/build/check通过，增量SQL和启用/回滚说明同步。
+
+第二阶段运行验收仍待目标MySQL/对象存储、真实Worker重启/网络故障、延迟和内存测量。新建列与灰度、历史迁移、备份/回填及GC窗口见user-todos.md；本轮完成第二阶段本地提交，未推送或执行线上变更。

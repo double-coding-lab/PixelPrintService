@@ -19,7 +19,11 @@
       "大正文外置",
       "文件存储迁移",
       "LONGTEXT",
-      "兼容迁移"
+      "兼容迁移",
+      "检查点外置",
+      "中间写入",
+      "checkpointStorage",
+      "第二阶段"
     ],
     "linkedSkill": "f2s-req-plan",
     "createdAt": "2026-11-21",
