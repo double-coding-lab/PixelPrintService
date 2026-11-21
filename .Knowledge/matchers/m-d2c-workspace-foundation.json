@@ -31,6 +31,11 @@
     "补切改名",
     "FIGMA_EXPORT_FILE_MISSING",
     "切图诊断",
-    "Figma请求失败"
+    "Figma请求失败",
+    "subtree",
+    "子树",
+    "Figma参数",
+    "FIGMA_ARGUMENT_CONFLICT",
+    "TOOL_ARGUMENT_INVALID"
   ]
 }
