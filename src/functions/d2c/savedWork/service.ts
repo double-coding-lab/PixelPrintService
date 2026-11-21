@@ -8,6 +8,16 @@ import { validateSessionEntry } from '../preview/session';
 import { requireIdentifier, requireRevision, SessionError } from '../session/access';
 import { assertArtifactPath } from '../utils/paths';
 import { buildVersionArchive } from '../version/archive';
+import {
+  contentModel,
+  copyTextStorage,
+  prepareTextContent,
+  resolveTextContent,
+} from '../content/runtime';
+import type { TextContentReference } from '../content/store';
+
+/** Private frozen input; only the editor's transaction-free hydration may expose its text. */
+type FrozenSnapshotFile = PreviewSnapshotFile & { contentRef?: TextContentReference | null };
 
 export type SavedWorkLimits = {
   textFileBytes: number;
@@ -73,12 +83,16 @@ function previewConfig(value: Record<string, unknown>) {
 function snapshotFiles(
   input: PreviewSnapshotFile[],
   limits: SavedWorkLimits,
-): PreviewSnapshotFile[] {
+  privateStorage = false,
+): FrozenSnapshotFile[] {
   if (!Array.isArray(input) || input.length > limits.filesPerSession) invalid();
   const paths = new Set<string>();
   let bytes = 0;
   const result = input.map((file) => {
     if (!file || typeof file.path !== 'string') invalid();
+    /** Even a structurally valid reference supplied by a client is not trusted storage state. */
+    if (!privateStorage && 'contentRef' in file) invalid();
+    const ref = privateStorage ? (file as FrozenSnapshotFile).contentRef : undefined;
     try {
       if (assertArtifactPath(file.path) !== file.path) invalid();
     } catch {
@@ -97,9 +111,10 @@ function snapshotFiles(
     let locator: Record<string, unknown> | null = null;
     if (file.kind === 'source') {
       if (
-        typeof file.content !== 'string' ||
-        Buffer.byteLength(file.content) !== file.size ||
-        sha(file.content) !== file.sha256 ||
+        (typeof file.content === 'string'
+          ? Buffer.byteLength(file.content) !== file.size || sha(file.content) !== file.sha256
+          : file.content !== null || !ref) ||
+        (ref != null && (ref.size !== file.size || ref.sha256 !== file.sha256)) ||
         file.size > limits.textFileBytes ||
         file.objectLocator !== null
       )
@@ -107,6 +122,7 @@ function snapshotFiles(
     } else {
       if (
         !['asset', 'attachment'].includes(file.kind) ||
+        ref != null ||
         file.content !== null ||
         !file.objectLocator ||
         typeof file.objectLocator !== 'object' ||
@@ -146,6 +162,7 @@ function snapshotFiles(
       path: file.path,
       kind: file.kind,
       content: file.content,
+      ...(ref ? { contentRef: structuredClone(ref) } : {}),
       objectLocator: locator,
       size: file.size,
       sha256: file.sha256,
@@ -198,7 +215,7 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
   }
   /** Read a single permanent revision, never current upstream rows. */
   async function frozen(row: D2cSavedWork, settings: SavedWorkLimits, transaction?: Transaction) {
-    const rows = await findOrderedRows(files, 'pathHash', {
+    const rows = await findOrderedRows(contentModel(mysql, files), 'pathHash', {
       where: { ownerEid: row.ownerEid, workId: row.workId, workRevision: row.revision },
       transaction,
       order: [['pathHash', 'ASC']],
@@ -210,17 +227,63 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
           return {
             path: file.path,
             kind: file.kind,
-            content: file.content,
+            ...copyTextStorage(mysql, file),
             objectLocator: file.objectLocator,
             size: file.size,
             sha256: file.sha256,
           };
         }),
         settings,
+        true,
       );
     } catch {
       throw new SessionError(503, 'SAVED_WORK_CORRUPT', '个人作品文件校验失败');
     }
+  }
+  /** Resolve trusted frozen references, then construct a fresh snapshot with no private fields. */
+  async function resolveSnapshot(snapshot: FrozenSnapshotFile[]): Promise<PreviewSnapshotFile[]> {
+    try {
+      const result: PreviewSnapshotFile[] = [];
+      for (const file of snapshot) {
+        const content = file.kind === 'source' ? await resolveTextContent(mysql, file) : null;
+        if (
+          file.kind === 'source' &&
+          (typeof content !== 'string' ||
+            Buffer.byteLength(content) !== file.size ||
+            sha(content) !== file.sha256)
+        )
+          throw new Error();
+        result.push({
+          path: file.path,
+          kind: file.kind,
+          content,
+          objectLocator: structuredClone(file.objectLocator),
+          size: file.size,
+          sha256: file.sha256,
+        });
+      }
+      return result;
+    } catch {
+      throw new SessionError(503, 'SAVED_WORK_CORRUPT', '个人作品文件校验失败');
+    }
+  }
+  /** Hold owner/revision locks only while copying immutable rows, never during object reads. */
+  async function readFrozen(eid: string, workId: string) {
+    return mysql.transaction(async (transaction) => {
+      const row = await owned(eid, workId, transaction);
+      return { info: metadata(row), snapshot: await frozen(row, limits(), transaction) };
+    });
+  }
+  /** Reauthorize after slow storage I/O and reject results from an obsolete work revision. */
+  async function recheck(eid: string, workId: string, revision: number) {
+    const row = await works.findOne({
+      where: { ownerEid: eid, workId },
+      attributes: ['ownerEid', 'workId', 'revision'],
+    });
+    if (!row || row.ownerEid !== eid || row.workId !== workId)
+      throw new SessionError(404, 'SAVED_WORK_NOT_FOUND', '个人作品不存在');
+    if (row.revision !== revision)
+      throw new SessionError(409, 'SAVED_WORK_CONFLICT', '个人作品已更新，请重新读取');
   }
   /** Public file metadata excludes binary locators and upstream configuration. */
   function fileMetadata(file: PreviewSnapshotFile) {
@@ -256,11 +319,7 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
     return { ...draft, snapshot, entries, configSnapshot: previewConfig(draft.configSnapshot) };
   }
   /** Package exclusively frozen content; caller already authorized the exported draft. */
-  async function pack(
-    snapshot: PreviewSnapshotFile[],
-    settings: SavedWorkLimits,
-    fileName: string,
-  ) {
+  async function pack(snapshot: FrozenSnapshotFile[], settings: SavedWorkLimits, fileName: string) {
     const data = await buildVersionArchive(
       snapshot.map((file) => ({
         ...file,
@@ -269,6 +328,7 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
       })),
       (locator) => options.binary().downloadFile(locator),
       settings,
+      (file) => resolveTextContent(mysql, file),
     );
     return { data, fileName, mimeType: 'application/zip' as const };
   }
@@ -311,11 +371,10 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
     },
     /** Public detail DTO; private preview configuration is only available via source(). */
     async get(eid: string, workId: string) {
-      return mysql.transaction(async (transaction) => {
-        const row = await owned(eid, workId, transaction);
-        const snapshot = await frozen(row, limits(), transaction);
-        return { ...metadata(row), files: snapshot.map(fileMetadata) };
-      });
+      const { info, snapshot } = await readFrozen(eid, workId);
+      const resolved = await resolveSnapshot(snapshot);
+      await recheck(eid, workId, info.revision);
+      return { ...info, files: resolved.map(fileMetadata) };
     },
     /** Read only public file metadata. */
     async files(eid: string, workId: string) {
@@ -324,15 +383,14 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
     /** Read one owned source file, without exposing storage locators. */
     async getFile(eid: string, workId: string, fileId: string) {
       if (typeof fileId !== 'string' || !/^[a-f0-9]{64}$/.test(fileId)) invalid();
-      return mysql.transaction(async (transaction) => {
-        const row = await owned(eid, workId, transaction);
-        const snapshot = await frozen(row, limits(), transaction);
-        const file = snapshot.find((item) => sha(item.path) === fileId && item.kind === 'source');
-        if (!file) throw new SessionError(404, 'SAVED_WORK_FILE_NOT_FOUND', '源码文件不存在');
-        return { ...fileMetadata(file), content: file.content! };
-      });
+      const { info, snapshot } = await readFrozen(eid, workId);
+      const resolved = await resolveSnapshot(snapshot);
+      await recheck(eid, workId, info.revision);
+      const file = resolved.find((item) => sha(item.path) === fileId && item.kind === 'source');
+      if (!file) throw new SessionError(404, 'SAVED_WORK_FILE_NOT_FOUND', '源码文件不存在');
+      return { ...fileMetadata(file), content: file.content! };
     },
-    /** Internal detached-editor input; never send this DTO directly to a browser. */
+    /** Internal frozen metadata/refs only; the editor hydrates after releasing this transaction. */
     async source(
       eid: string,
       workId: string,
@@ -380,13 +438,43 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
       const requestedName = input.name?.trim();
       const defaultName = `编辑作品 ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
       const workId = input.workId;
+      const expectedRevision = input.expectedRevision;
       if (workId !== undefined) {
         requireIdentifier(workId);
-        requireRevision(input.expectedRevision!, false);
+        requireRevision(expectedRevision!, false);
       }
       const draft = prepare(input.draft, limits());
       const saveKey = sha(JSON.stringify([draft.editId, draft.revision]));
       const initialWhere = { ownerEid: eid, editId: draft.editId, editRevision: draft.revision };
+      /** Check authorization/replay before preparing external objects, and repeat CAS under lock. */
+      function assertOverwrite(row: D2cSavedWork) {
+        if (
+          row.revision !== expectedRevision ||
+          draft.baseFileRevision !== expectedRevision ||
+          draft.sourceId !== workId ||
+          row.target !== draft.target
+        )
+          throw new SessionError(409, 'SAVED_WORK_CONFLICT', '个人作品已更新，请重新进入编辑');
+      }
+      if (workId !== undefined) {
+        const row = await owned(eid, workId);
+        if (row.lastSaveKey === saveKey) return metadata(row);
+        assertOverwrite(row);
+      } else {
+        const prior = await works.findOne({ where: initialWhere });
+        if (prior) return metadata(prior);
+      }
+      const destinationId = workId ?? randomUUID();
+      const prepared: FrozenSnapshotFile[] = [];
+      /** Upload/readback must finish before opening the short database transaction. */
+      for (const file of draft.snapshot) {
+        prepared.push({
+          ...file,
+          ...(file.kind === 'source'
+            ? await prepareTextContent(mysql, 'work:' + destinationId, file.content!)
+            : {}),
+        });
+      }
       try {
         return await mysql.transaction(async (transaction) => {
           let row: D2cSavedWork;
@@ -394,13 +482,7 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
           if (workId !== undefined) {
             row = await owned(eid, workId, transaction);
             if (row.lastSaveKey === saveKey) return metadata(row);
-            if (
-              row.revision !== input.expectedRevision ||
-              draft.baseFileRevision !== input.expectedRevision ||
-              draft.sourceId !== workId ||
-              row.target !== draft.target
-            )
-              throw new SessionError(409, 'SAVED_WORK_CONFLICT', '个人作品已更新，请重新进入编辑');
+            assertOverwrite(row);
             requireRevision(row.revision, false);
             revision = row.revision + 1;
             const [count] = await works.update(
@@ -414,7 +496,7 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
                 entries: draft.entries,
                 configSnapshot: draft.configSnapshot,
               },
-              { where: { ownerEid: eid, workId, revision: input.expectedRevision }, transaction },
+              { where: { ownerEid: eid, workId, revision: expectedRevision }, transaction },
             );
             if (count !== 1)
               throw new SessionError(409, 'SAVED_WORK_CONFLICT', '个人作品已更新，请重新进入编辑');
@@ -425,7 +507,7 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
             if (prior) return metadata(prior);
             row = await works.create(
               {
-                workId: randomUUID(),
+                workId: destinationId,
                 ownerEid: eid,
                 name: requestedName ?? defaultName,
                 target: draft.target,
@@ -443,7 +525,7 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
             );
           }
           await files.bulkCreate(
-            draft.snapshot.map((file) => ({
+            prepared.map((file) => ({
               ...file,
               ownerEid: eid,
               workId: row.workId,

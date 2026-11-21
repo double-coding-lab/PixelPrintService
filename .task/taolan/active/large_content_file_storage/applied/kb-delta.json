@@ -1,0 +1,14 @@
+{
+  "taskId": "large_content_file_storage",
+  "developerId": "taolan",
+  "baseRevisions": {
+    "d2c-workspace-foundation": 10
+  },
+  "changes": [
+    {
+      "type": "appendBody",
+      "targetTopic": "d2c-workspace-foundation",
+      "content": "\n## 大正文外置的准备底座\n\n- `content/store.ts` 提供未装配运行链路的独立加密正文协议，使用不可变随机对象、可信scope绑定、AES-256-GCM、独立正文密钥版本、UTF-8/大小/摘要校验及上传后回读核验；并发与排队字节有界，不缓存正文。二进制objectLocator语义和原业务数据库正文保持现状。\n- backend声明单对象上限并提供支持取消、流式限额的读取；普通公开文件客户端不直接满足私密正文契约。现有文本限额大于部分传输单对象上限，后续策略层须保持超大正文原inline能力或另行设计分块。\n- `scripts/content-storage-audit.mjs`只生成固定字段聚合SELECT或清单，默认盘点文件/版本/作品content与预览buildManifest，可显式附时间线/检查点/中间写入；不连接数据库，不读取/返回正文，不执行迁移。JSON为序列化估算，目标库容量和性能仍待测量。\n- 后续业务接线需独立正文引用、旧实例写入兼容、冻结引用复制和全读取链路改造；当前无DDL/DML、实际迁移、正文清理或自动回收。范围及顺序见[第一阶段方案](../req-docs/large-content-storage_第一阶段方案.md)。\n"
+    }
+  ]
+}

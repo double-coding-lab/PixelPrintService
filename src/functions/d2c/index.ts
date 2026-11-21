@@ -1,3 +1,4 @@
+import { installContentStorage } from './content/install';
 import sharingRoutes from './sharing/routes';
 import { registerAuthGuard } from '@/hooks/http/auth';
 import type { FastifyInstance } from 'fastify';
@@ -15,6 +16,7 @@ export default async function d2cRoutes(
 ) {
   /** 本模块及下属接口统一要求用户登录。 */
   registerAuthGuard(app);
+  installContentStorage(app);
   /** 团队及成员管理沿用当前用户登录，权限在服务端复查。 */
   app.register(teamRoutes);
   /** 上传授权：为图片上传申请 Storage 令牌。 */

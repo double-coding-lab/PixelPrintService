@@ -22,7 +22,10 @@
     "build:preview-browser": "node scripts/prepare-preview.mjs --browser-only",
     "prepare:preview": "node scripts/prepare-preview.mjs",
     "setup": "node scripts/setup.mjs",
-    "db:init": "tsx scripts/init-database.ts"
+    "db:init": "tsx scripts/init-database.ts",
+    "content:audit": "node scripts/content-storage-audit.mjs",
+    "content:migrate": "tsx scripts/migrate-content.ts",
+    "checkpoint:migrate": "tsx scripts/migrate-checkpoint-content.ts"
   },
   "dependencies": {
     "@fastify/static": "^10.1.2",

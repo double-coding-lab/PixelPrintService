@@ -36,6 +36,10 @@
     "错误统计",
     "错误明细",
     "会话错误",
-    "errorDiagnostics"
+    "errorDiagnostics",
+    "检查点外置",
+    "中间写入外置",
+    "checkpointStorage",
+    "checkpoint:migrate"
   ]
 }

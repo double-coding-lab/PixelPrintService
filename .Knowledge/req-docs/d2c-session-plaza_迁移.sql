@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS `d2c_saved_work_file` (
   `pathHash` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '相对路径 SHA-256',
   `kind` ENUM('source', 'asset', 'attachment') NOT NULL DEFAULT 'source' COMMENT '可预览或下载产物',
   `content` LONGTEXT COMMENT '冻结源码正文',
+  `contentRef` JSON NULL COMMENT '私有不可变文本正文引用',
   `objectLocator` JSON COMMENT '不可变存储定位；不含凭据',
   `size` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '文件字节数',
   `sha256` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '内容 SHA-256',

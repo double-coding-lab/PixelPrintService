@@ -12,6 +12,7 @@ import { ownedSession, requireIdentifier, requireRevision, SessionError } from '
 import { assertArtifactPath } from '../utils/paths';
 import { createConfigSnapshot, parseWorkspaceConfigs } from '../utils/config';
 import { buildVersionArchive, type ArchiveFile } from './archive';
+import { contentModel, copyTextStorage, resolveTextContent } from '../content/runtime';
 
 export type VersionInput = { clientRequestId: string; name?: string; baseFileRevision?: number };
 type Limits = { textFileBytes: number; filesPerSession: number; uploadBytes: number };
@@ -82,7 +83,7 @@ export function createVersionService(
 
   /** 读取冻结文件，并校验文件元数据；完整字节由打包器和存储客户端核对。 */
   async function frozen(versionId: string): Promise<ArchiveFile[]> {
-    const rows = await findOrderedRows(versionFiles, 'pathHash', {
+    const rows = await findOrderedRows(contentModel(mysql, versionFiles), 'pathHash', {
       where: { versionId },
       order: [['pathHash', 'ASC']],
     });
@@ -99,7 +100,7 @@ export function createVersionService(
       return {
         path: row.path,
         kind: row.kind as ArchiveFile['kind'],
-        content: row.content,
+        ...copyTextStorage(mysql, row),
         objectLocator: row.objectLocator,
         mimeType: row.mimeType,
         size: row.size,
@@ -253,7 +254,7 @@ export function createVersionService(
           throw new SessionError(409, 'FILE_REVISION_CONFLICT', '文件已更新，请刷新后再暂存');
         if (!workspace.activeResourceRevisionId || !session.target)
           throw new SessionError(503, 'RESOURCE_UNAVAILABLE', '工作区固定资源尚未就绪');
-        const rows = await findOrderedRows(files, 'pathHash', {
+        const rows = await findOrderedRows(contentModel(mysql, files), 'pathHash', {
           where: { sessionId },
           transaction,
           lock: transaction.LOCK.UPDATE,
@@ -279,7 +280,7 @@ export function createVersionService(
             return {
               path: row.path,
               kind: row.kind as ArchiveFile['kind'],
-              content: row.content,
+              ...copyTextStorage(mysql, row),
               objectLocator: row.objectLocator,
               mimeType: row.mimeType,
               size: row.size,
@@ -391,6 +392,7 @@ export function createVersionService(
             snapshot,
             (locator) => client.downloadFile(locator),
             options.readLimits(),
+            (file) => resolveTextContent(mysql, file),
           );
           if (lost) throw new Error('VERSION_CLAIM_LOST');
           await renew();

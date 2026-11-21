@@ -24,6 +24,8 @@ export class D2cAgentCheckpoint extends Model<
   declare checkpoint: Buffer | null;
   declare metadataType: CreationOptional<string>;
   declare metadata: Buffer | null;
+  declare checkpointRef: CreationOptional<Record<string, unknown> | null>;
+  declare metadataRef: CreationOptional<Record<string, unknown> | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -97,6 +99,16 @@ export function initD2cAgentCheckpoint(sequelize: Sequelize) {
         allowNull: true,
         comment: 'typed 元数据',
       },
+      checkpointRef: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: '私有不可变typed载荷引用',
+      },
+      metadataRef: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: '私有不可变typed载荷引用',
+      },
       createdAt: {
         type: DataTypes.DATE(3),
         allowNull: false,
@@ -117,6 +129,8 @@ export function initD2cAgentCheckpoint(sequelize: Sequelize) {
       tableName: 'd2c_agent_checkpoint',
       freezeTableName: true,
       timestamps: true,
+      defaultScope: { attributes: { exclude: ['checkpointRef', 'metadataRef'] } },
+      scopes: { checkpointBody: {} },
       charset: 'utf8mb4',
       collate: 'utf8mb4_bin',
       indexes: [

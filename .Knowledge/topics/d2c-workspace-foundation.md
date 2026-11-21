@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 11
+revision: 14
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -90,3 +90,14 @@ confidence: inferred
 - 参数组合冲突返回固定 `FIGMA_ARGUMENT_CONFLICT`（adjust）及具体字段提示，纠错耗尽按 `TOOL_ARGUMENT_INVALID` 结算。提示只使用程序固定文字；权限、缓存归属、路径、取消、租约与真实存储故障沿用既有门禁。
 - `agent/feedback.ts` 按工具、可信调用命令、错误码、路径及资源类型累计纠错，普通纠错每组允许10次，第11次要求用户处理；成功不重置；`RULES_FAILED` 沿用规则修复流程。网络重试仍按工具共享两次额外机会，主子模型继续共享整轮请求上限。
 - 部署服务即可生效，无新增配置、数据库迁移或冻结资源升级。历史失败保持原记录。`test/figmaArguments*.test.ts`、`test/exportImage.test.ts` 和 `test/deepFeedback.test.ts` 离线覆盖实际导图默认值、浅层分页冲突、范围保持及预算隔离。
+
+## 大正文文件存储
+
+- `content/runtime.ts`已装配当前文件/Figma缓存、Agent恢复、版本/作品冻结、ZIP/广场源码、预览冷重建和临时编辑。三张文件表的可空`contentRef`及预览snapshot记录不可变引用；二进制`objectLocator`沿用原语义。
+- `d2c.contentStorage`默认`schemaReady=false/mode=inline`，默认模型投影和旧INSERT不依赖新列；审阅增量建列并重启后设置`schemaReady=true`。此开关进程内固定；回退写模式时仍保持它为true，以读取历史引用。
+- `shadow`保留正文与引用兼容旧写入；有inline时优先读取，复制冻结前剔除与当前大小/摘要不符的陈旧引用。确认旧writer退出后才可`external`；低于阈值或超出当前传输能力的正文保留inline。候选阈值262144字节，目标性能待测量。
+- `content/store.ts`以AES-256-GCM、可信scope、独立版本密钥、随机不可变对象、上传回读及大小/摘要核验保护正文；底层复用平台文件客户端，有界并发/排队和流式下载限额，不缓存正文。引用/密钥/定位只在服务端，浏览器与编辑DTO仍返回授权字符串。
+- 上传和正文还原在业务事务外执行，提交前重验权限、修订及租约/CAS；版本、作品、预览复用同一不可变对象。数据库失败保留旧状态及未引用对象；当前阶段不做GC。
+- `content:audit`仅生成容量SELECT；`content:migrate`提供固定表组、默认dry-run、BIGINT分页、逐行正文、原子私有游标、分批resume及restore回填。外置apply要求显式确认；冲突/活动预览/故障保留失败行之前游标。目标库DDL、迁移和性能验证由部署方执行。
+- 回滚旧程序前先停止外置写入、恢复全部所需inline并核验，保留元数据/对象/历史正文密钥；仅关mode不能让旧程序读取引用。执行时间线保持现有存储；检查点与pending writes的独立外置开关及恢复边界见执行专题。
+- 可执行配置、迁移顺序及阶段划分见[工作区基础终稿](../stock-docs/d2c-workspace-foundation.md#大正文文件存储)。

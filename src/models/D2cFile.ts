@@ -19,6 +19,7 @@ export class D2cFile extends Model<InferAttributes<D2cFile>, InferCreationAttrib
   declare pathHash: string | null;
   declare kind: D2cFileKind | null;
   declare content: string | null;
+  declare contentRef: CreationOptional<Record<string, unknown> | null>;
   declare objectLocator: Record<string, unknown> | null;
   declare mimeType: string | null;
   declare size: number | null;
@@ -44,6 +45,11 @@ export function initD2cFile(sequelize: Sequelize) {
       pathHash: { type: DataTypes.STRING(64), allowNull: true, validate: { is: /^[a-f0-9]{64}$/ } },
       kind: { type: DataTypes.ENUM('source', 'asset', 'attachment', 'internal'), allowNull: true },
       content: { type: DataTypes.TEXT('long'), allowNull: true },
+      contentRef: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: '私有不可变文本正文引用，按schemaReady启用',
+      },
       objectLocator: {
         type: DataTypes.JSON,
         allowNull: true,
@@ -66,6 +72,8 @@ export function initD2cFile(sequelize: Sequelize) {
       tableName: 'd2c_file',
       freezeTableName: true,
       timestamps: true,
+      defaultScope: { attributes: { exclude: ['contentRef'] } },
+      scopes: { contentBody: {} },
       indexes: [
         { name: 'uk_d2c_file_fileId', unique: true, fields: ['fileId'] },
         { name: 'uk_d2c_file_session_pathHash', unique: true, fields: ['sessionId', 'pathHash'] },

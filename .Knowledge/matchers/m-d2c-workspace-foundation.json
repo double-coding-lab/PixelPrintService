@@ -36,6 +36,14 @@
     "子树",
     "Figma参数",
     "FIGMA_ARGUMENT_CONFLICT",
-    "TOOL_ARGUMENT_INVALID"
+    "TOOL_ARGUMENT_INVALID",
+    "大正文外置",
+    "正文协议",
+    "容量审计",
+    "content-storage-audit",
+    "文件存储迁移",
+    "contentStorage",
+    "content:migrate",
+    "正文回填"
   ]
 }

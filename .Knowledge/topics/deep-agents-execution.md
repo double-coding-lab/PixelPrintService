@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 9
+revision: 10
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -31,7 +31,7 @@ confidence: inferred
 
 ## 检查点与历史归档占用
 
-- `d2c_agent_checkpoint.checkpointPayload/metadataPayload` 与 `d2c_agent_write.writePayload` 为LONGBLOB；模型属性分别为 `checkpoint/metadata/value`。图状态及中间写可能包含消息、工具结果或代码片段。
+- `d2c_agent_checkpoint.checkpointPayload/metadataPayload` 与 `d2c_agent_write.writePayload` 保留LONGBLOB兼容读取，合格大载荷可独立切换加密外置引用；模型属性分别为 `checkpoint/metadata/value`。图状态及中间写可能包含消息、工具结果或代码片段。
 - `run/agent/archive.ts` 将 `/history/` 原文及工具归档保存到检查点表的独立namespace，正文位于 `channel_values.archive.content`，单归档正文上限8MiB。上下文摘要减少模型输入时，完整历史仍保存在数据库，Token量与存储占用分别计量。
 - `d2c_run.checkpoint` 保存文件修订与恢复控制等元数据。跨表占用以[存储字段说明](../stock-docs/d2c-workspace-foundation.md#数据库大字段与增长来源)为入口，单条最大字节、总字节和记录数分别核定，实际排名须查询目标库。
 
@@ -103,3 +103,14 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - 首屏冻结snapshotSeq，before是去重筛选后条目偏移，每页默认50、最大100；服务端有界扫描并明确coverage与历史仅已保存事件口径，截断和缺失数据不能表示全量零错误。
 - 诊断抽屉随时间线更新，支持会话/当前轮次、类别和主/子任务筛选、展开详情、复制排查信息及分页；加载或读取失败显示未知状态，刷新保留稳定错误条目的展开选择。
 - 实现入口：`run/errorDiagnostics.ts`、`run/errors.ts`、`agent/modelActivity.ts`、`web/src/workspace/ErrorDiagnostics.tsx`；回归覆盖去重、分页、归属、重试、脱敏与前端请求竞态。
+
+## 检查点和中间写入外置
+
+- `d2c.checkpointStorage`独立于文件正文开关，默认`schemaReady=false/mode=inline`；配置位于project.config.json的runtime.d2c。三列新引用就绪后重启启用，旧schema默认SELECT/INSERT不依赖新列。
+- 两表保留typed BLOB，新增checkpointRef/metadataRef及数据库writeRef（模型valueRef）；shadow双写兼容旧writer，external仅外置合格大载荷，旧BLOB始终优先读取。回退inline仍保留schemaReady、历史密钥和对象；旧程序回滚前必须restore全部所需BLOB。
+- `content/binaryStore.ts`保存任意typed bytes，gzip获益时压缩，再以独立密钥AES-256-GCM加密；引用pixelprint.blob.v1绑定行身份、namespace、checkpoint/task/idx及typed编码，回读校验且解压有界。超出传输能力的合法载荷留库，定位/密钥不公开、不进入日志。
+- 序列化/上传及还原/反序列化在租约事务外。提交仍经原leases.commit；失租、取消或提交失败保留旧状态。普通write重复first-wins，特殊负idx last-wins，整批提交原子；重复普通写预检跳过无用上传，最后仍重验租约。
+- getTuple在单个一致读内冻结状态/元数据及所需pending描述，再事务外还原；list按最多50个候选分页、逐个还原/yield并复核filter，保留namespace/before/order/limit。每个tuple一致，跨页可见并发变化；不在长事务中下载对象或累积全部历史正文。
+- `checkpoint:migrate`提供checkpoints/writes固定表组、dry-run、BIGINT上界/分页、逐行CAS、0600游标续迁和精确BLOB回填。预演无对象IO或更新锁；apply按父会话→载荷行锁定，活动会话及并发变化停在安全游标，不改图状态或删除历史。DDL及实际迁移由部署方执行。
+- 原typed格式、全部channel_values、父链delta replay、归档和原生interrupt继续保留；损坏引用不静默变成新图。时间线外置、历史保留/对象GC和通道级增量属于后续独立范围，不按相同大小删除快照。
+- 配置/SQL/启用与回滚说明见[执行终稿](../stock-docs/deep-agents-execution.md#检查点和中间写入外置)。

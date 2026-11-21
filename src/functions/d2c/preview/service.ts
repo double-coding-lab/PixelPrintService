@@ -17,6 +17,7 @@ import { ownedSession, requireIdentifier, SessionError } from '../session/access
 import { assertArtifactPath } from '../utils/paths';
 import { imageObjectName } from '../utils/imageObjectName';
 import type { runPreviewBuild } from './runner';
+import { contentModel, resolveTextContent } from '../content/runtime';
 
 type FileObject = Record<string, unknown>;
 type Ticket = { hash: string; expiresAt: number; ownerUserId?: string };
@@ -74,7 +75,7 @@ export function createPreviewService(
 ) {
   const previews = mysql.models.D2cPreview as typeof D2cPreview;
   const versions = mysql.models.D2cVersion as typeof D2cVersion;
-  const versionFiles = mysql.models.D2cVersionFile as typeof D2cVersionFile;
+  const versionFiles = contentModel(mysql, mysql.models.D2cVersionFile as typeof D2cVersionFile);
   const cache = options.cache ?? createPreviewCache();
   const shutdown = new AbortController();
   const listeners = new Set<(sessionId: string) => void>();
@@ -226,12 +227,24 @@ export function createPreviewService(
       if (!['source', 'asset', 'attachment'].includes(file.kind ?? ''))
         throw new Error('INPUT_KIND');
       onFile?.(file.path);
+      const text =
+        file.kind === 'source'
+          ? await resolveTextContent(
+              mysql,
+              file,
+              row.sessionId ? `session:${row.sessionId}` : undefined,
+              signal,
+            )
+          : null;
       const content =
-        file.kind === 'source' && typeof file.content === 'string'
-          ? Buffer.from(file.content)
+        file.kind === 'source'
+          ? typeof text === 'string'
+            ? Buffer.from(text)
+            : null
           : file.objectLocator
             ? await options.binary().downloadFile(file.objectLocator)
             : null;
+      signal.throwIfAborted();
       if (!content || content.length !== file.size || sha(content) !== file.sha256)
         throw new Error('INPUT_CORRUPT');
       if (file.kind === 'source' && content.length > limits.textFileBytes)
