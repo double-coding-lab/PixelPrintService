@@ -85,11 +85,13 @@ export default function PreviewPanel({
   files,
   target,
   active = true,
+  onPreviewLinkChange,
 }: {
   versionId: string;
   files: FileInfo[];
   target: Target;
   active?: boolean;
+  onPreviewLinkChange?: (url: string | null) => void;
 }) {
   const entries = previewEntries(files);
   const [entryPath, setEntryPath] = useState(entries[0]?.path ?? '');
@@ -122,6 +124,12 @@ export default function PreviewPanel({
     active && !!ticket && !expired && !closed,
   );
   const building = !!preview && preview.status !== 'ready' && preview.status !== 'failed';
+
+  /** 固定链接仅来自当前入口已校验的长期票据，切换或失效时清除旧地址。 */
+  useEffect(() => {
+    onPreviewLinkChange?.(ticket?.expiresAt === null && !expired ? ticket.url : null);
+    return () => onPreviewLinkChange?.(null);
+  }, [ticket?.url, ticket?.expiresAt, expired, onPreviewLinkChange]);
 
   useEffect(() => {
     const controller = new AbortController();

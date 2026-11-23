@@ -134,6 +134,8 @@ export default function WorksPanel({
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [copyMessage, setCopyMessage] = useState('');
+  const [previewLink, setPreviewLink] = useState<string | null>(null);
+  useEffect(() => setCopyMessage(''), [previewLink]);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -142,6 +144,7 @@ export default function WorksPanel({
     setList(null);
     setFileId('');
     setCopyMessage('');
+    setPreviewLink(null);
     setSearch('');
     const path = versionId
       ? `/versions/${id(versionId)}`
@@ -292,16 +295,23 @@ export default function WorksPanel({
                   </Button>
                   <Button
                     icon={<Icon name="external" />}
+                    disabled={!previewLink}
+                    title={
+                      previewLink ? '复制当前页面入口的固定在线预览地址' : '在线预览链接尚未就绪'
+                    }
                     onClick={async () => {
+                      if (!previewLink) return;
                       try {
-                        await navigator.clipboard.writeText(window.location.href);
-                        setCopyMessage('版本链接已复制');
+                        await navigator.clipboard.writeText(
+                          new URL(previewLink, window.location.origin).href,
+                        );
+                        setCopyMessage('预览链接已复制');
                       } catch {
-                        setCopyMessage('复制失败，请复制地址栏链接');
+                        setCopyMessage('复制失败，请重试或检查浏览器剪贴板权限');
                       }
                     }}
                   >
-                    复制链接
+                    复制预览链接
                   </Button>
                 </div>
               </div>
@@ -324,6 +334,7 @@ export default function WorksPanel({
                         versionId={versionId}
                         files={detail.files}
                         target={detail.target}
+                        onPreviewLinkChange={setPreviewLink}
                       />
                     ),
                   },
