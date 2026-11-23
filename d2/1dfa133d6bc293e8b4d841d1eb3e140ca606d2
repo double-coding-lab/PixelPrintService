@@ -1,0 +1,29 @@
+src/functions/d2c/run/agent/incrementalVerification.ts
+  s_a4e26e740c8ebc::t_fde3935b77ed70 1-291
+src/functions/d2c/preview/inspection.ts
+  s_a4e26e740c8ebc::t_9bc5e402cbc4f0 1,24,115-116,122-124,133,137,144,159-160,164,166-167,181-182
+src/functions/d2c/run/agent/agent.ts
+  s_a4e26e740c8ebc::t_9bc5e402cbc4f0 1-6,1722-1733,1763-1770,1812-1815,2125,2381-2383,2396-2408
+src/functions/d2c/run/instructions.ts
+  s_a4e26e740c8ebc::t_9bc5e402cbc4f0 46
+src/functions/d2c/run/types.ts
+  s_a4e26e740c8ebc::t_9bc5e402cbc4f0 1,109
+src/functions/d2c/run/screenshots.ts
+  s_a4e26e740c8ebc::t_9bc5e402cbc4f0 57-59,101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "d21dfa133d6bc293e8b4d841d1eb3e140ca606d2",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
