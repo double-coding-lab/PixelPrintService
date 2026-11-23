@@ -1,0 +1,25 @@
+src/functions/d2c/run/subagent.ts
+  s_f084de538b079d::t_358739bc628080 2,114
+test/fixedResourceReadPolicy.test.ts
+  s_f084de538b079d::t_358739bc628080 1-250
+src/functions/d2c/run/agent/readPolicy.ts
+  s_f084de538b079d::t_358739bc628080 1-12
+src/functions/d2c/run/agent/resources.ts
+  s_f084de538b079d::t_358739bc628080 6-7,31,39,41-42,44-53,64-70,90,94,96,133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "a80c70f25bc299292e4a1a6437d7eaa17bb20a5d",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
