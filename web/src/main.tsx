@@ -138,15 +138,19 @@ function App() {
             <button
               type="button"
               disabled={busy}
-              aria-current={works.active && works.view !== 'plaza' ? 'page' : undefined}
-              onClick={() => void openWorks('', works.view === 'my-works' ? 'my-works' : 'works')}
+              aria-current={works.active && works.view === 'works' ? 'page' : undefined}
+              onClick={() => void openWorks()}
             >
               作品库
             </button>
             <button
               type="button"
               disabled={busy}
-              aria-current={works.active && works.view === 'plaza' ? 'page' : undefined}
+              aria-current={
+                works.active && (works.view === 'plaza' || works.view === 'my-works')
+                  ? 'page'
+                  : undefined
+              }
               onClick={() => void openWorks('', 'plaza')}
             >
               广场
@@ -171,59 +175,50 @@ function App() {
       </header>
       <div className="app-layout">
         {works.active ? (
-          works.view === 'plaza' ? (
-            <CommunityPanel
-              key="plaza"
-              kind="plaza"
-              resourceId={works.resourceId}
-              onDirty={setDirty}
-              onBusy={setBusy}
-              onSelect={(value) => void openWorks('', 'plaza', value)}
-            />
+          works.view === 'plaza' || works.view === 'my-works' ? (
+            <div className="plaza-layout">
+              <div className="plaza-navigation">
+                <nav aria-label="广场分类">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-current={works.view === 'plaza' ? 'page' : undefined}
+                    onClick={() => void openWorks('', 'plaza')}
+                  >
+                    广场作品
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-current={works.view === 'my-works' ? 'page' : undefined}
+                    onClick={() => void openWorks('', 'my-works')}
+                  >
+                    已保存作品
+                  </button>
+                </nav>
+              </div>
+              <CommunityPanel
+                key={works.view}
+                kind={works.view}
+                resourceId={works.resourceId}
+                onDirty={setDirty}
+                onBusy={setBusy}
+                onSelect={(value) => void openWorks('', works.view, value)}
+                onDeleted={
+                  works.view === 'my-works'
+                    ? () => void navigation.current?.navigate({ view: 'my-works' }, true, true)
+                    : undefined
+                }
+              />
+            </div>
           ) : (
             <div className="library-layout">
-              {!works.versionId && !works.resourceId && (
+              {!works.versionId && (
                 <div className="library-navigation">
-                  <nav aria-label="作品库分类">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      aria-current={works.view !== 'my-works' ? 'page' : undefined}
-                      onClick={() => void openWorks()}
-                    >
-                      会话版本
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      aria-current={works.view === 'my-works' ? 'page' : undefined}
-                      onClick={() => void openWorks('', 'my-works')}
-                    >
-                      已保存作品
-                    </button>
-                  </nav>
-                  <p>
-                    {works.view === 'my-works'
-                      ? '在广场中打开页面，编辑后点击“保存为作品”，即可在这里继续编辑和下载。'
-                      : '在工作台会话中点击“暂存版本”，已保存的页面版本会出现在这里。'}
-                  </p>
+                  <p>在工作台会话中点击“暂存版本”，已保存的页面版本会出现在这里。</p>
                 </div>
               )}
-              {works.view === 'my-works' ? (
-                <CommunityPanel
-                  key="my-works"
-                  kind="my-works"
-                  resourceId={works.resourceId}
-                  onDirty={setDirty}
-                  onBusy={setBusy}
-                  onSelect={(value) => void openWorks('', 'my-works', value)}
-                />
-              ) : (
-                <WorksPanel
-                  versionId={works.versionId}
-                  onSelect={(value) => void openWorks(value)}
-                />
-              )}
+              <WorksPanel versionId={works.versionId} onSelect={(value) => void openWorks(value)} />
             </div>
           )
         ) : selection.workspaceId ? (

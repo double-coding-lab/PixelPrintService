@@ -394,7 +394,7 @@ export function EditWorkspaceSurface({
       {detached && state.savedWork && (
         <p role="status">
           已保存为作品{' '}
-          <a href={`/works/saved/${encodeURIComponent(state.savedWork.workId)}`}>查看作品</a>
+          <a href={`/plaza/saved/${encodeURIComponent(state.savedWork.workId)}`}>查看作品</a>
         </p>
       )}
       {!copy ? (

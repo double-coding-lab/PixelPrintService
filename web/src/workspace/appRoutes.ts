@@ -11,7 +11,7 @@ export function appPath(route: AppRoute): string {
   const id = encodeURIComponent;
   if (route.view === 'plaza') return `/plaza${route.resourceId ? `/${id(route.resourceId)}` : ''}`;
   if (route.view === 'my-works')
-    return `/works/saved${route.resourceId ? `/${id(route.resourceId)}` : ''}`;
+    return `/plaza/saved${route.resourceId ? `/${id(route.resourceId)}` : ''}`;
   if (route.view === 'works')
     return route.versionId ? `/works/versions/${id(route.versionId)}` : '/works';
   return `/workbench${route.workspaceId ? `/${id(route.workspaceId)}${route.sessionId ? `/sessions/${id(route.sessionId)}` : ''}` : ''}`;
@@ -25,6 +25,9 @@ export function readAppRoute(url: URL): AppRoute {
   } catch {
     return { view: 'workbench' };
   }
+  // saved 是广场保留分类，须先于单个公开作品ID解析。
+  if (parts[0] === 'plaza' && parts[1] === 'saved' && parts.length <= 3)
+    return { view: 'my-works', resourceId: parts[2] ?? '' };
   if (parts[0] === 'plaza' && parts.length <= 2)
     return { view: 'plaza', resourceId: parts[1] ?? '' };
   if (parts[0] === 'works') {

@@ -1,4 +1,4 @@
-/** 三个稳定主入口；作品分类始终在作品库内部展示。 */
+/** 三个稳定主入口；个人保存作品归属广场分类。 */
 .primary-navigation {
   display: flex;
   align-items: stretch;
@@ -39,33 +39,36 @@
 .app-header .header-actions {
   gap: 16px;
 }
-.library-layout {
+.library-layout,
+.plaza-layout {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   background: #f7f8fa;
 }
-.library-navigation {
+.library-navigation,
+.plaza-navigation {
   padding: 20px clamp(16px, 2vw, 32px) 0;
 }
-.library-navigation > * {
+.library-navigation > *,
+.plaza-navigation > * {
   max-width: 1440px;
   margin-left: auto;
   margin-right: auto;
 }
-.library-navigation nav {
+.plaza-navigation nav {
   display: flex;
   gap: 8px;
 }
-.library-navigation nav button {
+.plaza-navigation nav button {
   padding: 7px 14px;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
   color: #626d7f;
 }
-.library-navigation nav button[aria-current='page'] {
+.plaza-navigation nav button[aria-current='page'] {
   border-color: #dee5f0;
   background: #fff;
   color: #365b9d;
@@ -78,7 +81,8 @@
   font-size: 12px;
   line-height: 1.7;
 }
-.library-layout > .works-panel {
+.library-layout > .works-panel,
+.plaza-layout > .works-panel {
   flex: 1;
 }
 .works-heading-leading {
@@ -126,7 +130,8 @@
   .app-header .workspace-switcher-trigger {
     max-width: min(260px, calc(100vw - 28px));
   }
-  .library-navigation {
+  .library-navigation,
+  .plaza-navigation {
     padding-top: 16px;
   }
   .works-heading-leading {

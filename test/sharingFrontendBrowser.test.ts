@@ -1,3 +1,4 @@
+import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -178,7 +179,14 @@ test(
         });
       if (path === '/my-works')
         return send({ items: work ? [work] : [], total: work ? 1 : 0, page: 1, pageSize: 12 });
-      if (path === '/my-works/work') return send(work);
+      if (path === '/my-works/work') {
+        if (method === 'DELETE') {
+          assert.equal(input.expectedRevision, work.revision);
+          work = null;
+          return send({ deleted: true });
+        }
+        return send(work);
+      }
       if (/\/(?:plaza\/sessions\/share|my-works\/work)\/edit/.test(path)) {
         if (method === 'DELETE') return send({});
         if (path.endsWith('/save')) {
@@ -250,10 +258,12 @@ test(
     const browser = await chromium.launch({ executablePath: chrome, headless: true });
     t.after(() => browser.close());
     const page = await browser.newPage();
+    page.setDefaultTimeout(10000);
     const pageErrors: string[] = [];
     page.on('pageerror', (error: Error) => pageErrors.push(error.stack ?? error.message));
     const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
     await page.goto(`${origin}/?view=plaza`);
+    await page.getByText(/^创建于 /).waitFor();
     await page.getByRole('button', { name: '打开作品', exact: true }).click();
     await page.getByRole('textbox', { name: '测试副本源码' }).waitFor();
     assert.equal(new URL(page.url()).pathname, '/plaza/share');
@@ -290,7 +300,9 @@ test(
       ),
     );
     await page.getByRole('link', { name: '查看作品', exact: true }).click();
-    await page.getByRole('button', { name: '再次编辑', exact: true }).click();
+    await page.getByRole('textbox', { name: '测试副本源码' }).waitFor();
+    assert.equal(new URL(page.url()).pathname, '/plaza/saved/work');
+    assert.equal(await page.getByRole('button', { name: '再次编辑', exact: true }).count(), 0);
     await page.getByRole('textbox', { name: '测试副本源码' }).fill('reedit my work');
     await page.getByRole('button', { name: '保存为作品', exact: true }).click();
     await page.getByRole('link', { name: '查看作品', exact: true }).waitFor();
@@ -304,28 +316,58 @@ test(
       calls.some((call) => /\/(apply|pause|resume)(?:$|\?)/.test(call.path)),
       false,
     );
-    await page.getByRole('button', { name: '退出', exact: true }).click();
     // 同一作品库集合能重新找到保存副本。
     await page.getByRole('button', { name: '← 返回已保存作品', exact: true }).click();
     await page.getByRole('button', { name: '我的副本', exact: true }).waitFor();
+    await page.getByRole('button', { name: '查看作品', exact: true }).click();
+    await page.getByRole('textbox', { name: '测试副本源码' }).fill('unsaved adjustment');
+    await page.getByRole('button', { name: '删除作品：我的副本', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByText(/当前尚未保存的编辑也会丢弃/)
+      .waitFor();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /取\s*消/ })
+      .click();
+    assert.equal(work.revision, 2);
+    assert.equal(
+      await page.getByRole('textbox', { name: '测试副本源码' }).inputValue(),
+      'unsaved adjustment',
+    );
+    await page.getByRole('button', { name: '删除作品：我的副本', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /删\s*除/ })
+      .click();
+    await page.getByText(/暂无已保存作品/).waitFor();
+    assert.equal(new URL(page.url()).pathname, '/plaza/saved');
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
+    assert.equal(work, null);
     // 发布开关只在服务端判定创建者时出现。
     await page.goto(`${origin}/?workspace=ws&session=original`);
     try {
-      await page.getByRole('button', { name: '发布到广场', exact: true }).click({ timeout: 10000 });
+      await page
+        .getByRole('button', { name: /发布到广场/ })
+        .and(page.locator('button:not(.ant-btn-loading)'))
+        .click({ timeout: 10000 });
     } catch (error) {
       throw new Error(
         `发布入口不可见：${await page.locator('body').innerText()}; 错误=${JSON.stringify(pageErrors)}; 请求=${JSON.stringify(calls.slice(-12))}`,
         { cause: error },
       );
     }
-    await page.getByRole('button', { name: '从广场下架', exact: true }).waitFor();
+    await page.getByRole('button', { name: /从广场下架/ }).waitFor();
     assert.equal(published, true);
-    await page.getByRole('button', { name: '从广场下架', exact: true }).click();
-    await page.getByRole('button', { name: '发布到广场', exact: true }).waitFor();
+    await page
+      .getByRole('button', { name: /从广场下架/ })
+      .and(page.locator('button:not(.ant-btn-loading)'))
+      .click();
+    await page.getByRole('button', { name: /发布到广场/ }).waitFor();
     assert.equal(published, false);
     canManage = false;
     await page.reload();
     await page.getByRole('button', { name: '执行诊断', exact: true }).waitFor();
-    assert.equal(await page.getByRole('button', { name: '发布到广场', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: /发布到广场/ }).count(), 0);
   },
 );

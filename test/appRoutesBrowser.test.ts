@@ -1,3 +1,4 @@
+import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -90,5 +91,181 @@ test(
     assert.equal(new URL(page.url()).pathname, '/workbench/w/sessions/s');
     await page.reload();
     await page.waitForFunction('window.current === "/workbench/w/sessions/s"');
+    await page.evaluate('window.go({view:"my-works",resourceId:"saved-a"})');
+    await page.waitForFunction('window.current === "/plaza/saved/saved-a"');
+    await page.evaluate('window.go({view:"plaza",resourceId:"shared-a"})');
+    await page.goBack();
+    await page.waitForFunction('window.current === "/plaza/saved/saved-a"');
+    await page.reload();
+    await page.waitForFunction('window.current === "/plaza/saved/saved-a"');
+    for (const legacy of ['/works/saved', '/works/saved/old', '/?view=my-works&work=old']) {
+      await page.goto(origin + legacy);
+      await page.waitForFunction('location.pathname.startsWith("/plaza/saved")');
+      assert.equal(new URL(page.url()).search, '');
+      assert.equal(
+        await page.evaluate('window.current'),
+        legacy.endsWith('/saved') ? '/plaza/saved' : '/plaza/saved/old',
+      );
+    }
+  },
+);
+
+/** Mount the real app/history/confirmation flow; business panels are offline boundary fixtures. */
+test(
+  '真实主导航将已保存作品归属广场，分类切换保留离开保护及删除后的强制返回',
+  {
+    skip:
+      process.env.PIXELPRINT_BROWSER_TESTS !== '1' ||
+      !existsSync(chrome) ||
+      !existsSync(playwright),
+    timeout: 60000,
+  },
+  async (t) => {
+    const root = fileURLToPath(new URL('..', import.meta.url));
+    const bundle = await build({
+      entryPoints: [fileURLToPath(new URL('../web/src/main.tsx', import.meta.url))],
+      bundle: true,
+      write: false,
+      outfile: '/tmp/plaza-navigation/app.js',
+      format: 'iife',
+      platform: 'browser',
+      jsx: 'automatic',
+      define: { 'process.env.NODE_ENV': '"development"' },
+      plugins: [
+        {
+          name: 'offline-business-panels',
+          setup(builder) {
+            builder.onResolve(
+              {
+                filter:
+                  /^\.\/workspace\/(?:CommunityPanel|WorkspacePanel|WorkspaceHome|WorkspaceSwitcher|WorksPanel|CredentialSettings|TeamSettings)$/,
+              },
+              ({ path }) => ({
+                path: path.split('/').pop()!,
+                namespace: 'fixture',
+              }),
+            );
+            builder.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path }) => ({
+              loader: 'tsx',
+              resolveDir: root,
+              contents:
+                path === 'TeamSettings'
+                  ? `export const TeamProvider=({children})=>children;export default function Settings(){return null}`
+                  : path === 'CommunityPanel'
+                    ? `import React from 'react'; export default function Panel({kind,resourceId,onSelect,onDirty,onBusy,onDeleted}){return <section data-testid="community" data-kind={kind} data-resource={resourceId}>
+                <button onClick={()=>onSelect('item-a')}>打开详情</button>
+                <button onClick={()=>onDirty?.(true)}>修改未保存</button>
+                <button onClick={()=>onBusy?.(true)}>开始保存</button>
+                <button onClick={()=>onBusy?.(false)}>结束保存</button>
+                <button onClick={()=>onDeleted?.()}>删除成功返回</button>
+              </section>}`
+                    : path === 'WorksPanel'
+                      ? `import React from 'react';export default function Works(){return <section data-testid="versions">会话版本列表</section>}`
+                      : `export default function Empty(){return null}`,
+            }));
+          },
+        },
+      ],
+    });
+    const server = createServer((req, res) => {
+      if (req.url === '/app.js' || req.url === '/app.css') {
+        const extension = req.url.endsWith('.js') ? '.js' : '.css';
+        res.setHeader('Content-Type', extension === '.js' ? 'text/javascript' : 'text/css');
+        return res.end(bundle.outputFiles.find((file) => file.path.endsWith(extension))!.text);
+      }
+      res.setHeader('Content-Type', 'text/html');
+      res.end(
+        '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>',
+      );
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    t.after(() => {
+      server.closeAllConnections();
+      server.close();
+    });
+    const { chromium } = await import(pathToFileURL(playwright).href);
+    const browser = await chromium.launch({ headless: true, executablePath: chrome });
+    t.after(() => browser.close());
+    const page = await browser.newPage();
+    page.setDefaultTimeout(7000);
+    const errors: string[] = [];
+    page.on('pageerror', (error: Error) => errors.push(error.message));
+    const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    await page.goto(origin + '/works/saved/work-a');
+    const mainNav = page.getByRole('navigation', { name: '主导航', exact: true });
+    const plazaNav = page.getByRole('navigation', { name: '广场分类', exact: true });
+    await page.waitForURL(origin + '/plaza/saved/work-a');
+    await page.locator('[data-kind="my-works"][data-resource="work-a"]').waitFor();
+    assert.equal(
+      await mainNav.getByRole('button', { name: '广场', exact: true }).getAttribute('aria-current'),
+      'page',
+    );
+    assert.equal(
+      await mainNav
+        .getByRole('button', { name: '作品库', exact: true })
+        .getAttribute('aria-current'),
+      null,
+    );
+    assert.equal(
+      await plazaNav
+        .getByRole('button', { name: '已保存作品', exact: true })
+        .getAttribute('aria-current'),
+      'page',
+    );
+    await mainNav.getByRole('button', { name: '作品库', exact: true }).click();
+    await page.locator('[data-testid="versions"]').waitFor();
+    assert.equal(new URL(page.url()).pathname, '/works');
+    assert.equal(await page.getByRole('button', { name: '已保存作品', exact: true }).count(), 0);
+    await mainNav.getByRole('button', { name: '广场', exact: true }).click();
+    await page.waitForURL(origin + '/plaza');
+    await plazaNav.getByRole('button', { name: '已保存作品', exact: true }).click();
+    await page.waitForURL(origin + '/plaza/saved');
+    await page.getByRole('button', { name: '打开详情', exact: true }).click();
+    await page.waitForURL(origin + '/plaza/saved/item-a');
+    await page.getByRole('button', { name: '修改未保存', exact: true }).click();
+    await plazaNav.getByRole('button', { name: '广场作品', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /取\s*消/ })
+      .click();
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
+    assert.equal(new URL(page.url()).pathname, '/plaza/saved/item-a');
+    await page.goBack();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /取\s*消/ })
+      .click();
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
+    await page.waitForURL(origin + '/plaza/saved/item-a');
+    await page.getByRole('button', { name: '开始保存', exact: true }).click();
+    assert.equal(
+      await plazaNav.getByRole('button', { name: '广场作品', exact: true }).isDisabled(),
+      true,
+    );
+    assert.equal(
+      await mainNav.getByRole('button', { name: '作品库', exact: true }).isDisabled(),
+      true,
+    );
+    await page.getByRole('button', { name: '结束保存', exact: true }).click();
+    const historyLength = await page.evaluate(() => history.length);
+    await page.getByRole('button', { name: '删除成功返回', exact: true }).click();
+    await page.waitForURL(origin + '/plaza/saved');
+    assert.equal(await page.getByRole('dialog').count(), 0);
+    assert.equal(
+      await page.evaluate(() => history.length),
+      historyLength,
+      '删除后替换失效详情，不新增历史条目',
+    );
+    await plazaNav.getByRole('button', { name: '广场作品', exact: true }).click();
+    await page.waitForURL(origin + '/plaza');
+    await page.goBack();
+    await page.waitForURL(origin + '/plaza/saved');
+    await page.goForward();
+    await page.waitForURL(origin + '/plaza');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await plazaNav.getByRole('button', { name: '已保存作品', exact: true }).click();
+    await page.waitForURL(origin + '/plaza/saved');
+    assert.deepEqual(errors, []);
   },
 );
