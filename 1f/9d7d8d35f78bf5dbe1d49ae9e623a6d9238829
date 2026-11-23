@@ -1,0 +1,25 @@
+src/functions/d2c/preview/interaction.ts
+  s_a4e26e740c8ebc::t_55efc673c161dc 4-111,113-133,135-156
+src/functions/d2c/preview/capture.ts
+  s_a4e26e740c8ebc::t_55efc673c161dc 1-8,30-31,339-350,367-368,379,391-393
+preview-browser/capture.mjs
+  s_a4e26e740c8ebc::t_fe5675e7c73502 346-386,490-499
+  s_a4e26e740c8ebc::t_811c3dc4aa2e67 207-210
+  s_a4e26e740c8ebc::t_55efc673c161dc 29-105,119-120,273-274,276-280,314-344,387-487,502-517,519-527,529,547,551-552,562-577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "1f9d7d8d35f78bf5dbe1d49ae9e623a6d9238829",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
