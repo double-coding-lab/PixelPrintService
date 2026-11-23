@@ -7,7 +7,7 @@ import { estimateTokens } from './tokens';
 export const maxReadCharacters = 256000;
 
 /** 仅接受平台成功合同；空白、未知文案与仅未抛错都不能证明正文已保存。 */
-function confirmedWrite(result: ToolMessage, name: string, path: unknown) {
+export function confirmedWrite(result: ToolMessage, name: string, path: unknown) {
   if (result.status === 'error' || (result.name && result.name !== name)) return false;
   const text = result.text.trim();
   if (
