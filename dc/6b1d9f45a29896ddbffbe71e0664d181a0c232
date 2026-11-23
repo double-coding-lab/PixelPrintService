@@ -1,0 +1,43 @@
+test/libraryCoverBrowser.test.ts
+  s_f084de538b079d::t_34667ffbd63352 1-231
+web/src/workspace/community.css
+  s_f084de538b079d::t_34667ffbd63352 28-40
+web/src/workspace/phonePreview.css
+  s_f084de538b079d::t_34667ffbd63352 1-14,18,31,34-35,39,58,73,82,92,96-98,109,118-119,124
+web/src/workspace/SessionPreviewPanel.tsx
+  s_f084de538b079d::t_34667ffbd63352 3,88
+web/src/workspace/WorksPanel.tsx
+  s_f084de538b079d::t_34667ffbd63352 1,27-31,37-41,179,219-222,338-342,376,378-415,417-422
+test/phonePreviewBrowser.test.ts
+  s_f084de538b079d::t_34667ffbd63352 20-23,98-103,146-152,194-202,231
+web/src/workspace/workCover.css
+  s_f084de538b079d::t_34667ffbd63352 1-122
+web/src/workspace/EditWorkspace.tsx
+  s_f084de538b079d::t_34667ffbd63352 13,34-36,219
+web/src/workspace/PhonePreview.tsx
+  s_f084de538b079d::t_34667ffbd63352 120,137,163,189-193,198,202
+web/src/workspace/CommunityPanel.tsx
+  s_f084de538b079d::t_1089fcc6c56b8a 82-85,215-217,275,280-282,296-301,366,395,401,405-416,418-421
+web/src/workspace/PreviewPanel.tsx
+  s_f084de538b079d::t_34667ffbd63352 3,96
+web/src/workspace/WorkCover.tsx
+  s_f084de538b079d::t_34667ffbd63352 1-67
+web/src/workspace/sharing.ts
+  s_f084de538b079d::t_34667ffbd63352 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "dc6b1d9f45a29896ddbffbe71e0664d181a0c232",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
