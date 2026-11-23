@@ -1,4 +1,3 @@
-import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { existsSync } from 'node:fs';
@@ -18,7 +17,10 @@ const chrome = [
 
 test(
   '真实浏览器：手机尺寸、旋转、原生及降级全屏、退出和iframe保留',
-  { skip: !chrome || process.env.PIXELPRINT_BROWSER_TESTS !== '1', timeout: 60000 },
+  {
+    skip: !chrome || process.env.PIXELPRINT_BROWSER_TESTS !== '1',
+    timeout: 60000,
+  },
   async (t) => {
     const bundle = await build({
       stdin: {
@@ -93,7 +95,12 @@ test(
     );
     t.after(async () => {
       child.kill('SIGKILL');
-      await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await rm(profile, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     });
     const endpoint = await new Promise<string>((resolve, reject) => {
       let output = '';
@@ -136,8 +143,13 @@ test(
         socket.send(JSON.stringify({ id, method, params, sessionId }));
       });
     }
-    const { targetId } = await command('Target.createTarget', { url: 'about:blank' });
-    const { sessionId } = await command('Target.attachToTarget', { targetId, flatten: true });
+    const { targetId } = await command('Target.createTarget', {
+      url: 'about:blank',
+    });
+    const { sessionId } = await command('Target.attachToTarget', {
+      targetId,
+      flatten: true,
+    });
     async function evaluate<T = unknown>(expression: string): Promise<T> {
       const value = await command(
         'Runtime.evaluate',
@@ -179,7 +191,15 @@ test(
       sessionId,
     );
     await command('Page.navigate', { url: `http://127.0.0.1:${port}/` }, sessionId);
-    await wait('window.frameData?.width===375');
+    await wait('window.frameData?.width===390&&window.frameData.height===844');
+    await evaluate(
+      `(()=>{const select=document.querySelector('[aria-label="手机屏幕比例"]');select.value='classic';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await wait('window.frameData.width===375&&window.frameData.height===667');
+    await evaluate(
+      `(()=>{const select=document.querySelector('[aria-label="手机屏幕比例"]');select.value='standard';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await wait('window.frameData.width===390&&window.frameData.height===844');
     await evaluate(
       `window.originalFrame=document.querySelector('iframe');originalFrame.contentWindow.postMessage('increment','*')`,
     );
@@ -208,7 +228,7 @@ test(
     assert.ok(dimensions.scale > 0 && dimensions.scale <= 1);
     await evaluate('document.exitFullscreen()');
     await wait(
-      `!document.querySelector('[aria-label="全屏手机预览"]')&&window.frameData.width===375`,
+      `!document.querySelector('[aria-label="全屏手机预览"]')&&window.frameData.width===390&&window.frameData.height===844`,
     );
     assert.equal(await evaluate('document.body.style.overflow'), '');
     await evaluate(

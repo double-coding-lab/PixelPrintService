@@ -10,7 +10,7 @@ import React, {
   Suspense,
   type Ref,
 } from 'react';
-import { Alert, Button, Modal, Segmented, Select } from 'antd';
+import { Alert, Button, Modal, Select } from 'antd';
 import PreviewInspector, {
   PreviewInspectorButton,
   usePreviewInspector,
@@ -31,7 +31,9 @@ import FileTypeIcon from '../components/FileTypeIcon';
 import GlobalSearch from './EditorSearch';
 import type { EditorReveal } from './globalSearch';
 
-export type SourceSearchRequest = InspectorSourceRequest & { requestId: string };
+export type SourceSearchRequest = InspectorSourceRequest & {
+  requestId: string;
+};
 
 const CodeEditor = lazy(() => import('./CodeEditor'));
 
@@ -214,7 +216,7 @@ export function EditWorkspaceSurface({
     window.addEventListener('keydown', shortcut, true);
     return () => window.removeEventListener('keydown', shortcut, true);
   }, []);
-  const [width, setWidth] = useState<string | number>(375);
+  const width = 'auto';
   const editable = useMemo(() => filterEditableFiles(files), [files]);
   const selected =
     editable.find((file) => file.path === (selectedPath || entryPath)) ?? editable[0];
@@ -484,17 +486,6 @@ export function EditWorkspaceSurface({
               />
               <PreviewInspectorButton inspector={inspector} />
               <PhonePreviewButton preview={phone} />
-              <Segmented
-                size="small"
-                aria-label="副本预览宽度"
-                value={width}
-                onChange={setWidth}
-                options={[
-                  { label: '375', value: 375 },
-                  { label: '750', value: 750 },
-                  { label: '自适应', value: 'auto' },
-                ]}
-              />
             </div>
             <div className="edit-workspace-preview-status" role="status" aria-live="polite">
               {pending === 'saving'

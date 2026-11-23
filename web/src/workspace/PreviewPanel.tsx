@@ -1,6 +1,6 @@
 import PhonePreview, { PhonePreviewButton, usePhonePreview } from './PhonePreview';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Segmented } from 'antd';
+import { Alert, Button } from 'antd';
 import { data, errorMessage, id } from './api';
 import Icon from '../components/Icon';
 import PreviewInspector, { PreviewInspectorButton, usePreviewInspector } from './PreviewInspector';
@@ -93,7 +93,7 @@ export default function PreviewPanel({
   const [previewState, setPreview] = useState<Preview | null>(null);
   const [ticketState, setTicket] = useState<Ticket | null>(null);
   const [expired, setExpired] = useState(false);
-  const [width, setWidth] = useState<string | number>(375);
+  const width = 'auto';
   const [busy, setBusy] = useState<'generate' | 'ticket' | null>(null);
   const [error, setError] = useState('');
   const [pollError, setPollError] = useState('');
@@ -274,13 +274,6 @@ export default function PreviewPanel({
     setBusy(null);
   }
 
-  /** 宽度变化通过iframe key重新挂载，让RN按新视口重新计算rpx。 */
-  function changeWidth(value: string | number) {
-    setWidth(value);
-    setClosed(false);
-    if (!ticket || expired) openPreview();
-  }
-
   return (
     <section className="version-preview-panel" aria-label="已保存版本预览">
       <div className="version-preview-controls">
@@ -349,16 +342,6 @@ export default function PreviewPanel({
           </Button>
           <PreviewInspectorButton inspector={inspector} />
           <PhonePreviewButton preview={phone} />
-          <Segmented
-            aria-label="预览宽度"
-            value={width}
-            onChange={changeWidth}
-            options={[
-              { label: '375px', value: 375 },
-              { label: '750px', value: 750 },
-              { label: '自适应', value: 'auto' },
-            ]}
-          />
           {(ticket || busy === 'ticket') && <Button onClick={closePreview}>关闭预览</Button>}
         </div>
       )}

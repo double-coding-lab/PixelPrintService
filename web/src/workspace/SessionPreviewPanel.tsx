@@ -1,6 +1,6 @@
 import PhonePreview, { PhonePreviewButton, usePhonePreview } from './PhonePreview';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Segmented, Skeleton, Spin } from 'antd';
+import { Alert, Button, Skeleton, Spin } from 'antd';
 import { data, errorMessage, id } from './api';
 import { PreviewErrorDetails, validPreviewTicket } from './PreviewPanel';
 import {
@@ -85,7 +85,7 @@ export default function SessionPreviewPanel({
   const [ticketRetry, setTicketRetry] = useState(0);
   const [shown, setShown] = useState<Frame | null>(null);
   const [incoming, setIncoming] = useState<Frame | null>(null);
-  const [width, setWidth] = useState<string | number>(375);
+  const width = 'auto';
   const phone = usePhonePreview(active && !!shown);
   const watcher = useRef<ReturnType<typeof watchSessionPreview> | null>(null);
   const ready = state?.current?.status === 'ready' ? state.current : state?.lastReady;
@@ -186,17 +186,6 @@ export default function SessionPreviewPanel({
         </Button>
         <PreviewInspectorButton inspector={inspector} />
         <PhonePreviewButton preview={phone} />
-        <Segmented
-          size="small"
-          aria-label="当前预览宽度"
-          value={width}
-          onChange={setWidth}
-          options={[
-            { label: '375', value: 375 },
-            { label: '750', value: 750 },
-            { label: '自适应', value: 'auto' },
-          ]}
-        />
       </div>
       <div className="session-preview-body" aria-busy={loading}>
         {!!state && (state.entries.length > 1 || !!selectedEntry) && (
