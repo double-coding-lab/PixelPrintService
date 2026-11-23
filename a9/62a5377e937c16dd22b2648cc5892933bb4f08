@@ -1,0 +1,80 @@
+web/src/workspace/works.css
+  s_e16f52fd1de115::t_1c8dd03c44c49b 312-322
+test/savedWork.test.ts
+  s_e16f52fd1de115::t_eb81ffa0532874 1
+test/libraryCoverBrowser.test.ts
+  s_e16f52fd1de115::t_3bd0ddf9571d26 1
+  s_e16f52fd1de115::t_cb19695a6a8504 13
+  s_f084de538b079d::t_34667ffbd63352 12,14-16,182-185
+test/previewUi.test.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1-168
+test/libraryManagementBrowser.test.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1-352
+test/versionRoutes.test.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1-305
+src/functions/d2c/sharing/routes.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 172-184
+web/src/workspace/previewEntry.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1-18
+test/sharingRoutes.test.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 40-44,75-107
+.Knowledge/matchers/m-d2c-preview-editing.json
+  s_e16f52fd1de115::t_667a4ece96733b 21-23
+.Knowledge/matchers/m-d2c-session-plaza.json
+  s_e16f52fd1de115::t_667a4ece96733b 26-28
+web/src/workspace/CommunityPanel.tsx
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1,278,282,285,290,300,318,323-330,368-370,383-386,422,453-463
+  s_f084de538b079d::t_1089fcc6c56b8a 276-277,279-281,283-284,291,419-421,423-424
+test/libraryDelete.test.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1-390
+.Knowledge/topics/d2c-preview-editing.md
+  s_e16f52fd1de115::t_667a4ece96733b 3,86-91
+src/functions/d2c/version.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 84-92
+.Knowledge/topics/d2c-session-plaza.md
+  s_e16f52fd1de115::t_667a4ece96733b 3,74-81
+.Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md
+  s_e16f52fd1de115::t_667a4ece96733b 47-48
+test/libraryCover.test.ts
+  s_e16f52fd1de115::t_cb19695a6a8504 1,171,182-183
+src/functions/d2c/version/gallery.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 8,14,19,23,152,168,172-200
+web/src/workspace/PreviewPanel.tsx
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1,53-55
+web/src/workspace/WorksPanel.tsx
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1,32,155-160,173-177,276-285,428-437
+.Knowledge/index.md
+  s_e16f52fd1de115::t_016686c61c078c 48,90
+web/src/workspace/EditWorkspace.tsx
+  s_e16f52fd1de115::t_1c8dd03c44c49b 45,56,77,170,183,371-373
+.Knowledge/stock-docs/d2c-preview-editing.md
+  s_e16f52fd1de115::t_667a4ece96733b 71-72
+web/src/workspace/DeleteSavedItem.tsx
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1-75
+src/functions/d2c/savedWork/service.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 337-363
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "a962a5377e937c16dd22b2648cc5892933bb4f08",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    },
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
