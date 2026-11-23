@@ -123,19 +123,58 @@
 .work-card-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   margin-top: auto;
   padding: 10px 0;
   border-top: 1px solid #edf0f5;
 }
 .work-card-actions .ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding-inline: 6px;
+  gap: 4px;
+  border-radius: 6px;
   font-size: 12px;
 }
-.work-card-actions .ant-btn-text {
-  padding-left: 0;
-  color: #426ec9;
+.work-card-actions .ant-btn .icon {
+  width: 14px;
+  height: 14px;
+}
+.work-action-view.ant-btn {
+  font-weight: 500;
+}
+.work-action-download.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border-color: #dce2eb;
+  color: #536078;
+  box-shadow: none;
+}
+.works-panel .work-action-delete.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  color: #929ba9;
+  background: transparent;
+  box-shadow: none;
+}
+.works-panel .work-action-delete.ant-btn:not(:disabled):hover {
+  color: #ba4754;
+  background: #fff1f2;
+}
+.works-panel .work-action-delete.ant-btn:focus-visible {
+  outline: 2px solid #7e9cd2;
+  outline-offset: 2px;
 }
 .work-summary {
   display: flex;

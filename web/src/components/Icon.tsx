@@ -5,6 +5,7 @@ const paths = {
   chevron: 'm9 5 7 7-7 7',
   search: 'M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z',
   file: 'M14 2H5v20h14V7l-5-5Zm0 0v6h5M8 13h8M8 17h5',
+  download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
   external: 'M14 3h7v7m0-7L10 14M10 3H3v18h18v-7',
   plus: 'M12 5v14M5 12h14',
   minus: 'M5 12h14',

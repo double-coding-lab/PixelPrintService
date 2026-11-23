@@ -60,7 +60,7 @@ test(
               namespace: 'fixture',
             }));
             builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
-              contents: `import React from 'react'; export default function Editor({onSaved}){return <button onClick={async()=>{const response=await fetch('/fixture/save',{method:'POST'});if(response.ok)onSaved?.()}}>模拟保存作品</button>};export function EditWorkspaceSurface(){return null}`,
+              contents: `import React from 'react'; export default function Editor({onSaved}){return <button onClick={async()=>{const response=await fetch('/fixture/save',{method:'POST'});if(response.ok)onSaved?.()}}>模拟保存作品</button>};export {Editor as EditWorkspaceSurface}`,
               loader: 'jsx',
               resolveDir: root,
             }));

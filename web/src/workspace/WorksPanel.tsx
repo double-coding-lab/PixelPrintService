@@ -425,6 +425,22 @@ export default function WorksPanel({
                       <ValidationTag summary={work.validationSummary} />
                     </div>
                     <div className="work-card-actions">
+                      <Button
+                        className="work-action-view"
+                        type="primary"
+                        ghost
+                        icon={<Icon name="play" />}
+                        onClick={() => onSelect(work.versionId)}
+                      >
+                        查看版本
+                      </Button>
+                      <Button
+                        className="work-action-download"
+                        icon={<Icon name="download" />}
+                        href={`/api/d2c/versions/${id(work.versionId)}/archive`}
+                      >
+                        下载 ZIP
+                      </Button>
                       {work.canDelete && (
                         <DeleteSavedItem
                           kind="version"
@@ -434,16 +450,6 @@ export default function WorksPanel({
                           onRefresh={() => setReload((value) => value + 1)}
                         />
                       )}
-
-                      <Button type="text" onClick={() => onSelect(work.versionId)}>
-                        查看版本
-                      </Button>
-                      <Button
-                        icon={<Icon name="file" />}
-                        href={`/api/d2c/versions/${id(work.versionId)}/archive`}
-                      >
-                        下载 ZIP
-                      </Button>
                     </div>
                   </div>
                   <WorkCover

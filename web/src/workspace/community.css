@@ -42,6 +42,11 @@
   color: #7a8494;
   font-size: 12px;
 }
+.community-detail-identity > time {
+  color: #8791a1;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .community-conversation {
   max-width: 1000px;
   margin: auto;

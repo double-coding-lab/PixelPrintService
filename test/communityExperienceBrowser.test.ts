@@ -1,3 +1,4 @@
+import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -193,7 +194,10 @@ test(
     await page.keyboard.press('Enter');
     await page.getByRole('textbox', { name: '副本' }).fill('保留编辑');
     const back = page.getByRole('button', { name: '← 返回广场' });
-    assert.equal(await back.locator('xpath=..').getAttribute('class'), 'community-detail-back');
+    assert.equal(
+      await back.evaluate((node: HTMLElement) => !!node.closest('.community-detail-leading')),
+      true,
+    );
     await page.getByRole('button', { name: '查看对话', exact: true }).click();
     await page.getByText('暂时失败', { exact: true }).waitFor();
     await page.locator('.markdown-message strong').getByText('最近回复').waitFor();

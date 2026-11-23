@@ -101,6 +101,7 @@ test(
         { versionId: 'unsafe', name: '危险地址', coverUrl: 'javascript:window.injected=true' },
       ].map((item) => ({
         ...item,
+        canDelete: true,
         target: 'h5',
         status: 'ready',
         sourceFileRevision: 2,
@@ -178,6 +179,30 @@ test(
         true,
       );
       assert.equal(await page.getByRole('alert').count(), 0);
+      const actions = cover.locator('xpath=..').locator('.work-card-actions');
+      const controls = actions.locator('button, a.ant-btn');
+      assert.equal(await controls.count(), 3);
+      const footer = await actions.boundingBox();
+      const first = await controls.first().boundingBox();
+      const last = await controls.last().boundingBox();
+      assert.ok(footer && first && last);
+      assert.ok(Math.abs(first.y + first.height / 2 - last.y - last.height / 2) < 1);
+      assert.ok(Math.abs((first.x + last.x + last.width) / 2 - footer.x - footer.width / 2) < 2);
+      const deletion = actions.getByRole('button', {
+        name: `删除${saved ? '作品' : '会话版本'}：${name}`,
+      });
+      assert.equal(await deletion.innerText(), '');
+      assert.equal(await deletion.locator('.icon').count(), 1);
+      assert.equal(
+        await deletion.evaluate((button: HTMLElement) =>
+          button.classList.contains('ant-btn-dangerous'),
+        ),
+        false,
+      );
+      if (saved)
+        assert.ok(
+          (await cover.locator('xpath=..').locator('time').innerText()).startsWith('创建于 '),
+        );
       const imageBounds = await cover.boundingBox();
       const bodyBounds = await cover
         .locator('xpath=ancestor::article[1]')

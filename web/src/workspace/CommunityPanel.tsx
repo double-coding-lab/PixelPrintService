@@ -3,7 +3,7 @@ import WorkCover from './WorkCover';
 import './community.css';
 import './editWorkspace.css';
 import './conversationRound.css';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Pagination, Skeleton } from 'antd';
 import { data, errorMessage, id } from './api';
 import {
@@ -22,8 +22,10 @@ import ConversationRound from './ConversationRound';
 import MarkdownMessage from '../components/MarkdownMessage';
 import { readPublicHistory } from './communityHistory';
 import MessageImages from './MessageImages';
-import EditWorkspace, { EditWorkspaceSurface } from './EditWorkspace';
+import { EditWorkspaceSurface } from './EditWorkspace';
 import { diagnosticNumber, diagnosticTokens, totalDuration } from './DiagnosticsPanel';
+import Icon from '../components/Icon';
+import { formatTime } from './time';
 
 type Kind = 'plaza' | 'my-works';
 
@@ -83,6 +85,9 @@ export function PublicSession({
               {detail.creatorName || detail.createdEid || '未知创建人'} ·{' '}
               {detail.target.toUpperCase()}
             </span>
+            <time dateTime={detail.createdAt} title={detail.createdAt}>
+              创建于 {formatTime(detail.createdAt)}
+            </time>
           </div>
         </div>
         <div className="community-actions">
@@ -277,12 +282,32 @@ function PersonalWorkDetail({
   workId,
   onDeleted,
   onBack,
+  onDirty,
+  onBusy,
 }: {
   workId: string;
   onDeleted: () => void;
   onBack: () => void;
+  onDirty?: (value: boolean) => void;
+  onBusy?: (value: boolean) => void;
 }) {
   const [reload, setReload] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const dirtyChanged = useCallback(
+    (value: boolean) => {
+      setDirty(value);
+      onDirty?.(value);
+    },
+    [onDirty],
+  );
+  const busyChanged = useCallback(
+    (value: boolean) => {
+      setSaving(value);
+      onBusy?.(value);
+    },
+    [onBusy],
+  );
   const [work, setWork] = useState<PersonalWork | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -298,38 +323,78 @@ function PersonalWorkDetail({
     );
     return () => controller.abort();
   }, [workId, reload]);
-  if (error) return <Alert type="error" title={error} />;
-  if (!work) return <Skeleton active />;
+  if (!work)
+    return error ? (
+      <Alert
+        type="error"
+        showIcon
+        title={error}
+        action={<Button onClick={() => setReload((value) => value + 1)}>重试</Button>}
+      />
+    ) : (
+      <Skeleton active />
+    );
   return (
-    <div className="community-detail-heading">
-      <div className="community-detail-leading">
-        <Button onClick={onBack}>← 返回已保存作品</Button>
-        <div className="community-detail-identity">
-          <h2>{work.name}</h2>
-          <span>{work.target.toUpperCase()}</span>
+    <>
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          title={error}
+          action={<Button onClick={() => setReload((value) => value + 1)}>重试</Button>}
+        />
+      )}
+      <div className="community-detail-heading">
+        <div className="community-detail-leading">
+          <Button onClick={onBack}>← 返回已保存作品</Button>
+          <div className="community-detail-identity">
+            <h2>{work.name}</h2>
+            <span>{work.target.toUpperCase()}</span>
+            <time dateTime={work.createdAt} title={work.createdAt}>
+              创建于 {formatTime(work.createdAt)}
+            </time>
+          </div>
+        </div>
+        <div className="community-actions">
+          <Button
+            className="work-action-download"
+            icon={<Icon name="download" />}
+            href={`/api/d2c/my-works/${id(workId)}/archive`}
+          >
+            下载 ZIP
+          </Button>
+          <DeleteSavedItem
+            kind="work"
+            itemId={workId}
+            name={work.name}
+            revision={work.revision}
+            onDeleted={onDeleted}
+            onRefresh={() => setReload((value) => value + 1)}
+            disabled={saving}
+            hasUnsavedChanges={dirty}
+          />
         </div>
       </div>
-      <div className="community-actions">
-        {work.canManage !== false && (
-          <EditWorkspace
-            sessionId={workId}
-            options={detachedEditOptions('my-works', workId)}
-            onApplied={() => {}}
-            onSaved={() => setReload((value) => value + 1)}
-            label="再次编辑"
-          />
-        )}
-        <Button href={`/api/d2c/my-works/${id(workId)}/archive`}>下载 ZIP</Button>
-        <DeleteSavedItem
-          kind="work"
-          itemId={workId}
-          name={work.name}
-          revision={work.revision}
-          onDeleted={onDeleted}
-          onRefresh={() => setReload((value) => value + 1)}
+      {work.canManage === false ? (
+        <Alert
+          type="info"
+          showIcon
+          title="当前作品仅支持下载"
+          description="该作品暂不可编辑，请下载源码或刷新页面后重试。"
         />
-      </div>
-    </div>
+      ) : (
+        <EditWorkspaceSurface
+          sessionId={workId}
+          options={detachedEditOptions('my-works', workId)}
+          embedded
+          onClose={onBack}
+          onApplied={() => {}}
+          onSaved={() => setReload((value) => value + 1)}
+          onDirty={dirtyChanged}
+          onBusy={busyChanged}
+        />
+      )}
+    </>
   );
 }
 
@@ -340,6 +405,7 @@ export default function CommunityPanel({
   onSelect,
   onDirty,
   onBusy,
+  onDeleted: onRecordDeleted,
 }: {
   kind: Kind;
   resourceId: string;
@@ -347,6 +413,7 @@ export default function CommunityPanel({
   onVersions?: () => void;
   onDirty?: (value: boolean) => void;
   onBusy?: (value: boolean) => void;
+  onDeleted?: () => void;
 }) {
   const [page, setPage] = useState(1);
   const [reload, setReload] = useState(0);
@@ -389,23 +456,18 @@ export default function CommunityPanel({
     <section
       className={`works-panel community-panel${resourceId ? ' community-panel-detail' : ''}`}
     >
-      <div className="works-heading">
-        <div className="works-heading-leading">
-          {resourceId && kind !== 'plaza' && (
-            <Button type="text" onClick={() => onSelect('')}>
-              ← 返回{title}
-            </Button>
-          )}
-          <h1>{title}</h1>
-        </div>
-        <div className="community-actions">
-          {!resourceId && (
+      {!resourceId && (
+        <div className="works-heading">
+          <div className="works-heading-leading">
+            <h1>{title}</h1>
+          </div>
+          <div className="community-actions">
             <Button loading={loading} onClick={() => setReload((n) => n + 1)}>
               刷新
             </Button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
       {resourceId ? (
         kind === 'plaza' ? (
           <PublicSession
@@ -419,8 +481,10 @@ export default function CommunityPanel({
           <PersonalWorkDetail
             key={resourceId}
             workId={resourceId}
-            onDeleted={() => onSelect('')}
+            onDeleted={() => (onRecordDeleted ? onRecordDeleted() : onSelect(''))}
             onBack={() => onSelect('')}
+            onDirty={onDirty}
+            onBusy={onBusy}
           />
         )
       ) : (
@@ -449,7 +513,28 @@ export default function CommunityPanel({
                     {'creatorName' in item && (
                       <span>{item.creatorName || item.createdEid || '未知创建人'}</span>
                     )}
+                    <time dateTime={item.createdAt} title={item.createdAt}>
+                      创建于 {formatTime(item.createdAt)}
+                    </time>
                     <div className="work-card-actions">
+                      <Button
+                        className="work-action-view"
+                        type="primary"
+                        ghost
+                        icon={<Icon name="play" />}
+                        onClick={() => onSelect(resource)}
+                      >
+                        {kind === 'plaza' ? '打开作品' : '查看作品'}
+                      </Button>
+                      {'workId' in item && (
+                        <Button
+                          className="work-action-download"
+                          icon={<Icon name="download" />}
+                          href={`/api/d2c/my-works/${id(item.workId)}/archive`}
+                        >
+                          下载 ZIP
+                        </Button>
+                      )}
                       {'workId' in item && (
                         <DeleteSavedItem
                           kind="work"
@@ -459,15 +544,6 @@ export default function CommunityPanel({
                           onDeleted={deleted}
                           onRefresh={() => setReload((value) => value + 1)}
                         />
-                      )}
-
-                      <Button onClick={() => onSelect(resource)}>
-                        {kind === 'plaza' ? '打开作品' : '查看作品'}
-                      </Button>
-                      {'workId' in item && (
-                        <Button href={`/api/d2c/my-works/${id(item.workId)}/archive`}>
-                          下载 ZIP
-                        </Button>
                       )}
                     </div>
                   </div>
