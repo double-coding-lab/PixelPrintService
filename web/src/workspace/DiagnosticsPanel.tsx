@@ -169,6 +169,13 @@ export function DiagnosticsContent({
             <div>
               <p>{failure?.suggestion ?? '请联系服务端排查。'}</p>
               <div>错误分类：{failure?.stage ?? '未知阶段'}</div>
+              {failure?.databaseCode && (
+                <div>
+                  数据库错误：<code>{failure.databaseCode}</code>
+                  {failure.databaseErrno ? ` · ${failure.databaseErrno}` : ''}
+                  {failure.databaseSqlState ? ` · SQLSTATE ${failure.databaseSqlState}` : ''}
+                </div>
+              )}
               <div>
                 排查编号：<code>{failure?.errorId ?? '未提供'}</code>
               </div>

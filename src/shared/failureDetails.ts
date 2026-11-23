@@ -1,5 +1,28 @@
 import { z } from 'zod';
 
+/** 数据库诊断仅公开固定代码、编号和 SQLSTATE，不含 SQL 或绑定值。 */
+export const databaseErrorCodes = [
+  'ER_OUT_OF_SORTMEMORY',
+  'ER_LOCK_DEADLOCK',
+  'ER_LOCK_WAIT_TIMEOUT',
+  'ER_CON_COUNT_ERROR',
+  'ER_BAD_FIELD_ERROR',
+  'ER_NO_SUCH_TABLE',
+  'ER_DATA_TOO_LONG',
+  'ER_NET_PACKET_TOO_LARGE',
+  'ER_DUP_ENTRY',
+  'ER_DISK_FULL',
+] as const;
+export const databaseFailureSchema = z.object({
+  databaseCode: z.enum(databaseErrorCodes).optional().catch(undefined),
+  databaseErrno: z.number().int().positive().max(65535).optional().catch(undefined),
+  databaseSqlState: z
+    .string()
+    .regex(/^[A-Z0-9]{5}$/)
+    .optional()
+    .catch(undefined),
+});
+
 /** 框架固定错误码由服务端分类与前端诊断共用。 */
 export const frameworkErrorCodes = [
   'DEEP_ARCHIVE_EXISTS',
@@ -46,6 +69,7 @@ export const frameworkErrorCodes = [
 
 /** 公开诊断仅含固定错误类型、系统码和执行阶段，不接受异常正文、源码或堆栈。 */
 export const failureDetailsSchema = z.object({
+  ...databaseFailureSchema.shape,
   errorType: z
     .enum([
       'Error',

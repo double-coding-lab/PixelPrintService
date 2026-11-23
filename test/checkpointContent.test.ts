@@ -1003,13 +1003,13 @@ test('checkpoint update、最后write和delete执行后取消仍在租约事务�
             return result;
           });
         } else if (operation === 'last-write') {
-          const update = writes.update.bind(writes);
-          t.mock.method(writes, 'update', async (...args: Parameters<typeof update>) => {
-            const result = await update(...args);
+          const create = writes.create.bind(writes);
+          t.mock.method(writes, 'create', async (...args: Parameters<typeof create>) => {
+            const result = await create(...args);
             assert.equal(
               f.context.getStore()!.tables.D2cAgentWrite.length,
               2,
-              '取消前已创建前一条write',
+              '固定锁序先更新负索引write，再创建末条普通write',
             );
             mutationObserved = true;
             abort();

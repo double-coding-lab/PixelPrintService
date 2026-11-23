@@ -595,7 +595,7 @@ export class D2cMySQLCheckpointSaver extends BaseCheckpointSaver {
     const values: Awaited<ReturnType<typeof prepare>>[] = [];
     for (const item of plan) values.push(await prepare(item));
     await this.mutate(async (transaction) => {
-      for (const value of values) {
+      for (const value of [...values].sort((a, b) => a.idx - b.idx)) {
         const where = {
           ...scope.where,
           checkpointId: id,
@@ -651,11 +651,15 @@ export function createRunCheckpointSaver(
     onStorageError: (error) => executionError(error, 'STORAGE_FAILED', { stage: 'storage' }),
     withLease: async (action) => {
       try {
-        return await leases.commit(lease, async (session, transaction) => {
-          if (session.sessionId !== lease.sessionId)
-            throw new Error('Checkpoint lease session mismatch');
-          return action(transaction);
-        });
+        return await leases.commit(
+          lease,
+          async (session, transaction) => {
+            if (session.sessionId !== lease.sessionId)
+              throw new Error('Checkpoint lease session mismatch');
+            return action(transaction);
+          },
+          { retryDeadlocks: true, signal },
+        );
       } catch (error) {
         signal?.throwIfAborted();
         if (error instanceof SessionError && error.reason === 'LEASE_LOST')

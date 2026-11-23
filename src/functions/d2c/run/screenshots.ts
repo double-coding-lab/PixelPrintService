@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { Sequelize } from 'sequelize';
+import type { Sequelize, Transaction } from 'sequelize';
+import type { D2cSession } from '@/models/D2cSession';
 import type { D2cMessageAttachment } from '@/models/D2cMessageAttachment';
 import type { createPreviewInspection } from '../preview/inspection';
 import {
@@ -33,6 +34,10 @@ export function createRunScreenshotWriter(input: {
     binary: input.binary,
     readUploadBytes: () => input.uploadBytes,
   });
+  /** 附件和消息原子写入，重试不会重新上传图片。 */
+  function commit<T>(write: (session: D2cSession, transaction: Transaction) => Promise<T>) {
+    return input.leases.commit(input.lease, write, { retryDeadlocks: true });
+  }
   const objectNames = new Map<string, string>();
   /** 同轮同预览采用稳定身份，重试时复用已发布图片，不把重新截图的像素冒充旧图。 */
   return async (value: Screenshot) => {
@@ -52,7 +57,7 @@ export function createRunScreenshotWriter(input: {
       .update(`${input.lease.runId}:${value.previewId}:${capture.width}`)
       .digest('hex');
     const where = { attachmentId, sessionId: input.lease.sessionId, userId: input.userId };
-    const existing = await input.leases.commit(input.lease, async (_session, transaction) =>
+    const existing = await commit(async (_session, transaction) =>
       attachments.findOne({ where, transaction }),
     );
     if (existing)
@@ -69,7 +74,7 @@ export function createRunScreenshotWriter(input: {
       contentType: capture.mimeType,
     });
     await input.assertLease();
-    await input.leases.commit(input.lease, async (session, transaction) => {
+    await commit(async (session, transaction) => {
       if (await attachments.findOne({ where, transaction })) return;
       const messageId = randomUUID();
       const row = await attachments.create(

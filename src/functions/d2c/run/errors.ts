@@ -1,4 +1,4 @@
-import { frameworkErrorCodes } from '../../../shared/failureDetails';
+import { databaseFailureSchema, frameworkErrorCodes } from '../../../shared/failureDetails';
 import { TextContentError } from '../content/store';
 import { databaseDiagnostics } from '@/common/databaseDiagnostics';
 import {
@@ -151,6 +151,7 @@ const contextSchema = z.object({
 /** 公开字段只接受已知枚举，说明文字始终从固定原因表重建。 */
 export const runFailureSchema = contextSchema
   .extend({
+    ...databaseFailureSchema.shape,
     errorId: z.string().uuid(),
     code: z.enum(Object.keys(reasons) as [FailureCode, ...FailureCode[]]),
     statusCode: z.number().int().min(100).max(599).optional(),
@@ -594,6 +595,7 @@ export function diagnoseRunFailure(
   const failure = runFailureSchema.parse({
     errorId: failureOccurrenceId(error),
     code: selectedCode,
+    ...databaseDiagnostics(error),
     ...selectedContext,
     ...(diagnostics.statusCode ? { statusCode: diagnostics.statusCode } : {}),
   });

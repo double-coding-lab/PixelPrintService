@@ -1,18 +1,13 @@
-const databaseCodes = new Set([
-  'ER_OUT_OF_SORTMEMORY',
-  'ER_LOCK_DEADLOCK',
-  'ER_LOCK_WAIT_TIMEOUT',
-  'ER_CON_COUNT_ERROR',
-  'ER_BAD_FIELD_ERROR',
-  'ER_NO_SUCH_TABLE',
-  'ER_DATA_TOO_LONG',
-  'ER_NET_PACKET_TOO_LARGE',
-  'ER_DUP_ENTRY',
-  'ER_DISK_FULL',
-]);
+import { databaseErrorCodes } from '../shared/failureDetails';
+
+const databaseCodes = new Set<string>(databaseErrorCodes);
 
 /** 只提取数据库固定错误码，遍历 ORM 的 cause/parent/original，不输出 SQL、绑定值和消息。 */
-export function databaseDiagnostics(error: unknown) {
+export function databaseDiagnostics(error: unknown): {
+  databaseCode?: string;
+  databaseErrno?: number;
+  databaseSqlState?: string;
+} {
   const pending: unknown[] = [error];
   const seen = new Set<unknown>();
   for (let index = 0; index < pending.length && index < 24; index++) {

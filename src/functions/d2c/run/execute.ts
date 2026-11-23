@@ -141,6 +141,7 @@ export async function executeGenerationRun(input: {
     await heartbeatTask;
   }
   const persistence = createRunPersistence(input.mysql, leases, lease, {
+    signal: controller.signal,
     limits: config.d2c.limits,
     notify: input.notify,
     redact,

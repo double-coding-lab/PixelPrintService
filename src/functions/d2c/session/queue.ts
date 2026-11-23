@@ -371,75 +371,79 @@ export async function consumeRunGuidance(
   applied: string[],
   notify: (id: string, seq: number) => void,
 ) {
-  return leases.commit(lease, async (session, transaction) => {
-    const run = await (mysql.models.D2cRun as typeof D2cRun).findOne({
-      where: { runId: lease.runId, sessionId: lease.sessionId },
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
-    if (run?.status !== 'running' || run.stopRequested || run.cancelRequested) return [];
-    const items = (
-      await readMessageQueue(mysql, lease.sessionId, transaction, { runId: lease.runId })
-    ).filter(
-      (item) =>
-        item.targetRunId === lease.runId &&
-        item.status !== 'deleted' &&
-        !applied.includes(item.queueId),
-    );
-    const result: Array<{ id: string; message: StoredAgentMessage }> = [];
-    const workspace = await (mysql.models.D2cWorkspace as typeof D2cWorkspace).findOne({
-      where: { workspaceId: session.workspaceId },
-      transaction,
-    });
-    const runActorUserId = run.requestedUserId ?? workspace?.createdUserId;
-    for (const item of items) {
-      /** 租约已持有写锁；只读复查发起人权限，不改变既有工作区→会话锁序。 */
-      const actorUserId = item.actorUserId ?? workspace?.createdUserId;
-      if (!actorUserId || !runActorUserId || !sameUser(actorUserId, runActorUserId)) continue;
-      try {
-        await ownedSession(mysql, actorUserId, lease.sessionId, transaction, 'read');
-      } catch (error) {
-        if (error instanceof SessionError && [403, 404].includes(error.statusCode)) continue;
-        throw error;
+  return leases.commit(
+    lease,
+    async (session, transaction) => {
+      const run = await (mysql.models.D2cRun as typeof D2cRun).findOne({
+        where: { runId: lease.runId, sessionId: lease.sessionId },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (run?.status !== 'running' || run.stopRequested || run.cancelRequested) return [];
+      const items = (
+        await readMessageQueue(mysql, lease.sessionId, transaction, { runId: lease.runId })
+      ).filter(
+        (item) =>
+          item.targetRunId === lease.runId &&
+          item.status !== 'deleted' &&
+          !applied.includes(item.queueId),
+      );
+      const result: Array<{ id: string; message: StoredAgentMessage }> = [];
+      const workspace = await (mysql.models.D2cWorkspace as typeof D2cWorkspace).findOne({
+        where: { workspaceId: session.workspaceId },
+        transaction,
+      });
+      const runActorUserId = run.requestedUserId ?? workspace?.createdUserId;
+      for (const item of items) {
+        /** 租约已持有写锁；只读复查发起人权限，不改变既有工作区→会话锁序。 */
+        const actorUserId = item.actorUserId ?? workspace?.createdUserId;
+        if (!actorUserId || !runActorUserId || !sameUser(actorUserId, runActorUserId)) continue;
+        try {
+          await ownedSession(mysql, actorUserId, lease.sessionId, transaction, 'read');
+        } catch (error) {
+          if (error instanceof SessionError && [403, 404].includes(error.statusCode)) continue;
+          throw error;
+        }
+        const message: StoredAgentMessage = {
+          role: 'user',
+          id: item.queueId,
+          content: item.attachments?.length
+            ? [
+                { type: 'input_text', text: item.content },
+                ...item.attachments.map((attachment) => ({
+                  type: 'input_image' as const,
+                  attachmentId: String(attachment.attachmentId),
+                })),
+              ]
+            : item.content,
+        };
+        if (item.status === 'guidance_pending') {
+          await appendSessionEvent(mysql, session, transaction, {
+            kind: 'message',
+            runId: lease.runId,
+            messageId: item.queueId,
+            sdkItem: message,
+            displayPayload: {
+              role: 'user',
+              authorUserId: actorUserId,
+              text: item.content,
+              ...(item.attachments?.length ? { attachments: item.attachments } : {}),
+            },
+          });
+          const seq = await appendSessionEvent(mysql, session, transaction, {
+            kind: 'stage',
+            displayPayload: { ...item, status: 'delivered' },
+          });
+          transaction.afterCommit(() => {
+            try {
+              notify(lease.sessionId, seq);
+            } catch {}
+          });
+        }
+        result.push({ id: item.queueId, message });
       }
-      const message: StoredAgentMessage = {
-        role: 'user',
-        id: item.queueId,
-        content: item.attachments?.length
-          ? [
-              { type: 'input_text', text: item.content },
-              ...item.attachments.map((attachment) => ({
-                type: 'input_image' as const,
-                attachmentId: String(attachment.attachmentId),
-              })),
-            ]
-          : item.content,
-      };
-      if (item.status === 'guidance_pending') {
-        await appendSessionEvent(mysql, session, transaction, {
-          kind: 'message',
-          runId: lease.runId,
-          messageId: item.queueId,
-          sdkItem: message,
-          displayPayload: {
-            role: 'user',
-            authorUserId: actorUserId,
-            text: item.content,
-            ...(item.attachments?.length ? { attachments: item.attachments } : {}),
-          },
-        });
-        const seq = await appendSessionEvent(mysql, session, transaction, {
-          kind: 'stage',
-          displayPayload: { ...item, status: 'delivered' },
-        });
-        transaction.afterCommit(() => {
-          try {
-            notify(lease.sessionId, seq);
-          } catch {}
-        });
-      }
-      result.push({ id: item.queueId, message });
-    }
-    return result;
-  });
+      return result;
+    },
+    { retryDeadlocks: true },
+  );
 }

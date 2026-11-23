@@ -61,6 +61,7 @@ export function createRunPersistence(
   leases: ReturnType<typeof createRunLeases>,
   lease: RunLease,
   options: {
+    signal?: AbortSignal;
     limits: { textFileBytes: number; filesPerSession: number };
     notify: (id: string, seq: number) => void;
     redact: (value: string) => string;
@@ -69,6 +70,10 @@ export function createRunPersistence(
   const runs = mysql.models.D2cRun as typeof D2cRun;
   const files = contentModel(mysql, mysql.models.D2cFile as typeof D2cFile);
   let fileRevision: number | undefined;
+  /** 仅重试数据库回调；外部正文准备和本地修订基线更新均在事务之外。 */
+  function commit<T>(write: (session: D2cSession, transaction: Transaction) => Promise<T>) {
+    return leases.commit(lease, write, { retryDeadlocks: true, signal: options.signal });
+  }
   /** 通知失败只影响实时性，不能回滚已保存的执行结果。 */
   function notify(session: D2cSession, transaction: Transaction) {
     const seq = session.timelineSeq;
@@ -88,7 +93,7 @@ export function createRunPersistence(
   const persistence = {
     /** 在租约事务中只更新默认会话名称，事件与标题同时提交，重复读取不反复改名。 */
     async nameFromFigma(nodeName: string) {
-      await leases.commit(lease, async (session, transaction) => {
+      await commit(async (session, transaction) => {
         const name = figmaSessionName(session.name, session.target!, options.redact(nodeName));
         if (!name) return;
         await session.update({ name }, { transaction });
@@ -108,7 +113,7 @@ export function createRunPersistence(
     async load() {
       fileRevision = undefined;
       let baseline: number | undefined;
-      const loaded = await leases.commit(lease, async (session, transaction) => {
+      const loaded = await commit(async (session, transaction) => {
         const run = await runs.findOne({
           where: { runId: lease.runId },
           transaction,
@@ -282,7 +287,7 @@ export function createRunPersistence(
       const safeItem = JSON.parse(options.redact(serialized)) as Record<string, unknown>;
       if (Buffer.byteLength(JSON.stringify(safeItem)) > options.limits.textFileBytes)
         throw new Error('执行条目过大');
-      await leases.commit(lease, async (session, transaction) => {
+      await commit(async (session, transaction) => {
         const seq = await appendSessionEvent(mysql, session, transaction, {
           runId: lease.runId,
           kind: entry.kind,
@@ -319,7 +324,7 @@ export function createRunPersistence(
     /** 模型生命周期只存白名单元数据，复用租约事务和提交后通知。 */
     async recordModelActivity(entry: ModelActivity) {
       const displayPayload = modelActivitySchema.parse(entry);
-      await leases.commit(lease, async (session, transaction) => {
+      await commit(async (session, transaction) => {
         const messageId = `${entry.operationId}:${entry.status === 'started' ? 'start' : 'finish'}`;
         const prior = await (mysql.models.D2cTimeline as typeof D2cTimeline).findOne({
           where: {
@@ -350,7 +355,7 @@ export function createRunPersistence(
 
     /** 合并后的正文快照只写展示记录，跨实例SSE与断线补读复用原有提交后通知。 */
     async recordText(entry: AgentTextSnapshot) {
-      await leases.commit(lease, async (session, transaction) => {
+      await commit(async (session, transaction) => {
         await appendSessionEvent(mysql, session, transaction, {
           runId: lease.runId,
           kind: entry.channel === 'reasoning' ? 'reasoning_delta' : 'text_delta',
@@ -368,7 +373,7 @@ export function createRunPersistence(
     /** 切图进度只进入展示时间线，不参与模型工具历史回放。 */
     async recordProgress(entry: SliceProgress) {
       const displayPayload = sliceProgressSchema.parse(entry);
-      await leases.commit(lease, async (session, transaction) => {
+      await commit(async (session, transaction) => {
         await appendSessionEvent(mysql, session, transaction, {
           runId: lease.runId,
           kind: 'stage',
@@ -382,7 +387,7 @@ export function createRunPersistence(
       const displayPayload = subagentEventSchema.parse(
         JSON.parse(options.redact(JSON.stringify(entry))),
       );
-      await leases.commit(lease, async (session, transaction) => {
+      await commit(async (session, transaction) => {
         await appendSessionEvent(mysql, session, transaction, {
           runId: lease.runId,
           kind: 'stage',
@@ -415,7 +420,7 @@ export function createRunPersistence(
       )
         throw new Error('文件内容无效或含敏感材料');
       /** 先短事务核验租约与基线，再在锁外准备对象；真正写入时再次检查租约。 */
-      const original = await leases.commit(lease, async (session, transaction) => {
+      const original = await commit(async (session, transaction) => {
         current(session);
         const prior = await files.findOne({
           where: {
@@ -444,78 +449,76 @@ export function createRunPersistence(
       const storage = unchanged
         ? copyTextStorage(mysql, original!)
         : await prepareTextContent(mysql, `session:${lease.sessionId}`, content);
-      await leases
-        .commit(lease, async (session, transaction) => {
-          current(session);
-          const pathHash = createHash('sha256').update(relative).digest('hex');
-          /** hash 仅用于索引定位，命中后仍核对完整路径和存储类型，防止覆盖其他文件。 */
-          const prior = await files.findOne({
-            where: { sessionId: lease.sessionId, pathHash },
-            transaction,
-            lock: transaction.LOCK.UPDATE,
-          });
-          if (prior && (prior.path !== relative || prior.kind !== kind || prior.objectLocator))
-            throw new Error('文件类型或路径冲突');
-          if (
-            prior &&
-            (await resolveTextContent(mysql, prior, `session:${lease.sessionId}`)) === content
-          )
-            return session.fileRevision;
-          if (
-            (prior === null) !== (original === null) ||
-            (prior && (prior.revision !== original?.revision || prior.fileId !== original?.fileId))
-          )
-            throw new Error('稳定文件修订冲突');
-          if (
-            !prior &&
-            (await files.count({ where: { sessionId: lease.sessionId }, transaction })) >=
-              options.limits.filesPerSession
-          )
-            throw new Error('文件数量超限');
-          const revision = (prior?.revision ?? 0) + 1;
-          if (revision > 4294967294 || session.fileRevision >= 4294967294)
-            throw new Error('文件修订已耗尽');
-          const values = {
-            ...storage,
-            size: Buffer.byteLength(content),
-            sha256: createHash('sha256').update(content).digest('hex'),
-            revision,
-          };
-          const row = prior
-            ? await prior.update(values, { transaction })
-            : await files.create(
-                {
-                  fileId: randomUUID(),
-                  sessionId: lease.sessionId,
-                  path: relative,
-                  pathHash,
-                  kind,
-                  objectLocator: null,
-                  mimeType: 'text/plain; charset=utf-8',
-                  ...values,
-                },
-                { transaction },
-              );
-          /** 文件及会话修订、校验状态和事件共用事务，任何一步失败均不产生部分保存。 */
-          await session.update(
-            { fileRevision: session.fileRevision + 1, validationState: { status: 'stale' } },
-            { transaction },
-          );
-          if (kind === 'source')
-            await appendFileEvent(mysql, session, transaction, {
-              action: prior ? 'updated' : 'created',
-              fileId: row.fileId!,
-              path: relative,
-              revision,
-              fileRevision: session.fileRevision,
-            });
-          notify(session, transaction);
-          return session.fileRevision;
-        })
-        .then((revision) => {
-          /** 仅在事务已提交后推进本执行器的修订基线，回滚不能更新本地记账。 */
-          fileRevision = revision;
+      await commit(async (session, transaction) => {
+        current(session);
+        const pathHash = createHash('sha256').update(relative).digest('hex');
+        /** hash 仅用于索引定位，命中后仍核对完整路径和存储类型，防止覆盖其他文件。 */
+        const prior = await files.findOne({
+          where: { sessionId: lease.sessionId, pathHash },
+          transaction,
+          lock: transaction.LOCK.UPDATE,
         });
+        if (prior && (prior.path !== relative || prior.kind !== kind || prior.objectLocator))
+          throw new Error('文件类型或路径冲突');
+        if (
+          prior &&
+          (await resolveTextContent(mysql, prior, `session:${lease.sessionId}`)) === content
+        )
+          return session.fileRevision;
+        if (
+          (prior === null) !== (original === null) ||
+          (prior && (prior.revision !== original?.revision || prior.fileId !== original?.fileId))
+        )
+          throw new Error('稳定文件修订冲突');
+        if (
+          !prior &&
+          (await files.count({ where: { sessionId: lease.sessionId }, transaction })) >=
+            options.limits.filesPerSession
+        )
+          throw new Error('文件数量超限');
+        const revision = (prior?.revision ?? 0) + 1;
+        if (revision > 4294967294 || session.fileRevision >= 4294967294)
+          throw new Error('文件修订已耗尽');
+        const values = {
+          ...storage,
+          size: Buffer.byteLength(content),
+          sha256: createHash('sha256').update(content).digest('hex'),
+          revision,
+        };
+        const row = prior
+          ? await prior.update(values, { transaction })
+          : await files.create(
+              {
+                fileId: randomUUID(),
+                sessionId: lease.sessionId,
+                path: relative,
+                pathHash,
+                kind,
+                objectLocator: null,
+                mimeType: 'text/plain; charset=utf-8',
+                ...values,
+              },
+              { transaction },
+            );
+        /** 文件及会话修订、校验状态和事件共用事务，任何一步失败均不产生部分保存。 */
+        await session.update(
+          { fileRevision: session.fileRevision + 1, validationState: { status: 'stale' } },
+          { transaction },
+        );
+        if (kind === 'source')
+          await appendFileEvent(mysql, session, transaction, {
+            action: prior ? 'updated' : 'created',
+            fileId: row.fileId!,
+            path: relative,
+            revision,
+            fileRevision: session.fileRevision,
+          });
+        notify(session, transaction);
+        return session.fileRevision;
+      }).then((revision) => {
+        /** 仅在事务已提交后推进本执行器的修订基线，回滚不能更新本地记账。 */
+        fileRevision = revision;
+      });
     },
 
     /**
@@ -531,109 +534,105 @@ export function createRunPersistence(
       )
         throw new Error('资源路径无效');
       const sha256 = createHash('sha256').update(content).digest('hex');
-      await leases
-        .commit(lease, async (session, transaction) => {
-          current(session);
-          const pathHash = createHash('sha256').update(relative).digest('hex');
-          const prior = await files.findOne({
-            where: { sessionId: lease.sessionId, pathHash },
-            transaction,
-            lock: transaction.LOCK.UPDATE,
-          });
-          if (prior && (prior.path !== relative || prior.kind !== 'asset'))
-            throw new Error('资源类型冲突');
-          if (prior?.sha256 === sha256 && prior.size === content.length) {
-            const clean = copyTextStorage(mysql, { content: null });
-            if ('contentRef' in clean && prior.contentRef != null)
-              await prior.update(clean, { transaction });
-            return session.fileRevision;
-          }
-          if (
-            !prior &&
-            (await files.count({ where: { sessionId: lease.sessionId }, transaction })) >=
-              options.limits.filesPerSession
-          )
-            throw new Error('文件数量超限');
-          const revision = (prior?.revision ?? 0) + 1;
-          if (revision > 4294967294 || session.fileRevision >= 4294967294)
-            throw new Error('文件修订已耗尽');
-          const values = {
-            ...copyTextStorage(mysql, { content: null }),
-            objectLocator,
-            size: content.length,
-            sha256,
-            revision,
-          };
-          const row = prior
-            ? await prior.update(values, { transaction })
-            : await files.create(
-                {
-                  fileId: randomUUID(),
-                  sessionId: lease.sessionId,
-                  path: relative,
-                  pathHash,
-                  kind: 'asset',
-                  mimeType: 'application/octet-stream',
-                  ...values,
-                },
-                { transaction },
-              );
-          await session.update(
-            { fileRevision: session.fileRevision + 1, validationState: { status: 'stale' } },
-            { transaction },
-          );
-          await appendFileEvent(mysql, session, transaction, {
-            action: prior ? 'updated' : 'created',
-            fileId: row.fileId!,
-            path: relative,
-            revision,
-            fileRevision: session.fileRevision,
-          });
-          notify(session, transaction);
-          return session.fileRevision;
-        })
-        .then((revision) => {
-          fileRevision = revision;
+      await commit(async (session, transaction) => {
+        current(session);
+        const pathHash = createHash('sha256').update(relative).digest('hex');
+        const prior = await files.findOne({
+          where: { sessionId: lease.sessionId, pathHash },
+          transaction,
+          lock: transaction.LOCK.UPDATE,
         });
+        if (prior && (prior.path !== relative || prior.kind !== 'asset'))
+          throw new Error('资源类型冲突');
+        if (prior?.sha256 === sha256 && prior.size === content.length) {
+          const clean = copyTextStorage(mysql, { content: null });
+          if ('contentRef' in clean && prior.contentRef != null)
+            await prior.update(clean, { transaction });
+          return session.fileRevision;
+        }
+        if (
+          !prior &&
+          (await files.count({ where: { sessionId: lease.sessionId }, transaction })) >=
+            options.limits.filesPerSession
+        )
+          throw new Error('文件数量超限');
+        const revision = (prior?.revision ?? 0) + 1;
+        if (revision > 4294967294 || session.fileRevision >= 4294967294)
+          throw new Error('文件修订已耗尽');
+        const values = {
+          ...copyTextStorage(mysql, { content: null }),
+          objectLocator,
+          size: content.length,
+          sha256,
+          revision,
+        };
+        const row = prior
+          ? await prior.update(values, { transaction })
+          : await files.create(
+              {
+                fileId: randomUUID(),
+                sessionId: lease.sessionId,
+                path: relative,
+                pathHash,
+                kind: 'asset',
+                mimeType: 'application/octet-stream',
+                ...values,
+              },
+              { transaction },
+            );
+        await session.update(
+          { fileRevision: session.fileRevision + 1, validationState: { status: 'stale' } },
+          { transaction },
+        );
+        await appendFileEvent(mysql, session, transaction, {
+          action: prior ? 'updated' : 'created',
+          fileId: row.fileId!,
+          path: relative,
+          revision,
+          fileRevision: session.fileRevision,
+        });
+        notify(session, transaction);
+        return session.fileRevision;
+      }).then((revision) => {
+        fileRevision = revision;
+      });
     },
 
     /** 删除与文件事件、会话修订同事务；失去租约的旧实例不能提交。 */
     async remove(relative: string) {
       assertArtifactPath(relative);
-      await leases
-        .commit(lease, async (session, transaction) => {
-          current(session);
-          const row = await files.findOne({
-            where: {
-              sessionId: lease.sessionId,
-              pathHash: createHash('sha256').update(relative).digest('hex'),
-            },
-            transaction,
-            lock: transaction.LOCK.UPDATE,
-          });
-          if (!row || row.path !== relative)
-            throw new SessionError(404, 'FILE_NOT_FOUND', '文件不存在');
-          if (row.kind !== 'source')
-            throw new SessionError(422, 'FILE_DELETE_NOT_ALLOWED', '仅允许删除源码文件');
-          if (session.fileRevision >= 4294967294) throw new Error('文件修订已耗尽');
-          await row.destroy({ transaction });
-          await session.update(
-            { fileRevision: session.fileRevision + 1, validationState: { status: 'stale' } },
-            { transaction },
-          );
-          await appendFileEvent(mysql, session, transaction, {
-            action: 'deleted',
-            fileId: row.fileId!,
-            path: relative,
-            revision: row.revision,
-            fileRevision: session.fileRevision,
-          });
-          notify(session, transaction);
-          return session.fileRevision;
-        })
-        .then((revision) => {
-          fileRevision = revision;
+      await commit(async (session, transaction) => {
+        current(session);
+        const row = await files.findOne({
+          where: {
+            sessionId: lease.sessionId,
+            pathHash: createHash('sha256').update(relative).digest('hex'),
+          },
+          transaction,
+          lock: transaction.LOCK.UPDATE,
         });
+        if (!row || row.path !== relative)
+          throw new SessionError(404, 'FILE_NOT_FOUND', '文件不存在');
+        if (row.kind !== 'source')
+          throw new SessionError(422, 'FILE_DELETE_NOT_ALLOWED', '仅允许删除源码文件');
+        if (session.fileRevision >= 4294967294) throw new Error('文件修订已耗尽');
+        await row.destroy({ transaction });
+        await session.update(
+          { fileRevision: session.fileRevision + 1, validationState: { status: 'stale' } },
+          { transaction },
+        );
+        await appendFileEvent(mysql, session, transaction, {
+          action: 'deleted',
+          fileId: row.fileId!,
+          path: relative,
+          revision: row.revision,
+          fileRevision: session.fileRevision,
+        });
+        notify(session, transaction);
+        return session.fileRevision;
+      }).then((revision) => {
+        fileRevision = revision;
+      });
     },
 
     /**
@@ -642,7 +641,7 @@ export function createRunPersistence(
      * 这里只更新 MySQL 执行元数据，不追加完成事件或改变轮次终态；结算由执行器另行调用。
      */
     async complete(usage: Record<string, unknown>, validation?: Record<string, unknown>) {
-      await leases.commit(lease, async (session, transaction) => {
+      await commit(async (session, transaction) => {
         current(session);
         const run = await runs.findOne({
           where: { runId: lease.runId },

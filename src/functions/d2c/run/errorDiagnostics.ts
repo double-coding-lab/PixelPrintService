@@ -368,7 +368,7 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
         : []),
     ];
     const attempt = typeof data.retryIndex === 'number' ? data.retryIndex + 1 : data.attempt;
-    const details = readFailureDetails(data.failureDetails);
+    const details = readFailureDetails({ ...failure, ...object(data.failureDetails) });
     candidates.push({
       keys,
       modelOwner: model ? modelOwner : undefined,
@@ -457,6 +457,7 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
         agentId: null,
         agentRole: null,
         errorId: failure?.errorId ?? null,
+        failureDetails: readFailureDetails(failure),
         requestId: null,
         attempt: null,
         recovery: 'unknown',

@@ -1,3 +1,4 @@
+import { databaseFailureSchema } from '../../../src/shared/failureDetails';
 import type { FailureCode, PendingQuestion, Session, TimelineEntry } from './types';
 
 /** 普通过程仅展示读取对象；分页参数留在原始事件和展开后的工具详情。 */
@@ -105,6 +106,7 @@ export function getEventFailure(entry: TimelineEntry) {
   const errorId = text(failure.errorId);
   const runId = text(entry.runId);
   return {
+    ...databaseFailureSchema.parse(failure),
     requiresUser: failure.requiresUser === true,
     stage: knownKey(failureStages, failure.stage) ? failureStages[failure.stage] : '未知阶段',
     message,

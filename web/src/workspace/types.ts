@@ -120,6 +120,9 @@ export type FailureCode =
 /** 公开诊断仅用于展示；历史接口数据仍须经过运行时字段校验。 */
 export type RunFailure = {
   requiresUser?: boolean;
+  databaseCode?: string;
+  databaseErrno?: number;
+  databaseSqlState?: string;
   errorId: string;
   stage: FailureStage;
   code: FailureCode;
