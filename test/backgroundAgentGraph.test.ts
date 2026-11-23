@@ -356,6 +356,176 @@ async function untilAborted(signal: AbortSignal | undefined) {
 }
 
 test(
+  'A 快 B 慢 C 已排队时按完成补槽，图末默认屏障仍收齐全部结果',
+  { timeout: 15000 },
+  async (t) => {
+    const f = await fixture(t);
+    const twoEntered = barrier(),
+      finishA = barrier(),
+      finishB = barrier(),
+      enteredC = barrier();
+    const started: string[] = [];
+    let parentTurns = 0,
+      slowActive = false;
+    const execution = f.run(async (messages, parent, signal) => {
+      if (!parent) {
+        const id = childId(messages);
+        if (!messages.some(ToolMessage.isInstance)) {
+          started.push(id);
+          if (id === 'b') slowActive = true;
+          if (started.length === 2) twoEntered.resolve();
+          if (id === 'a') await finishA.wait(signal);
+          if (id === 'b') await finishB.wait(signal);
+          if (id === 'c') {
+            assert.equal(slowActive, true, 'C 须在 B 退出前补位');
+            enteredC.resolve();
+          }
+          return calls({
+            name: 'write_file',
+            args: { path: `page/blocks/${id}/index.tsx`, content: `source ${id}` },
+          });
+        }
+        if (id === 'b') slowActive = false;
+        return new AIMessage(`COMPLETE_${id}`);
+      }
+      if (parentTurns++ === 0) return calls(delegate('a'), delegate('b'), delegate('c'));
+      if (parentTurns === 2) {
+        await twoEntered.wait(signal);
+        assert.deepEqual(started.sort(), ['a', 'b']);
+        finishA.resolve();
+        return new AIMessage('EARLY_FINAL_REQUIRES_ALL');
+      }
+      const joined = resultOf(messages, 'wait_subagents');
+      assert.equal(joined.agents.length, 3);
+      assert.ok(
+        joined.agents.every((agent: { result: string }) => JSON.parse(agent.result).success),
+      );
+      return new AIMessage('ALL_THREE_OBSERVED');
+    });
+    try {
+      await enteredC.wait(f.controller.signal);
+      assert.equal(parentTurns, 2, '默认图末汇合不能在 A 或 C 完成时恢复父模型');
+      assert.equal(waitReceipts(f.messages).length, 0);
+      assert.equal(slowActive, true);
+    } finally {
+      finishA.resolve();
+      finishB.resolve();
+    }
+    const result = await execution;
+    assert.equal(result.output, 'ALL_THREE_OBSERVED');
+    assert.deepEqual(started.sort(), ['a', 'b', 'c']);
+    assert.equal(waitReceipts(f.messages).length, 1);
+    assert.deepEqual(await f.progress.background(), []);
+  },
+);
+
+test(
+  '真实父图 any 先收 A 再收 C，观察后父可接手 A，图末 all 最后收慢 B',
+  { timeout: 15000 },
+  async (t) => {
+    const f = await fixture(t);
+    const twoEntered = barrier(),
+      enteredC = barrier();
+    const gates = { a: barrier(), b: barrier(), c: barrier() };
+    const started: string[] = [];
+    let parentTurns = 0;
+    const result = await f.run(async (messages, parent, signal) => {
+      if (!parent) {
+        const id = childId(messages) as keyof typeof gates;
+        if (!messages.some(ToolMessage.isInstance)) {
+          started.push(id);
+          if (started.length === 2) twoEntered.resolve();
+          if (id === 'c') enteredC.resolve();
+          await gates[id].wait(signal);
+          return calls({
+            name: 'write_file',
+            args: { path: `page/blocks/${id}/index.tsx`, content: `source ${id}` },
+          });
+        }
+        return new AIMessage(`ANY_DONE_${id}`);
+      }
+      if (parentTurns++ === 0) return calls(delegate('a'), delegate('b'), delegate('c'));
+      if (parentTurns === 2) {
+        await twoEntered.wait(signal);
+        const acks = messages
+          .filter(ToolMessage.isInstance)
+          .filter((message) => message.name === 'delegate_agent')
+          .map((message) => JSON.parse(message.text));
+        assert.equal(acks.length, 3);
+        assert.ok(acks.some((ack) => ack.status === 'queued'));
+        gates.a.resolve();
+        // 将慢 B 放在首位，证明真实工具按完成唤醒，不依赖 ID 或委派顺序。
+        return calls({
+          name: 'wait_subagents',
+          args: {
+            agentIds: [acks[1].agentId, acks[0].agentId, acks[2].agentId],
+            wait: true,
+            mode: 'any',
+          },
+        });
+      }
+      if (parentTurns === 3) {
+        const agents = resultOf(messages, 'wait_subagents').agents;
+        assert.equal(
+          agents.filter((agent: { status: string }) => agent.status === 'completed').length,
+          1,
+        );
+        assert.match(agents[1].result, /ANY_DONE_a/);
+        assert.equal(agents[0].result, undefined);
+        await enteredC.wait(signal);
+        assert.deepEqual(started.sort(), ['a', 'b', 'c']);
+        assert.equal(waitReceipts(await rootHistory(f)).length, 1);
+        assert.equal((await f.progress.background()).length, 2, '只有 A 已被父图持久化观察');
+        return calls({
+          name: 'write_file',
+          args: { path: 'page/blocks/a/index.tsx', content: 'parent took over observed A' },
+        });
+      }
+      if (parentTurns === 4) {
+        assert.equal(f.files.get('page/blocks/a/index.tsx'), 'parent took over observed A');
+        assert.equal(f.files.has('page/blocks/b/index.tsx'), false);
+        gates.c.resolve();
+        return calls({ name: 'wait_subagents', args: { agentIds: [], wait: true, mode: 'any' } });
+      }
+      if (parentTurns === 5) {
+        const agents = resultOf(messages, 'wait_subagents').agents;
+        assert.equal(
+          agents.filter((agent: { status: string }) => agent.status === 'completed').length,
+          2,
+        );
+        assert.ok(
+          agents.some((agent: { result?: string }) => agent.result?.includes('ANY_DONE_c')),
+        );
+        assert.equal(
+          agents.filter((agent: { result?: string }) => agent.result !== undefined).length,
+          1,
+          '第二次 any 仅交付 C 的新结果，旧 A 不重复占用上下文',
+        );
+        assert.equal((await f.progress.background()).length, 1, '慢 B 仍保持未观察');
+        gates.b.resolve();
+        return new AIMessage('EARLY_FINAL_AFTER_ANY');
+      }
+      const agents = resultOf(messages, 'wait_subagents').agents;
+      assert.equal(agents.length, 3);
+      assert.ok(agents.every((agent: { result: string }) => JSON.parse(agent.result).success));
+      assert.equal((await f.progress.background()).length, 0);
+      const join = messages
+        .filter(AIMessage.isInstance)
+        .flatMap((message) => message.tool_calls ?? [])
+        .filter((call) => call.name === 'wait_subagents')
+        .at(-1);
+      assert.equal(join?.args.mode, 'all', '自动图末屏障显式等待全部');
+      return new AIMessage('ANY_THEN_ALL_COMPLETE');
+    });
+    assert.equal(result.output, 'ANY_THEN_ALL_COMPLETE');
+    assert.equal(parentTurns, 6);
+    assert.equal(waitReceipts(f.messages).length, 3);
+    assert.equal(waitReceipts(await rootHistory(f)).length, 3);
+    assert.deepEqual(await f.progress.background(), []);
+  },
+);
+
+test(
   '共享停止取消正在等待的父子模型，runAgent 拒绝前双方均退出且没有挂起写入',
   { timeout: 15000 },
   async (t) => {

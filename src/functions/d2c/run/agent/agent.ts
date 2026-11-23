@@ -1613,7 +1613,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           tool((params: DelegationInput) => track(launchDelegation(params)), {
             name: 'delegate_agent',
             description:
-              '有持久化子任务时本工具只启动后台工作并返回accepted/agentId，尚未完成。主Agent继续实现自己的区域，为独立子区块保留接口/占位；需要子产物或进行组合、全局检查、预览前用wait_subagents(wait=true)收集结果，不要立刻等待或循环查状态。局部失败返回handoff和resumeAgentId；优先沿用原role/nodeId/writePaths并传resumeAgentId恢复，接管前读取contextPath，不丢弃已有进度。委派独立子Agent：rule_scan每次仅扫描一个nodeId并保存其唯一rule-hits.json；多个区块分别委派，不能共用一个nodeId生成多份报告；ui仅为真实sub-图层生成区块源码和assets.txt，必须提供nodeId；无sub-整页由主Agent自己出码，Rule-Scan页面根虚拟block不允许委派ui；writePaths列出本次允许保存的全部精确相对文件路径。design/review仍只读。所有子Agent不继承聊天历史、不递归或运行任意脚本，独立且writePaths不重叠的委派可同轮并行调用，最多两个同时执行，共享总预算；UI子Agent须对授权blocks/<alias>目录执行check_rules(block)，修复后重新检查；同一违规连续两轮未改善以RULE_REPAIR_STALLED交回，父级定点接管，不原样重派；不能merge或检查越界目录。父Agent只负责自己的区域与组合，最后一次机械merge不重复深入子区域语义校验；全局单agent复验仅用户主动请求时执行。已知框架检查需要区块目录，与精确writePaths不兼容时保守拒绝，不能扩大写权限。task最多8000个UTF-8字节，中文通常每字3字节；只给目标nodeId、h5/rn、Skill/配置/全局清单/缓存/报告路径及必要约束，不复制源码、规则正文或节点JSON，详情由子Agent读取；rule_scan按rules/README.md原文读取全部规则（不硬编码数量），ui读取扫描报告落实assets.txt消费证明；内层sub返回父级继续派发。',
+              '有持久化子任务时本工具只启动后台工作并返回accepted/agentId，尚未完成。主Agent继续实现自己的区域，为独立子区块保留接口/占位；需要子产物或进行组合、全局检查、预览前用wait_subagents(wait=true)收集结果，不要立刻等待或循环查状态。局部失败返回handoff和resumeAgentId；优先沿用原role/nodeId/writePaths并传resumeAgentId恢复，接管前读取contextPath，不丢弃已有进度。委派独立子Agent：rule_scan每次仅扫描一个nodeId并保存其唯一rule-hits.json；多个区块分别委派，不能共用一个nodeId生成多份报告；ui仅为真实sub-图层生成区块源码和assets.txt，必须提供nodeId；无sub-整页由主Agent自己出码，Rule-Scan页面根虚拟block不允许委派ui；writePaths列出本次允许保存的全部精确相对文件路径。design/review仍只读。所有子Agent不继承聊天历史、不递归或运行任意脚本，对已知独立且writePaths不重叠的任务，一次提交全部委派进入现有队列，不要只派两项再等待整批；队列最多两个同时执行，完成自动补位，共享总预算。需要后续任务决策时用wait_subagents(wait=true,mode=any)先收取已完成项；最终整合用mode=all；UI子Agent须对授权blocks/<alias>目录执行check_rules(block)，修复后重新检查；同一违规连续两轮未改善以RULE_REPAIR_STALLED交回，父级定点接管，不原样重派；不能merge或检查越界目录。父Agent只负责自己的区域与组合，最后一次机械merge不重复深入子区域语义校验；全局单agent复验仅用户主动请求时执行。已知框架检查需要区块目录，与精确writePaths不兼容时保守拒绝，不能扩大写权限。task最多8000个UTF-8字节，中文通常每字3字节；只给目标nodeId、h5/rn、Skill/配置/全局清单/缓存/报告路径及必要约束，不复制源码、规则正文或节点JSON，详情由子Agent读取；rule_scan按rules/README.md原文读取全部规则（不硬编码数量），ui读取扫描报告落实assets.txt消费证明；内层sub返回父级继续派发。',
             schema: z.object({
               role: z.enum(['design', 'review', 'rule_scan', 'ui']),
               resumeAgentId: z.string().uuid().nullable().optional(),
@@ -1633,15 +1633,16 @@ export async function runAgent(input: AgentRunInput): Promise<{
     !input.specialist && input.recordSubagent && input.subagentProgress
       ? [
           tool(
-            async ({ agentIds, wait }) =>
-              JSON.stringify(await backgroundDelegations.wait(agentIds ?? undefined, wait)),
+            async ({ agentIds, wait, mode }) =>
+              JSON.stringify(await backgroundDelegations.wait(agentIds ?? undefined, wait, mode)),
             {
               name: 'wait_subagents',
               description:
-                '收集本轮后台子Agent结果。独立区域完成后或需要组合、全局校验、预览时调用，wait=true等待指定agentIds（省略或空数组表示全部）；wait=false只读当前状态，不消费结果，不要循环轮询。返回真实结果，accepted/运行中不能当完成。',
+                '收集本轮后台子Agent结果。调度后续任务或局部接续时用wait=true,mode=any：已有未收取完成结果则立即返回，否则等任一任务完成；及时收取并补派独立任务，不能等慢任务阻塞空闲槽。整页组合、merge、预览或最终交付前用mode=all等待全部指定任务（agentIds省略或空数组表示全部）。未传mode沿用all；wait=false仅查询、不消费，不循环轮询。accepted/运行中不能当完成。',
               schema: z.object({
                 agentIds: z.array(z.string().uuid()).max(64).nullable().optional(),
                 wait: z.boolean().default(true),
+                mode: z.enum(['all', 'any']).default('all'),
               }),
             },
           ),
@@ -2033,7 +2034,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           {
             name: 'wait_subagents',
             id: `join-${randomUUID()}`,
-            args: { agentIds: [], wait: true },
+            args: { agentIds: [], wait: true, mode: 'all' },
             type: 'tool_call',
           },
         ],

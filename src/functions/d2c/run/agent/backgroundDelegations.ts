@@ -13,6 +13,7 @@ export type Ack = {
   agentId: string;
   status: 'queued' | 'running' | 'completed';
 };
+export type BackgroundWaitMode = 'all' | 'any';
 export type BackgroundDelegationPersistence = {
   started?(): Promise<void>;
   settled(result: string): Promise<void>;
@@ -207,26 +208,64 @@ export function createBackgroundDelegations(options: {
     return entry.observing;
   }
 
-  /** 省略或空 ID 列表选择全部；查询不消费，等待在结果与 observed 保存后返回。 */
-  async function wait(agentIds?: string[], shouldWait = true) {
+  /** 完成、fatal 或共享取消任一发生即唤醒；退出时移除取消监听，不轮询任务状态。 */
+  async function waitFor(completion: Promise<unknown>): Promise<void> {
+    let abort!: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      abort = resolve;
+      signal.addEventListener('abort', abort, { once: true });
+    });
+    try {
+      assertHealthy();
+      await Promise.race([completion, fatal, cancelled]);
+      assertHealthy();
+    } finally {
+      signal.removeEventListener('abort', abort);
+    }
+  }
+
+  /**
+   * 省略或空 ID 列表选择全部；默认等待全部，查询不消费。
+   * any 收取当前未观察且已结束的结果，否则等待下一项结束；已观察结果不触发唤醒。
+   * any 仅本次收取的任务附带 result，已观察任务保留状态；all 保留完整结果兼容旧调用。
+   * 返回所选任务的同一时点快照；等待回执中的 completed 结果先完成 observed 保存。
+   */
+  async function wait(agentIds?: string[], shouldWait = true, mode: BackgroundWaitMode = 'all') {
     assertHealthy();
     const selected =
       agentIds === undefined || agentIds.length === 0
         ? [...entries.values()]
         : [...new Set(agentIds)].map((id) => entries.get(id) ?? invalid());
+    let collected: Entry[] = [];
     if (shouldWait) {
-      await Promise.race([Promise.all(selected.map((entry) => entry.done)), fatal]);
-      assertHealthy();
-      await Promise.all(selected.map(observe));
-      assertHealthy();
+      if (mode === 'any') {
+        const unobserved = selected.filter((entry) => !entry.observed);
+        if (unobserved.length && !unobserved.some((entry) => entry.status === 'completed'))
+          await waitFor(Promise.race(unobserved.map((entry) => entry.done)));
+        collected = unobserved.filter((entry) => entry.status === 'completed');
+      } else {
+        await waitFor(Promise.all(selected.map((entry) => entry.done)));
+        collected = selected;
+      }
     }
-    return {
+    // 观察保存期间其他任务仍可能完成；其结果留给下一次收取，不提前放进本次回执。
+    const collectedSet = new Set(collected);
+    const snapshot = {
       agents: selected.map((entry) => ({
         agentId: entry.job.agentId,
         status: entry.status,
-        ...(entry.status === 'completed' ? { result: entry.result } : {}),
+        ...(entry.status === 'completed' &&
+        (mode !== 'any' || (shouldWait ? collectedSet.has(entry) : !entry.observed))
+          ? { result: entry.result }
+          : {}),
       })),
     };
+    if (shouldWait) {
+      await waitFor(Promise.all(collected.map((entry) => entry.done)));
+      await waitFor(Promise.all(collected.map(observe)));
+      assertHealthy();
+    }
+    return snapshot;
   }
 
   return {
