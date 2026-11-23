@@ -1102,3 +1102,20 @@ test('仅可信type、ok和code一致的命名反馈可以排除，缺失或错�
   assert.equal(result.ruleFailures, 0);
   assert.equal(result.items.length, 3);
 });
+
+test('事务失败的固定数据库诊断进入错误列表，原始查询与消息不返回', async () => {
+  const f = await fixture();
+  const diagnosticFailure = failure('STORAGE_FAILED', {
+    stage: 'storage',
+    databaseCode: 'ER_LOCK_DEADLOCK',
+    databaseErrno: 1213,
+    databaseSqlState: '40001',
+    sql: 'PRIVATE SELECT',
+    message: 'PRIVATE SQL',
+  });
+  f.event('run_status', { status: 'failed', failure: diagnosticFailure });
+  const result = await f.read();
+  assert.equal(result.items[0].failureDetails?.databaseCode, 'ER_LOCK_DEADLOCK');
+  assert.equal(result.items[0].failureDetails?.databaseErrno, 1213);
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE|SELECT/);
+});
