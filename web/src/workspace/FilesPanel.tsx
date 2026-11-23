@@ -119,7 +119,6 @@ export default function FilesPanel({
           key={`design:${sessionId}`}
           files={listSessionId === sessionId ? list?.files : undefined}
           loading={loading}
-          onRefresh={() => setReload((value) => value + 1)}
         />
       )}
       <div className="files-layout" hidden={view !== 'source'}>

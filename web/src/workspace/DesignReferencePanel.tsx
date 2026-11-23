@@ -29,7 +29,7 @@ function imageUrl(value?: string | null) {
 }
 
 /** 一份固定修订的原图；切换图片后重新显示加载状态和尺寸。 */
-function ReferenceImage({ file, onRefresh }: { file: FileInfo; onRefresh?: () => void }) {
+function ReferenceImage({ file }: { file: FileInfo }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [dimensions, setDimensions] = useState('');
@@ -39,35 +39,43 @@ function ReferenceImage({ file, onRefresh }: { file: FileInfo; onRefresh?: () =>
   return (
     <>
       <div className="design-reference-meta">
-        <span>Figma 原设计稿</span>
-        {node && (
-          <span>
-            节点 {node[1]}:{node[2]}
-          </span>
-        )}
-        <span>图片修订 r{file.revision}</span>
-        {dimensions && <span>{dimensions}</span>}
-        <PhonePreviewButton preview={phone} />
-        {onRefresh && (
-          <Button
-            size="small"
-            type="text"
-            onClick={() => {
-              setFailed(false);
-              setLoaded(false);
-              onRefresh();
-            }}
-          >
-            刷新
-          </Button>
-        )}
+        <div className="design-reference-info">
+          <div className="design-reference-heading">
+            <strong>Figma 原设计稿</strong>
+            {dimensions && <span className="design-reference-dimensions">{dimensions}</span>}
+          </div>
+          <div className="design-reference-details">
+            {node && (
+              <span>
+                节点 {node[1]}:{node[2]}
+              </span>
+            )}
+            <span>图片修订 r{file.revision}</span>
+          </div>
+        </div>
+        <div className="design-reference-actions">
+          <PhonePreviewButton preview={phone} />
+        </div>
       </div>
       {!url || failed ? (
         <Alert
           type="warning"
           showIcon
           title="设计稿截图暂不可用"
-          description="请刷新重试，或在源码与资源中检查已保存的基准图。"
+          description="可重新加载图片，或在源码与资源中查看已保存的基准图。"
+          action={
+            url ? (
+              <Button
+                size="small"
+                onClick={() => {
+                  setFailed(false);
+                  setLoaded(false);
+                }}
+              >
+                重新加载图片
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <>
@@ -104,11 +112,9 @@ function ReferenceImage({ file, onRefresh }: { file: FileInfo; onRefresh?: () =>
 export default function DesignReferencePanel({
   files,
   loading = false,
-  onRefresh,
 }: {
   files?: FileInfo[];
   loading?: boolean;
-  onRefresh?: () => void;
 }) {
   const [selected, setSelected] = useState('');
   const images = designReferenceFiles(files);
@@ -118,9 +124,7 @@ export default function DesignReferencePanel({
       {loading && !file ? (
         <Skeleton active paragraph={{ rows: 4 }} />
       ) : !file ? (
-        <Empty description="暂无原设计稿截图。Agent 保存完整目标根的设计基准后，会显示在这里。">
-          {onRefresh && <Button onClick={onRefresh}>刷新</Button>}
-        </Empty>
+        <Empty description="暂无原设计稿截图。Agent 保存完整目标根的设计基准后，会显示在这里。" />
       ) : (
         <>
           {images.length > 1 && (
@@ -131,11 +135,7 @@ export default function DesignReferencePanel({
               options={images.map((image) => ({ value: image.fileId, label: image.path }))}
             />
           )}
-          <ReferenceImage
-            key={`${file.fileId}:${file.revision}:${file.url}`}
-            file={file}
-            onRefresh={onRefresh}
-          />
+          <ReferenceImage key={`${file.fileId}:${file.revision}:${file.url}`} file={file} />
         </>
       )}
     </section>

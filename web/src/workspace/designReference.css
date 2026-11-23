@@ -16,13 +16,57 @@
 .design-reference-meta {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 12px 20px;
+  padding: 2px 0 4px;
   color: #72819a;
   font-size: 12px;
 }
-.design-reference-meta > .ant-btn:last-child {
-  margin-left: auto;
+.design-reference-info {
+  min-width: 0;
+}
+.design-reference-heading,
+.design-reference-details,
+.design-reference-actions {
+  display: flex;
+  align-items: center;
+}
+.design-reference-heading {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.design-reference-heading strong {
+  color: #39465b;
+  font-size: 13px;
+  font-weight: 600;
+}
+.design-reference-dimensions {
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: #edf0f5;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.design-reference-details {
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 5px;
+  color: #8791a2;
+  font-size: 11px;
+}
+.design-reference-actions {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+.design-reference-actions .ant-btn {
+  height: 30px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+.design-reference-actions .icon {
+  width: 14px;
+  height: 14px;
 }
 .design-reference-canvas {
   position: relative;
