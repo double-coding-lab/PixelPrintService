@@ -1,5 +1,6 @@
 import DeleteSavedItem from './DeleteSavedItem';
 import WorkCover from './WorkCover';
+import PublishedSessionActions from './PublishedSessionActions';
 import './community.css';
 import './editWorkspace.css';
 import './conversationRound.css';
@@ -35,11 +36,13 @@ export function PublicSession({
   onBack,
   onDirty,
   onBusy,
+  onOpenSession,
 }: {
   shareId: string;
   onBack: () => void;
   onDirty?: (value: boolean) => void;
   onBusy?: (value: boolean) => void;
+  onOpenSession?: (workspaceId: string, sessionId: string) => void;
 }) {
   const root = `/plaza/sessions/${id(shareId)}`;
   const [detail, setDetail] = useState<SharedSession | null>(null);
@@ -91,12 +94,14 @@ export function PublicSession({
           </div>
         </div>
         <div className="community-actions">
+          <PublishedSessionActions session={detail} onOpenSession={onOpenSession} />
           <Button onClick={() => setPanel('usage')}>用量</Button>
           <Button onClick={() => setPanel('chat')}>查看对话</Button>
         </div>
       </div>
       <EditWorkspaceSurface
         sessionId={shareId}
+        sourceName={detail.name}
         options={detachedEditOptions('plaza', shareId)}
         embedded
         onDirty={onDirty}
@@ -218,9 +223,7 @@ function PublicUsage({ root }: { root: string }) {
   useEffect(() => {
     const controller = new AbortController();
     setError('');
-    data<NonNullable<typeof snapshot>>(`${root}/usage`, {
-      signal: controller.signal,
-    }).then(
+    data<NonNullable<typeof snapshot>>(`${root}/usage`, { signal: controller.signal }).then(
       (value) => {
         if (!controller.signal.aborted) setSnapshot(value);
       },
@@ -385,6 +388,7 @@ function PersonalWorkDetail({
       ) : (
         <EditWorkspaceSurface
           sessionId={workId}
+          sourceName={work.name}
           options={detachedEditOptions('my-works', workId)}
           embedded
           onClose={onBack}
@@ -406,6 +410,11 @@ export default function CommunityPanel({
   onDirty,
   onBusy,
   onDeleted: onRecordDeleted,
+  onOpenSession,
+  plazaScope,
+  onScopeChange,
+  onKindChange,
+  navigationDisabled = false,
 }: {
   kind: Kind;
   resourceId: string;
@@ -414,7 +423,14 @@ export default function CommunityPanel({
   onDirty?: (value: boolean) => void;
   onBusy?: (value: boolean) => void;
   onDeleted?: () => void;
+  onOpenSession?: (workspaceId: string, sessionId: string) => void;
+  plazaScope?: 'all' | 'mine';
+  onScopeChange?: (scope: 'all' | 'mine') => void;
+  onKindChange?: (kind: Kind) => void;
+  navigationDisabled?: boolean;
 }) {
+  const [localScope, setLocalScope] = useState<'all' | 'mine'>('all');
+  const scope = plazaScope ?? localScope;
   const [page, setPage] = useState(1);
   const [reload, setReload] = useState(0);
   const [list, setList] = useState<CollectionPage<SharedSession | PersonalWork> | null>(null);
@@ -427,7 +443,7 @@ export default function CommunityPanel({
     setError('');
     setLoading(true);
     readCollection<SharedSession | PersonalWork>(
-      `${kind === 'plaza' ? '/plaza/sessions' : '/my-works'}?page=${page}&pageSize=12`,
+      `${kind === 'plaza' ? '/plaza/sessions' : '/my-works'}?page=${page}&pageSize=12${kind === 'plaza' && scope === 'mine' ? '&scope=mine' : ''}`,
       controller.signal,
     ).then(
       (value) => {
@@ -446,25 +462,66 @@ export default function CommunityPanel({
       },
     );
     return () => controller.abort();
-  }, [kind, resourceId, page, reload]);
+  }, [kind, resourceId, page, reload, scope]);
   function deleted() {
     if (list?.items.length === 1 && page > 1) setPage((value) => value - 1);
     else setReload((value) => value + 1);
   }
   const title = kind === 'plaza' ? '广场' : '已保存作品';
+  /** 分类与筛选共用一层导航；跨分类由主入口保留原离开保护。 */
+  function selectCollection(value: 'all' | 'mine' | 'saved') {
+    setPage(1);
+    if (value === 'saved') {
+      if (kind !== 'my-works') onKindChange?.('my-works');
+    } else {
+      setLocalScope(value);
+      onScopeChange?.(value);
+      if (kind !== 'plaza') onKindChange?.('plaza');
+    }
+  }
   return (
     <section
       className={`works-panel community-panel${resourceId ? ' community-panel-detail' : ''}`}
+      aria-label={title}
     >
       {!resourceId && (
-        <div className="works-heading">
-          <div className="works-heading-leading">
-            <h1>{title}</h1>
-          </div>
-          <div className="community-actions">
-            <Button loading={loading} onClick={() => setReload((n) => n + 1)}>
-              刷新
-            </Button>
+        <div className="community-collection-toolbar">
+          <nav className="community-category-nav" aria-label="广场分类">
+            {(
+              [
+                ['all', '全部作品'],
+                ['mine', '我发布的作品'],
+                ['saved', '已保存作品'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                disabled={
+                  navigationDisabled ||
+                  (!onKindChange && (value === 'saved' ? kind !== 'my-works' : kind !== 'plaza'))
+                }
+                aria-current={
+                  (value === 'saved' ? kind === 'my-works' : kind === 'plaza' && scope === value)
+                    ? 'page'
+                    : undefined
+                }
+                onClick={() => selectCollection(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="community-collection-meta">
+            {list && <span className="works-total">共 {list.total} 个作品</span>}
+            <Button
+              type="text"
+              icon={<Icon name="refresh" />}
+              title="刷新作品"
+              aria-label="刷新作品"
+              loading={loading}
+              onClick={() => setReload((n) => n + 1)}
+            />
           </div>
         </div>
       )}
@@ -476,6 +533,7 @@ export default function CommunityPanel({
             onBack={() => onSelect('')}
             onDirty={onDirty}
             onBusy={onBusy}
+            onOpenSession={onOpenSession}
           />
         ) : (
           <PersonalWorkDetail
@@ -526,14 +584,22 @@ export default function CommunityPanel({
                       >
                         {kind === 'plaza' ? '打开作品' : '查看作品'}
                       </Button>
+                      {'shareId' in item && (
+                        <PublishedSessionActions
+                          session={item}
+                          onOpenSession={onOpenSession}
+                          onUnpublished={deleted}
+                          compact
+                        />
+                      )}
                       {'workId' in item && (
                         <Button
                           className="work-action-download"
+                          aria-label="下载 ZIP"
+                          title="下载 ZIP"
                           icon={<Icon name="download" />}
                           href={`/api/d2c/my-works/${id(item.workId)}/archive`}
-                        >
-                          下载 ZIP
-                        </Button>
+                        />
                       )}
                       {'workId' in item && (
                         <DeleteSavedItem
@@ -555,11 +621,15 @@ export default function CommunityPanel({
             <Empty
               description={
                 kind === 'plaza' ? (
-                  '暂无公开会话'
+                  scope === 'mine' ? (
+                    '暂无已发布的作品，可在工作台会话中发布到广场。'
+                  ) : (
+                    '暂无公开会话'
+                  )
                 ) : (
                   <span>
-                    暂无已保存作品。前往<a href="/plaza">广场</a>
-                    打开作品并编辑， 点击“保存为作品”后即可在这里查看。
+                    暂无已保存作品。前往<a href="/plaza">广场</a>打开作品并编辑，
+                    点击“保存为作品”后即可在这里查看。
                   </span>
                 )
               }
