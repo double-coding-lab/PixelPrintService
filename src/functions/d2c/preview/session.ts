@@ -64,7 +64,7 @@ export async function hydratePreviewSnapshot(
 }
 
 /** 与隔离构建器保持相同模板边界，报告与内部配置不参与输入摘要。 */
-function participates(file: D2cFile) {
+function participates(file: Pick<D2cFile, 'kind' | 'path'>) {
   if (file.kind === 'internal' || !file.path) return false;
   if (file.path.startsWith('design-reference/')) return false;
   const parts = file.path.split('/');
@@ -268,6 +268,35 @@ export function missingPreviewFile(diagnostic: PreviewDiagnostic, snapshot: Prev
       '/index.jsx',
     ].map((extension) => candidate + extension),
   ];
+  if (path.posix.extname(candidate) && !participates({ path: candidate, kind: 'source' })) return;
+  if (!candidates.some((path) => participates({ path, kind: 'source' }))) return;
   if (snapshot.some((item) => candidates.includes(item.path))) return;
   return candidate;
+}
+
+/** 只复用已证实的缺依赖：原输入保持不变时，新生成的无关源码不再触发必失败编译。
+ * 任意旧文件修改/删除、二进制变化及路径大小写冲突均交回编译器判断。
+ */
+export function unchangedMissingPreviewFile(
+  diagnostic: PreviewDiagnostic,
+  previous: PreviewSnapshotFile[],
+  snapshot: PreviewSnapshotFile[],
+) {
+  if (!missingPreviewFile(diagnostic, previous)) return;
+  const waitingForFile = missingPreviewFile(diagnostic, snapshot);
+  if (!waitingForFile) return;
+  const current = new Map(snapshot.map((file) => [file.path, file]));
+  for (const file of previous) {
+    const next = current.get(file.path);
+    if (!next || next.kind !== file.kind || next.size !== file.size || next.sha256 !== file.sha256)
+      return;
+  }
+  const prior = new Set(previous.map((file) => file.path));
+  const names = new Set<string>();
+  for (const file of snapshot) {
+    const name = file.path.toLowerCase();
+    if (names.has(name) || (!prior.has(file.path) && file.kind !== 'source')) return;
+    names.add(name);
+  }
+  return waitingForFile;
 }

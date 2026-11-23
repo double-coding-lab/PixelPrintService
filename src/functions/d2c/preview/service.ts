@@ -1,7 +1,7 @@
 import { findOrderedRows } from '../utils/orderedRead';
 import { previewDiagnostic, previewFailureDiagnostic, previewFailureDetails } from './diagnostics';
 import { PreviewBuildError } from './runner';
-import { missingPreviewFile } from './session';
+import { missingPreviewFile, unchangedMissingPreviewFile } from './session';
 import type { D2cRun } from '@/models/D2cRun';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Op, Transaction, fn, col, literal, type Sequelize } from 'sequelize';
@@ -28,6 +28,7 @@ type Manifest = {
   inputHash?: string;
   entries?: string[];
   observedFileRevision?: number;
+  dependencyRetry?: boolean;
   files?: Array<{
     path: string;
     mimeType: string;
@@ -204,6 +205,37 @@ export function createPreviewService(
     if (!row) throw new SessionError(404, 'PREVIEW_NOT_FOUND', '预览不存在');
     return row;
   }
+  /** 只读取同作用域最近失败的一个完整快照；记录本身即可在重启后恢复等待证据。 */
+  async function dependencyFailure(
+    prior: D2cPreview | undefined,
+    input: {
+      target: string;
+      configSnapshot: Record<string, unknown>;
+      resourceRevisionId: string;
+      snapshot: PreviewSnapshotFile[];
+    },
+    transaction?: Transaction,
+  ) {
+    if (
+      prior?.status !== 'failed' ||
+      (prior.buildManifest as Manifest).target !== input.target ||
+      prior.configSnapshot?.hash !== input.configSnapshot.hash ||
+      prior.configSnapshot?.configRevision !== input.configSnapshot.configRevision ||
+      prior.resourceRevisionId !== input.resourceRevisionId ||
+      previewFailureDiagnostic(prior.error).code !== 'MODULE_NOT_FOUND'
+    )
+      return null;
+    const full = await find(prior.previewId!, transaction);
+    return full.status === 'failed' &&
+      unchangedMissingPreviewFile(
+        previewFailureDiagnostic(full.error),
+        (full.buildManifest as Manifest).snapshot ?? [],
+        input.snapshot,
+      )
+      ? full
+      : null;
+  }
+
   /** 根据固定版本准备输入，逐个核验正文或二进制，内部资料不进入构建。 */
   async function inputs(row: D2cPreview, signal: AbortSignal, onFile?: (path: string) => void) {
     const rows = row.sessionId
@@ -515,7 +547,20 @@ export function createPreviewService(
                 row.error?.reason !== 'PREVIEW_SUPERSEDED',
             ) ?? null)
           : null;
-        if (create && current) {
+        // Only inspect the latest result for this entry/runtime. Never resurrect an older
+        // missing-file failure over a newer syntax error, success or in-flight build.
+        const blocked =
+          !current && !retry
+            ? await dependencyFailure(
+                matching.find((row) => row.error?.reason !== 'PREVIEW_SUPERSEDED'),
+                { ...input, target: input.session.target! },
+                transaction,
+              )
+            : null;
+        current ??= blocked;
+        // Keep the original failed snapshot/hash/revision as evidence. A blocked newer
+        // revision has not been compiled; no database row or process-local cache is needed.
+        if (create && current && !blocked) {
           const latest = await find(current.previewId!, transaction);
           await latest.update(
             {
@@ -532,6 +577,8 @@ export function createPreviewService(
                 ...latest.buildManifest,
                 entries: input.entries,
                 observedFileRevision: input.session.fileRevision,
+                dependencyRetry:
+                  retry || (latest.buildManifest as Manifest).dependencyRetry === true,
               },
             },
             { transaction },
@@ -567,6 +614,7 @@ export function createPreviewService(
                 inputHash,
                 entries: input.entries,
                 observedFileRevision: input.session.fileRevision,
+                dependencyRetry: retry,
                 snapshot: input.snapshot,
               },
             },
@@ -953,6 +1001,44 @@ export function createPreviewService(
       let phase = 'input';
       try {
         const manifest = row.buildManifest as Manifest;
+        // A newer snapshot may already be queued when the preceding build first
+        // reports its missing dependency. Recheck that evidence before compiling.
+        if (row.sessionId && !manifest.dependencyRetry) {
+          controller.signal.throwIfAborted();
+          const history = await findOrderedRows(previews, 'previewId', {
+            where: { sessionId: row.sessionId, runtimeRevision: row.runtimeRevision },
+            attributes: headAttributes,
+            order: [
+              ['fileRevision', 'DESC'],
+              ['createdAt', 'DESC'],
+              ['id', 'DESC'],
+            ],
+          });
+          const blocked = await dependencyFailure(
+            history.find(
+              (item) =>
+                item.previewId !== row.previewId &&
+                (item.buildManifest as Manifest).entryPath === manifest.entryPath &&
+                item.error?.reason !== 'PREVIEW_SUPERSEDED',
+            ),
+            {
+              target: manifest.target,
+              configSnapshot: row.configSnapshot!,
+              resourceRevisionId: row.resourceRevisionId!,
+              snapshot: manifest.snapshot ?? [],
+            },
+          );
+          controller.signal.throwIfAborted();
+          if (blocked) {
+            await settle({
+              status: 'failed',
+              leaseOwner: null,
+              leaseExpiresAt: null,
+              error: { ...blocked.error, dependencyPreviewId: blocked.previewId },
+            });
+            return true;
+          }
+        }
         phase = 'build';
         const built = await build(row, controller.signal);
         validateBuilt(built);
