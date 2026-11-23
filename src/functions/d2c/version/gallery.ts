@@ -5,20 +5,22 @@ import { createHash } from 'node:crypto';
 import { Op, type Sequelize } from 'sequelize';
 import type { D2cVersion } from '@/models/D2cVersion';
 import type { D2cVersionFile } from '@/models/D2cVersionFile';
+import type { D2cPreview } from '@/models/D2cPreview';
 import type { D2cWorkspace } from '@/models/D2cWorkspace';
 import type { StorageFileClient } from '@/hooks/tools/storage';
 import { requireIdentifier, SessionError } from '../session/access';
 import { assertArtifactPath } from '../utils/paths';
 import { assetUrl } from '../utils/assetUrls';
-import { requireTeamMember, TeamError } from '../team/access';
+import { requireTeamMember, sameUser, TeamError } from '../team/access';
 
 export type GalleryScope = 'mine' | 'all' | 'team';
 
 /** 公开投影只取展示字段，不返回配置、会话定位、内部报告或存储参数。 */
-function metadata(row: D2cVersion) {
+function metadata(row: D2cVersion, userId: string) {
   const state = row.validationSummary?.status;
   return {
     versionId: row.versionId,
+    canDelete: sameUser(row.createdUserId, userId),
     name: row.name,
     target: row.target,
     createdUserId: row.createdUserId,
@@ -147,7 +149,7 @@ export function createGalleryService(
         : [];
       return {
         rows: rows.map((row) => ({
-          ...metadata(row),
+          ...metadata(row, userId),
           coverUrl: workCoverUrl(coverFiles.filter((file) => file.versionId === row.versionId)),
         })),
         total: await versions.count({ where }),
@@ -163,9 +165,39 @@ export function createGalleryService(
         order: [['pathHash', 'ASC']],
       });
       return {
-        ...metadata(row),
+        ...metadata(row, userId),
         files: rows.filter((file) => file.kind !== 'internal').map(fileMetadata),
       };
+    },
+    /** 与预览创建共用版本锁；仅移除冻结行，不清理共享对象或源会话。 */
+    async remove(userId: string, versionId: string) {
+      requireIdentifier(userId);
+      requireIdentifier(versionId);
+      return mysql.transaction(async (transaction) => {
+        const row = await versions.findOne({
+          where: { versionId },
+          attributes: ['versionId', 'createdUserId', 'status'],
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+        if (!row || !sameUser(row.createdUserId, userId))
+          throw new SessionError(404, 'VERSION_NOT_FOUND', '暂存版本不存在');
+        if (row.status !== 'ready')
+          throw new SessionError(409, 'VERSION_NOT_READY', '仅可删除已完成的暂存版本');
+        /** 删除登记预览，使旧固定链接及旧票据均无法再次读取。 */
+        await (mysql.models.D2cPreview as typeof D2cPreview).destroy({
+          where: { versionId },
+          transaction,
+        });
+        await files.destroy({ where: { versionId }, transaction });
+        const count = await versions.destroy({
+          where: { versionId, status: 'ready' },
+          transaction,
+        });
+        if (count !== 1)
+          throw new SessionError(409, 'VERSION_CONFLICT', '暂存版本状态已变化，请刷新后重试');
+        return { versionId, deleted: true as const };
+      });
     },
     /** 源码只读展示，先校验冻结字节，不返回二进制定位和私有配置。 */
     async file(userId: string, versionId: string, pathHash: string) {

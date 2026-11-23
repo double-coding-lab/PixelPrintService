@@ -37,6 +37,11 @@ async function fixture(eid = 'viewer') {
     },
   } as unknown as ReturnType<typeof createSharingService>;
   const works = {
+    remove: async (...args: unknown[]) => {
+      calls.push(['remove-work', ...args]);
+      return { workId: args[1], deleted: true };
+    },
+
     save: async (...args: unknown[]) => {
       calls.push(['save', ...args]);
       return { workId: 'work-own', revision: 8 };
@@ -66,6 +71,40 @@ async function fixture(eid = 'viewer') {
   return { app, calls };
 }
 const headers = { 'x-requested-with': 'PixelPrint' };
+
+test('删除个人作品要求登录、同源及明确修订，不接受归属或额外字段', async (t) => {
+  const f = await fixture();
+  t.after(() => f.app.close());
+  const request = {
+    method: 'DELETE' as const,
+    url: '/api/d2c/my-works/work-own',
+    payload: { expectedRevision: 8 },
+  };
+  assert.equal((await f.app.inject(request)).statusCode, 403);
+  assert.equal(
+    (await f.app.inject({ ...request, headers: { ...headers, origin: 'https://foreign.test' } }))
+      .statusCode,
+    403,
+  );
+  for (const payload of [
+    {},
+    { expectedRevision: 0 },
+    { expectedRevision: '8' },
+    { expectedRevision: 8, ownerEid: 'someone' },
+    { expectedRevision: 4294967295 },
+  ]) {
+    assert.equal((await f.app.inject({ ...request, headers, payload })).statusCode, 422);
+  }
+  assert.deepEqual(f.calls, []);
+  const result = await f.app.inject({ ...request, headers });
+  assert.equal(result.statusCode, 200, result.body);
+  assert.deepEqual(result.json().data, { workId: 'work-own', deleted: true });
+  assert.deepEqual(f.calls, [['remove-work', 'viewer', 'work-own', 8]]);
+  const anonymous = await fixture('');
+  t.after(() => anonymous.app.close());
+  assert.equal((await anonymous.app.inject({ ...request, headers })).statusCode, 401);
+  assert.deepEqual(anonymous.calls, []);
+});
 
 test('公开读取仍需登录；写入要求同源标记且保留服务权限状态', async (t) => {
   const f = await fixture();

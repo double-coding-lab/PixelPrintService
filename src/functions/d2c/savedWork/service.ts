@@ -334,6 +334,33 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
     return { data, fileName, mimeType: 'application/zip' as const };
   }
   const service = {
+    /** 核对列表修订后短事务删除所有冻结修订，不回收共享图片、正文对象或缓存。 */
+    async remove(eid: string, workId: string, expectedRevision: number) {
+      requireIdentifier(eid);
+      requireIdentifier(workId);
+      requireRevision(expectedRevision, false);
+      return mysql.transaction(async (transaction) => {
+        const row = await works.findOne({
+          where: { ownerEid: eid, workId },
+          attributes: ['ownerEid', 'workId', 'revision'],
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+        if (!row || row.ownerEid !== eid || row.workId !== workId)
+          throw new SessionError(404, 'SAVED_WORK_NOT_FOUND', '个人作品不存在');
+        if (row.revision !== expectedRevision)
+          throw new SessionError(409, 'SAVED_WORK_CONFLICT', '个人作品已更新，请刷新后重试');
+        await files.destroy({ where: { ownerEid: eid, workId }, transaction });
+        const count = await works.destroy({
+          where: { ownerEid: eid, workId, revision: expectedRevision },
+          transaction,
+        });
+        if (count !== 1)
+          throw new SessionError(409, 'SAVED_WORK_CONFLICT', '个人作品已更新，请刷新后重试');
+        return { workId, deleted: true as const };
+      });
+    },
+
     /** Lightweight authorization for preview assets, without loading or locking snapshot files. */
     async authorize(eid: string, workId: string): Promise<void> {
       requireIdentifier(eid);

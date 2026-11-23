@@ -169,6 +169,19 @@ export default async function sharingRoutes(app: FastifyInstance, options: Parti
       data: await (await services.works()).get((await request.getUser()).userId, id),
     });
   });
+  /** 必须提交当前作品修订，防止旧列表删除刚保存的新修订。 */
+  app.delete('/my-works/:id', async (request) => {
+    const { id } = parameters.omit({ editId: true }).parse(request.params);
+    const { expectedRevision } = z
+      .object({ expectedRevision: revision })
+      .strict()
+      .parse(request.body);
+    return responseData.success({
+      data: await (
+        await services.works()
+      ).remove((await request.getUser()).userId, id, expectedRevision),
+    });
+  });
   app.get('/my-works/:id/archive', async (request, reply) => {
     const { id } = parameters.omit({ editId: true }).parse(request.params);
     const archive = await (await services.works()).archive((await request.getUser()).userId, id);

@@ -309,3 +309,14 @@
     transition: none;
   }
 }
+
+.saved-item-delete-error {
+  flex-basis: 100%;
+  color: #bc3343;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.saved-item-delete-error .ant-btn {
+  height: auto;
+  padding: 0 6px;
+}

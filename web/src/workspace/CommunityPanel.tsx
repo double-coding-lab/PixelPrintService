@@ -1,3 +1,4 @@
+import DeleteSavedItem from './DeleteSavedItem';
 import WorkCover from './WorkCover';
 import './community.css';
 import './editWorkspace.css';
@@ -269,11 +270,13 @@ function PublicMessage({ entry }: { entry: TimelineEntry }) {
 }
 
 /** 本人作品元数据先鉴权，再创建独立副本；保存由同一 workId 的 edit/save 更新。 */
-function PersonalWorkDetail({ workId }: { workId: string }) {
+function PersonalWorkDetail({ workId, onDeleted }: { workId: string; onDeleted: () => void }) {
+  const [reload, setReload] = useState(0);
   const [work, setWork] = useState<PersonalWork | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
+    setError('');
     data<PersonalWork>(`/my-works/${id(workId)}`, { signal: controller.signal }).then(
       (value) => {
         if (!controller.signal.aborted) setWork(value);
@@ -283,7 +286,7 @@ function PersonalWorkDetail({ workId }: { workId: string }) {
       },
     );
     return () => controller.abort();
-  }, [workId]);
+  }, [workId, reload]);
   if (error) return <Alert type="error" title={error} />;
   if (!work) return <Skeleton active />;
   return (
@@ -298,10 +301,19 @@ function PersonalWorkDetail({ workId }: { workId: string }) {
             sessionId={workId}
             options={detachedEditOptions('my-works', workId)}
             onApplied={() => {}}
+            onSaved={() => setReload((value) => value + 1)}
             label="再次编辑"
           />
         )}
         <Button href={`/api/d2c/my-works/${id(workId)}/archive`}>下载 ZIP</Button>
+        <DeleteSavedItem
+          kind="work"
+          itemId={workId}
+          name={work.name}
+          revision={work.revision}
+          onDeleted={onDeleted}
+          onRefresh={() => setReload((value) => value + 1)}
+        />
       </div>
     </div>
   );
@@ -339,7 +351,9 @@ export default function CommunityPanel({
     ).then(
       (value) => {
         if (!controller.signal.aborted) {
-          setList(value);
+          const lastPage = Math.max(1, Math.ceil(value.total / 12));
+          if (page > lastPage) setPage(lastPage);
+          else setList(value);
           setLoading(false);
         }
       },
@@ -352,6 +366,10 @@ export default function CommunityPanel({
     );
     return () => controller.abort();
   }, [kind, resourceId, page, reload]);
+  function deleted() {
+    if (list?.items.length === 1 && page > 1) setPage((value) => value - 1);
+    else setReload((value) => value + 1);
+  }
   const title = kind === 'plaza' ? '广场' : '已保存作品';
   return (
     <section
@@ -384,7 +402,7 @@ export default function CommunityPanel({
             onBusy={onBusy}
           />
         ) : (
-          <PersonalWorkDetail key={resourceId} workId={resourceId} />
+          <PersonalWorkDetail key={resourceId} workId={resourceId} onDeleted={() => onSelect('')} />
         )
       ) : (
         <>
@@ -414,6 +432,17 @@ export default function CommunityPanel({
                     <span>{item.target.toUpperCase()}</span>
                     {'creatorName' in item && <span>{item.creatorName || item.createdEid}</span>}
                     <div className="work-card-actions">
+                      {'workId' in item && (
+                        <DeleteSavedItem
+                          kind="work"
+                          itemId={item.workId}
+                          name={item.name}
+                          revision={item.revision}
+                          onDeleted={deleted}
+                          onRefresh={() => setReload((value) => value + 1)}
+                        />
+                      )}
+
                       <Button onClick={() => onSelect(resource)}>
                         {kind === 'plaza' ? '打开作品' : '查看作品'}
                       </Button>

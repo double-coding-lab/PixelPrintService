@@ -40,6 +40,7 @@ export default function EditWorkspace({
   sessionId,
   disabled = false,
   onApplied,
+  onSaved,
   sourceSearch,
   options,
   label = '在线编辑',
@@ -50,6 +51,7 @@ export default function EditWorkspace({
   sessionId: string;
   disabled?: boolean;
   onApplied: () => void;
+  onSaved?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const handledSearch = useRef<string | undefined>(undefined);
@@ -70,6 +72,7 @@ export default function EditWorkspace({
           sessionId={sessionId}
           sourceSearch={sourceSearch}
           onClose={() => setOpen(false)}
+          onSaved={onSaved}
           onApplied={() => {
             onApplied();
             setOpen(false);
@@ -162,6 +165,7 @@ export function EditWorkspaceSurface({
   sourceSearch,
   onClose,
   onApplied,
+  onSaved,
   options,
   embedded = false,
   onDirty,
@@ -174,6 +178,7 @@ export function EditWorkspaceSurface({
   sessionId: string;
   onClose: () => void;
   onApplied: () => void;
+  onSaved?: () => void;
   sourceSearch?: SourceSearchRequest;
 }) {
   const [controller] = useState(() => new EditWorkspaceController(sessionId, undefined, options));
@@ -361,7 +366,9 @@ export function EditWorkspaceSurface({
                 type="primary"
                 disabled={!copy || !!pending}
                 loading={pending === 'library'}
-                onClick={() => void controller.saveToLibrary()}
+                onClick={async () => {
+                  if (await controller.saveToLibrary()) onSaved?.();
+                }}
               >
                 保存为作品
               </Button>
