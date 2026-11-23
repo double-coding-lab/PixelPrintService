@@ -1,0 +1,37 @@
+pixelprint/templates/skills/pp-d2c/SKILL.md
+  s_f084de538b079d::t_e697c89b5bddb9 6
+pixelprint/templates/skills/pp-style/SKILL.md
+  s_f084de538b079d::t_e697c89b5bddb9 6
+scripts/sanitize-resources.mjs
+  s_f084de538b079d::t_e697c89b5bddb9 75-89
+test/resources.test.ts
+  s_f084de538b079d::t_e697c89b5bddb9 20-23,34-35,48-51
+pixelprint/templates/skills/pp-fix-partial/SKILL.md
+  s_f084de538b079d::t_e697c89b5bddb9 6
+pixelprint/templates/skills/pp-d2c-reskin/SKILL.md
+  s_f084de538b079d::t_e697c89b5bddb9 6
+pixelprint/templates/skills/pp-strip-nodeid/SKILL.md
+  s_f084de538b079d::t_e697c89b5bddb9 6
+pixelprint/templates/skills/pp-image-compress/SKILL.md
+  s_f084de538b079d::t_e697c89b5bddb9 6
+pixelprint/templates/skills/pp-d2c-rn/SKILL.md
+  s_f084de538b079d::t_e697c89b5bddb9 6
+pixelprint/templates/skills/pp-doctor/SKILL.md
+  s_f084de538b079d::t_e697c89b5bddb9 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "401c3f3ccc3292d766f6e858e43cbfa74b78ee34",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
