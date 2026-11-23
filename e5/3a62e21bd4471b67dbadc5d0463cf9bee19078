@@ -1,0 +1,23 @@
+test/deadlockRecovery.test.ts
+  s_f084de538b079d::t_266bb8bb60869e 1-196
+test/deadlockSideEffects.test.ts
+  s_f084de538b079d::t_266bb8bb60869e 1-215
+test/errorDiagnostics.test.ts
+  s_f084de538b079d::t_266bb8bb60869e 1105-1121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "e53a62e21bd4471b67dbadc5d0463cf9bee19078",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
