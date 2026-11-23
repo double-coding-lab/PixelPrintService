@@ -1,0 +1,21 @@
+src/functions/d2c/run/agent/images.ts
+  s_f084de538b079d::t_a24a078b28a50e 6-8,66,69,76-79,81-96,98,101-106,108,123,125,135,137,141,149-153,158,160-169
+test/agentImageDeduplication.test.ts
+  s_f084de538b079d::t_a24a078b28a50e 1-380
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "2bbf672d5fd6449d155f12fc0d158dc0df33b807",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
