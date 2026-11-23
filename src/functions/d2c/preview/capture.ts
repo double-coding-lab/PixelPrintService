@@ -1,3 +1,11 @@
+import {
+  previewInspectionOptionsSchema,
+  previewInteractionResultSchema,
+  previewCoverageSchema,
+  type PreviewInspectionOptions,
+  type PreviewInteractionResult,
+  type PreviewCoverage,
+} from './interaction';
 import { previewAssetBase } from './assetPolicy';
 import { execFileSync, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -19,6 +27,8 @@ export interface PreviewCaptureResult {
   errors: Array<{ code: string; message?: string }>;
   missingAssets: string[];
   truncated: boolean;
+  interaction?: PreviewInteractionResult;
+  coverage?: PreviewCoverage;
 }
 
 /** Fixed safe failures never expose stderr, generated code or host configuration. */
@@ -326,6 +336,18 @@ function decode(output: Buffer, width: number): PreviewCaptureResult {
     !value.missingAssets.every((item: unknown) => typeof item === 'string' && item.length <= 2048)
   )
     throw fail();
+  const interaction =
+    value.interaction === undefined
+      ? undefined
+      : previewInteractionResultSchema.safeParse(value.interaction);
+  const coverage =
+    value.coverage === undefined ? undefined : previewCoverageSchema.safeParse(value.coverage);
+  if (
+    (interaction && !interaction.success) ||
+    (coverage &&
+      (!coverage.success || coverage.data.width !== width || coverage.data.height !== value.height))
+  )
+    throw fail();
   const image = Buffer.from(value.image, 'base64');
   if (image.length > MAX_IMAGE) throw new PreviewCaptureError('PREVIEW_CAPTURE_OUTPUT_LIMIT');
   if (
@@ -342,6 +364,8 @@ function decode(output: Buffer, width: number): PreviewCaptureResult {
     width,
     height: value.height,
     truncated: value.truncated,
+    ...(interaction?.success ? { interaction: interaction.data } : {}),
+    ...(coverage?.success ? { coverage: coverage.data } : {}),
     errors: value.errors.map((item: { code: string }) => ({ code: item.code })),
     missingAssets: value.missingAssets,
   };
@@ -352,6 +376,7 @@ export interface PreviewCaptureInput {
   target: 'h5' | 'rn';
   signal: AbortSignal;
   width?: number;
+  inspection?: PreviewInspectionOptions;
 }
 
 type CaptureTransport = (input: string, signal: AbortSignal) => Promise<Buffer>;
@@ -363,6 +388,10 @@ async function runCapture(
 ): Promise<PreviewCaptureResult> {
   const invalid = () => new PreviewCaptureError('PREVIEW_CAPTURE_INVALID_INPUT');
   const width = input?.width ?? 375;
+  const inspection = previewInspectionOptionsSchema.safeParse(
+    input?.inspection === undefined ? {} : input.inspection,
+  );
+  if (!inspection.success) throw invalid();
   if (
     !input ||
     !['h5', 'rn'].includes(input.target) ||
@@ -410,6 +439,7 @@ async function runCapture(
     if (controller.signal.aborted) throw new PreviewCaptureError('PREVIEW_CAPTURE_CANCELLED');
     const payload = JSON.stringify({
       assets: cdn.assets,
+      ...(input.inspection === undefined ? {} : { inspection: inspection.data }),
       assetBase: previewAssetBase(),
       width,
       target: input.target,
@@ -422,6 +452,19 @@ async function runCapture(
     const output = await transport(payload, controller.signal);
     if (controller.signal.aborted) throw new PreviewCaptureError('PREVIEW_CAPTURE_CANCELLED');
     const result = decode(output, width);
+    if (input.inspection !== undefined) {
+      const actions = inspection.data.actions ?? [];
+      if (
+        !result.interaction ||
+        !result.coverage ||
+        result.interaction.steps.length !== actions.length ||
+        result.interaction.steps.some(
+          (step, index) => step.step !== index + 1 || step.type !== actions[index].type,
+        ) ||
+        Boolean(result.interaction.focus) !== Boolean(inspection.data.focusSelector)
+      )
+        throw new PreviewCaptureError('PREVIEW_CAPTURE_INVALID_OUTPUT');
+    }
     result.errors = [...new Set([...cdn.errors, ...result.errors.map((item) => item.code)])]
       .slice(0, 100)
       .map((code) => ({ code }));
