@@ -1,3 +1,4 @@
+import WorkCover from './WorkCover';
 import FileTypeIcon from '../components/FileTypeIcon';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import {
@@ -23,13 +24,21 @@ import DesignReferencePanel from './DesignReferencePanel';
 import { useTeams } from './TeamSettings';
 
 const CodePreview = lazy(() => import('./CodePreview'));
-type Work = VersionMetadata & { createdUserId: string | null; creatorName: string | null };
+type Work = VersionMetadata & {
+  createdUserId: string | null;
+  creatorName: string | null;
+  coverUrl?: string | null;
+};
 type WorkPage = { rows: Work[]; total: number; page: number; pageSize: number };
 type WorkDetail = Work & { files: FileInfo[] };
 
 /** 作品筛选沿用版本接口；详情、源码与下载仍使用原有版本定位协议。 */
 export function worksListPath(scope: 'mine' | 'all' | 'team', teamId: string, page: number) {
-  const query = new URLSearchParams({ scope, page: String(page), pageSize: '12' });
+  const query = new URLSearchParams({
+    scope,
+    page: String(page),
+    pageSize: '12',
+  });
   if (scope === 'team') query.set('teamId', teamId);
   return `/versions?${query}`;
 }
@@ -167,7 +176,7 @@ export default function WorksPanel({
               返回会话版本
             </Button>
           )}
-          <h1>{versionId ? '版本详情' : '会话版本'}</h1>
+          <h1>{versionId ? (detail?.name ?? '版本详情') : '会话版本'}</h1>
         </div>
         <div className="works-heading-actions">
           <Button
@@ -207,7 +216,10 @@ export default function WorksPanel({
               aria-label="作品团队"
               value={teamId}
               disabled={directory.loading}
-              options={directory.teams.map((team) => ({ value: team.teamId, label: team.name }))}
+              options={directory.teams.map((team) => ({
+                value: team.teamId,
+                label: team.name,
+              }))}
               onChange={(value) => {
                 setTeamId(value);
                 setPage(1);
@@ -239,7 +251,6 @@ export default function WorksPanel({
                     </Tag>
                     <ValidationTag summary={detail.validationSummary} />
                   </div>
-                  <h2>{detail.name}</h2>
                   <div className="work-meta">
                     <span>{detail.creatorName || detail.createdUserId || '未知创建人'}</span>
                     <time dateTime={detail.createdAt} title={detail.createdAt}>
@@ -324,8 +335,11 @@ export default function WorksPanel({
                             icon={(node) => (
                               <FileTypeIcon
                                 path={
-                                  (node as { data?: { file?: { path: string } } }).data?.file
-                                    ?.path ?? ''
+                                  (
+                                    node as {
+                                      data?: { file?: { path: string } };
+                                    }
+                                  ).data?.file?.path ?? ''
                                 }
                                 directory={!node.isLeaf}
                                 expanded={node.expanded}
@@ -359,43 +373,53 @@ export default function WorksPanel({
           )
         ) : (
           <>
-            <div className="works-grid">
+            <div className="works-grid library-works-grid">
               {list?.rows.map((work) => (
-                <article key={work.versionId} className="work-card">
-                  <div className="work-card-top">
-                    <Tag className={`work-target ${work.target}`}>{work.target.toUpperCase()}</Tag>
+                <article key={work.versionId} className="work-card library-work-card">
+                  <div className="work-card-body">
+                    <div className="work-card-top">
+                      <Tag className={`work-target ${work.target}`}>
+                        {work.target.toUpperCase()}
+                      </Tag>
+                    </div>
+                    <h2 title={work.name}>
+                      <a
+                        href={`/works/versions/${id(work.versionId)}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          onSelect(work.versionId);
+                        }}
+                      >
+                        {work.name}
+                      </a>
+                    </h2>
+                    <div className="work-card-author">
+                      <span>{work.creatorName || work.createdUserId || '未知创建人'}</span>
+                    </div>
+                    <time dateTime={work.createdAt} title={work.createdAt}>
+                      {createdTime(work.createdAt)}
+                    </time>
+                    <div className="work-card-validation">
+                      <ValidationTag summary={work.validationSummary} />
+                    </div>
+                    <div className="work-card-actions">
+                      <Button type="text" onClick={() => onSelect(work.versionId)}>
+                        查看版本
+                      </Button>
+                      <Button
+                        icon={<Icon name="file" />}
+                        href={`/api/d2c/versions/${id(work.versionId)}/archive`}
+                      >
+                        下载 ZIP
+                      </Button>
+                    </div>
                   </div>
-                  <h2 title={work.name}>
-                    <a
-                      href={`/works/versions/${id(work.versionId)}`}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        onSelect(work.versionId);
-                      }}
-                    >
-                      {work.name}
-                    </a>
-                  </h2>
-                  <div className="work-card-author">
-                    <span>{work.creatorName || work.createdUserId || '未知创建人'}</span>
-                  </div>
-                  <time dateTime={work.createdAt} title={work.createdAt}>
-                    {createdTime(work.createdAt)}
-                  </time>
-                  <div className="work-card-validation">
-                    <ValidationTag summary={work.validationSummary} />
-                  </div>
-                  <div className="work-card-actions">
-                    <Button type="text" onClick={() => onSelect(work.versionId)}>
-                      查看版本
-                    </Button>
-                    <Button
-                      icon={<Icon name="file" />}
-                      href={`/api/d2c/versions/${id(work.versionId)}/archive`}
-                    >
-                      下载 ZIP
-                    </Button>
-                  </div>
+                  <WorkCover
+                    url={work.coverUrl}
+                    name={work.name}
+                    kind="work"
+                    onOpen={() => onSelect(work.versionId)}
+                  />
                 </article>
               ))}
             </div>

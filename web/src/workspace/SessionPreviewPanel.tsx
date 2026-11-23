@@ -1,6 +1,6 @@
 import PhonePreview, { PhonePreviewButton, usePhonePreview } from './PhonePreview';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Segmented, Skeleton, Spin } from 'antd';
+import { Alert, Button, Skeleton, Spin } from 'antd';
 import { data, errorMessage, id } from './api';
 import { PreviewErrorDetails, validPreviewTicket } from './PreviewPanel';
 import {
@@ -85,7 +85,7 @@ export default function SessionPreviewPanel({
   const [ticketRetry, setTicketRetry] = useState(0);
   const [shown, setShown] = useState<Frame | null>(null);
   const [incoming, setIncoming] = useState<Frame | null>(null);
-  const [width, setWidth] = useState<string | number>(375);
+  const width = 'auto';
   const phone = usePhonePreview(active && !!shown);
   const watcher = useRef<ReturnType<typeof watchSessionPreview> | null>(null);
   const ready = state?.current?.status === 'ready' ? state.current : state?.lastReady;
@@ -157,11 +157,28 @@ export default function SessionPreviewPanel({
     };
   }, [ready?.previewId, ticketRetry]);
 
+  const entrySelector = !!state && (state.entries.length > 1 || !!selectedEntry) && (
+    <label className="session-entry-select">
+      页面入口
+      <select
+        aria-label="当前会话预览入口"
+        value={selectedEntry || state.current?.entryPath || ''}
+        onChange={(event) => setEntryPath(event.target.value)}
+      >
+        <option value="">请选择页面入口</option>
+        {state.entries.map((entry) => (
+          <option key={entry} value={entry}>
+            {entry}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
   return (
     <section className="session-preview" aria-label="当前会话运行预览" hidden={!active}>
       <div className="session-preview-toolbar">
         <span role="status" className="session-preview-status">
-          {loading && <Spin size="small" />}
           {waiting
             ? '等待文件保存'
             : building
@@ -186,36 +203,9 @@ export default function SessionPreviewPanel({
         </Button>
         <PreviewInspectorButton inspector={inspector} />
         <PhonePreviewButton preview={phone} />
-        <Segmented
-          size="small"
-          aria-label="当前预览宽度"
-          value={width}
-          onChange={setWidth}
-          options={[
-            { label: '375', value: 375 },
-            { label: '750', value: 750 },
-            { label: '自适应', value: 'auto' },
-          ]}
-        />
       </div>
       <div className="session-preview-body" aria-busy={loading}>
-        {!!state && (state.entries.length > 1 || !!selectedEntry) && (
-          <label className="session-entry-select">
-            页面入口
-            <select
-              aria-label="当前会话预览入口"
-              value={selectedEntry || state.current?.entryPath || ''}
-              onChange={(event) => setEntryPath(event.target.value)}
-            >
-              <option value="">请选择页面入口</option>
-              {state.entries.map((entry) => (
-                <option key={entry} value={entry}>
-                  {entry}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        {!shown && entrySelector}
         {ready?.target === 'rn' && <p className="muted">RN Web 兼容预览，实际效果以原生端为准。</p>}
         {error && <Alert type="error" showIcon title={error} />}
         {waiting && (
@@ -235,6 +225,9 @@ export default function SessionPreviewPanel({
           />
         )}
         {!shown &&
+          !error &&
+          !waiting &&
+          state?.current?.status !== 'failed' &&
           (loading ? (
             <div className="session-preview-loading" role="status" aria-live="polite">
               <div className="session-preview-loading-heading">
@@ -243,7 +236,11 @@ export default function SessionPreviewPanel({
                   {waiting ? '等待文件保存…' : building ? '正在构建预览…' : '正在加载预览…'}
                 </span>
               </div>
-              <Skeleton active title paragraph={{ rows: 5 }} />
+              {!!ready && (
+                <div className="session-preview-loading-skeleton">
+                  <Skeleton active title paragraph={{ rows: 4 }} />
+                </div>
+              )}
             </div>
           ) : (
             <div className="session-preview-empty" role="status">
@@ -251,7 +248,7 @@ export default function SessionPreviewPanel({
             </div>
           ))}
         <PreviewInspector inspector={inspector} onLocateSource={onLocateSource} />
-        <PhonePreview preview={phone}>
+        <PhonePreview preview={phone} toolbarStart={entrySelector}>
           <SessionPreviewFrames
             inspectorRef={inspector.frameRef}
             shown={shown}

@@ -117,13 +117,15 @@ export function PhonePreviewButton({ preview }: { preview: PhonePreviewState }) 
   );
 }
 
-/** 手机视口外壳始终留在原位置；普通模式使用display:contents，不另建预览实例。 */
+/** 普通与全屏模式共用手机视口和同一iframe，仅等比缩放展示。 */
 export default function PhonePreview({
   preview,
   children,
+  toolbarStart,
 }: {
   preview: PhonePreviewState;
   children: ReactNode;
+  toolbarStart?: ReactNode;
 }) {
   const [preset, setPreset] = useState<string>('standard');
   const [landscape, setLandscape] = useState(false);
@@ -134,7 +136,7 @@ export default function PhonePreview({
   const width = landscape ? device.height : device.width;
   const height = landscape ? device.width : device.height;
   useEffect(() => {
-    if (!preview.fullscreen || !stage.current) return;
+    if (!stage.current) return;
     const element = stage.current;
     const resize = () => {
       const box = element.getBoundingClientRect();
@@ -148,22 +150,24 @@ export default function PhonePreview({
       observer?.disconnect();
       window.removeEventListener('resize', resize);
     };
-  }, [preview.fullscreen, width, height]);
+  }, [preview.fullscreen, preview.available, width, height]);
   useEffect(() => {
     if (preview.fullscreen) exit.current?.focus();
   }, [preview.fullscreen]);
   return (
     <div
       ref={preview.root}
-      className={`phone-preview-shell${preview.fullscreen ? ' is-fullscreen' : ''}`}
+      className={`phone-preview-shell${preview.fullscreen ? ' is-fullscreen' : ''}${!preview.available ? ' is-pending' : ''}`}
+      aria-hidden={!preview.available}
+      inert={!preview.available}
       role={preview.fullscreen ? 'dialog' : undefined}
       aria-modal={preview.fullscreen ? true : undefined}
       aria-label={preview.fullscreen ? '全屏手机预览' : undefined}
     >
-      <div className="phone-preview-toolbar" hidden={!preview.fullscreen}>
-        <strong>手机预览</strong>
+      <div className={`phone-preview-toolbar${toolbarStart ? ' has-entry' : ''}`}>
+        {toolbarStart ?? <strong>手机预览</strong>}
         <label>
-          屏幕比例
+          <span className="phone-preview-screen-label">屏幕比例</span>
           <select
             aria-label="手机屏幕比例"
             value={preset}
@@ -180,24 +184,26 @@ export default function PhonePreview({
           size="small"
           onClick={() => setLandscape((value) => !value)}
           aria-label="切换横竖屏"
-        >
-          {landscape ? '切为竖屏' : '切为横屏'}
-        </Button>
+          title={landscape ? '切为竖屏' : '切为横屏'}
+          icon={<Icon name="refresh" />}
+        />
         <span className="phone-preview-dimensions" aria-live="polite">
           {width} × {height} · {Math.round(scale * 100)}%
         </span>
-        <Button ref={exit} size="small" onClick={preview.close} icon={<Icon name="minimize" />}>
-          退出全屏
-        </Button>
+        {preview.fullscreen && (
+          <Button ref={exit} size="small" onClick={preview.close} icon={<Icon name="minimize" />}>
+            退出全屏
+          </Button>
+        )}
       </div>
       <div ref={stage} className="phone-preview-stage">
         <div
           className="phone-preview-device"
-          style={preview.fullscreen ? { width: width * scale, height: height * scale } : undefined}
+          style={{ width: width * scale, height: height * scale }}
         >
           <div
             className="phone-preview-canvas"
-            style={preview.fullscreen ? { width, height, transform: `scale(${scale})` } : undefined}
+            style={{ width, height, transform: `scale(${scale})` }}
           >
             {children}
           </div>

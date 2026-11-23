@@ -1,0 +1,122 @@
+.work-cover {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  width: calc(100% + 32px);
+  aspect-ratio: 16 / 10;
+  padding: 0;
+  margin: -16px -16px 16px;
+  overflow: hidden;
+  border: 0;
+  border-bottom: 1px solid #edf0f4;
+  border-radius: 5px 5px 0 0;
+  background: #f1f4f8;
+  cursor: pointer;
+}
+.work-cover:focus-visible {
+  outline: 3px solid #648bd3;
+  outline-offset: -3px;
+}
+.work-cover-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.work-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+.work-cover-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: #8994a6;
+  font-size: 12px;
+  background: linear-gradient(135deg, #f0f3f8, #e7edf6);
+}
+.work-cover-placeholder > :first-child {
+  font-size: 36px;
+  line-height: 1;
+  color: #b3bfd2;
+}
+.work-cover-label {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 3px 8px;
+  border: 1px solid #e3e7ee;
+  border-radius: 4px;
+  background: #fffffff0;
+  color: #596374;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.work-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.community-panel .work-card-body {
+  gap: 10px;
+}
+.community-panel .work-card-body > span {
+  color: #7a8494;
+  font-size: 12px;
+}
+.works-grid.library-works-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+}
+.works-grid .work-card.library-work-card {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 16px;
+  padding: 16px;
+}
+.library-work-card .work-card-body {
+  order: 1;
+}
+.library-work-card .work-cover {
+  order: 2;
+  align-self: flex-start;
+  width: 36%;
+  max-width: 160px;
+  height: 220px;
+  aspect-ratio: auto;
+  margin: 0;
+  border: 1px solid #e7ebf2;
+  border-radius: 6px;
+}
+.library-work-card .work-cover-image {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd4e1 transparent;
+}
+.library-work-card .work-cover img {
+  height: auto;
+  object-fit: contain;
+}
+.library-work-card .work-cover-label {
+  right: 5px;
+  bottom: 5px;
+  padding: 1px 5px;
+  pointer-events: none;
+}
+@media (max-width: 480px) {
+  .works-grid .work-card.library-work-card {
+    gap: 12px;
+    padding: 12px;
+  }
+  .library-work-card .work-cover {
+    height: 200px;
+  }
+}

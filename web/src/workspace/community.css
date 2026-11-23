@@ -25,6 +25,19 @@
   gap: 12px;
   min-width: 0;
 }
+.community-detail-leading {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.community-detail-leading > button {
+  flex-shrink: 0;
+}
+.community-detail-leading .community-detail-identity {
+  flex: 1;
+}
 .community-detail-identity > span {
   color: #7a8494;
   font-size: 12px;
@@ -107,9 +120,6 @@
   }
 }
 
-.community-detail-back {
-  margin-bottom: 16px;
-}
 .community-conversation-actions {
   position: sticky;
   top: -24px;

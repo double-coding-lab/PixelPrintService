@@ -1,3 +1,4 @@
+import WorkCover from './WorkCover';
 import './community.css';
 import './editWorkspace.css';
 import './conversationRound.css';
@@ -17,7 +18,7 @@ import type { SessionDiagnostics, TimelineEntry } from './types';
 import { mergeTimeline, describeEvent } from './timeline';
 import { groupConversationRounds } from './roundProjection';
 import ConversationRound from './ConversationRound';
-import MarkdownMessage, { safeMarkdownImageUrl } from '../components/MarkdownMessage';
+import MarkdownMessage from '../components/MarkdownMessage';
 import { readPublicHistory } from './communityHistory';
 import MessageImages from './MessageImages';
 import EditWorkspace, { EditWorkspaceSurface } from './EditWorkspace';
@@ -72,15 +73,16 @@ export function PublicSession({
   if (!detail) return <Skeleton active />;
   return (
     <SessionReadRoot.Provider value={root}>
-      <div className="community-detail-back">
-        <Button onClick={onBack}>← 返回广场</Button>
-      </div>
       <div className="community-detail-heading">
-        <div className="community-detail-identity">
-          <h2>{detail.name}</h2>
-          <span>
-            {detail.creatorName || detail.createdEid} · {detail.target.toUpperCase()}
-          </span>
+        <div className="community-detail-leading">
+          <Button onClick={onBack}>← 返回广场</Button>
+          <div className="community-detail-identity">
+            <h2>{detail.name}</h2>
+            <span>
+              {detail.creatorName || detail.createdEid || '未知创建人'} ·{' '}
+              {detail.target.toUpperCase()}
+            </span>
+          </div>
         </div>
         <div className="community-actions">
           <Button onClick={() => setPanel('usage')}>用量</Button>
@@ -210,7 +212,9 @@ function PublicUsage({ root }: { root: string }) {
   useEffect(() => {
     const controller = new AbortController();
     setError('');
-    data<NonNullable<typeof snapshot>>(`${root}/usage`, { signal: controller.signal }).then(
+    data<NonNullable<typeof snapshot>>(`${root}/usage`, {
+      signal: controller.signal,
+    }).then(
       (value) => {
         if (!controller.signal.aborted) setSnapshot(value);
       },
@@ -268,12 +272,14 @@ function PublicMessage({ entry }: { entry: TimelineEntry }) {
 }
 
 /** 本人作品元数据先鉴权，再创建独立副本；保存由同一 workId 的 edit/save 更新。 */
-function PersonalWorkDetail({ workId }: { workId: string }) {
+function PersonalWorkDetail({ workId, onBack }: { workId: string; onBack: () => void }) {
   const [work, setWork] = useState<PersonalWork | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
-    data<PersonalWork>(`/my-works/${id(workId)}`, { signal: controller.signal }).then(
+    data<PersonalWork>(`/my-works/${id(workId)}`, {
+      signal: controller.signal,
+    }).then(
       (value) => {
         if (!controller.signal.aborted) setWork(value);
       },
@@ -287,9 +293,12 @@ function PersonalWorkDetail({ workId }: { workId: string }) {
   if (!work) return <Skeleton active />;
   return (
     <div className="community-detail-heading">
-      <div>
-        <h2>{work.name}</h2>
-        <span>{work.target.toUpperCase()}</span>
+      <div className="community-detail-leading">
+        <Button onClick={onBack}>← 返回已保存作品</Button>
+        <div className="community-detail-identity">
+          <h2>{work.name}</h2>
+          <span>{work.target.toUpperCase()}</span>
+        </div>
       </div>
       <div className="community-actions">
         {work.canManage !== false && (
@@ -354,7 +363,7 @@ export default function CommunityPanel({
   const title = kind === 'plaza' ? '广场' : '已保存作品';
   return (
     <section
-      className={`works-panel community-panel${kind === 'plaza' && resourceId ? ' community-panel-detail' : ''}`}
+      className={`works-panel community-panel${resourceId ? ' community-panel-detail' : ''}`}
     >
       <div className="works-heading">
         <div className="works-heading-leading">
@@ -383,41 +392,44 @@ export default function CommunityPanel({
             onBusy={onBusy}
           />
         ) : (
-          <PersonalWorkDetail key={resourceId} workId={resourceId} />
+          <PersonalWorkDetail key={resourceId} workId={resourceId} onBack={() => onSelect('')} />
         )
       ) : (
         <>
           {error && <Alert type="error" title={error} />}
           {loading && <Skeleton active />}
-          <div className="works-grid">
+          <div className="works-grid library-works-grid">
             {list?.items.map((item) => {
               const resource = 'shareId' in item ? item.shareId : item.workId;
               return (
-                <article className="work-card" key={resource}>
-                  {'shareId' in item && (
-                    <CommunityCover
-                      // coverUrl 由广场元数据提供，不额外扫描私有会话图片。
-                      url={item.coverUrl}
-                      name={item.name}
-                      onOpen={() => onSelect(resource)}
-                    />
-                  )}
-                  <h2>
-                    <Button type="link" onClick={() => onSelect(resource)}>
-                      {item.name}
-                    </Button>
-                  </h2>
-                  <span>{item.target.toUpperCase()}</span>
-                  {'creatorName' in item && <span>{item.creatorName || item.createdEid}</span>}
-                  <div className="work-card-actions">
-                    <Button onClick={() => onSelect(resource)}>
-                      {kind === 'plaza' ? '打开作品' : '查看作品'}
-                    </Button>
-                    {'workId' in item && (
-                      <Button href={`/api/d2c/my-works/${id(item.workId)}/archive`}>
-                        下载 ZIP
+                <article className="work-card library-work-card" key={resource}>
+                  <WorkCover
+                    url={item.coverUrl}
+                    name={item.name}
+                    kind={'shareId' in item ? 'runtime' : 'work'}
+                    className="community-cover"
+                    onOpen={() => onSelect(resource)}
+                  />
+                  <div className="work-card-body">
+                    <h2>
+                      <Button type="link" onClick={() => onSelect(resource)}>
+                        {item.name}
                       </Button>
+                    </h2>
+                    <span>{item.target.toUpperCase()}</span>
+                    {'creatorName' in item && (
+                      <span>{item.creatorName || item.createdEid || '未知创建人'}</span>
                     )}
+                    <div className="work-card-actions">
+                      <Button onClick={() => onSelect(resource)}>
+                        {kind === 'plaza' ? '打开作品' : '查看作品'}
+                      </Button>
+                      {'workId' in item && (
+                        <Button href={`/api/d2c/my-works/${id(item.workId)}/archive`}>
+                          下载 ZIP
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </article>
               );
@@ -430,8 +442,8 @@ export default function CommunityPanel({
                   '暂无公开会话'
                 ) : (
                   <span>
-                    暂无已保存作品。前往<a href="/plaza">广场</a>打开作品并编辑，
-                    点击“保存为作品”后即可在这里查看。
+                    暂无已保存作品。前往<a href="/plaza">广场</a>
+                    打开作品并编辑， 点击“保存为作品”后即可在这里查看。
                   </span>
                 )
               }
@@ -449,42 +461,5 @@ export default function CommunityPanel({
         </>
       )}
     </section>
-  );
-}
-
-/** 封面沿用安全图片地址规则；原生按钮支持键盘打开，失效图片回退占位。 */
-function CommunityCover({
-  url,
-  name,
-  onOpen,
-}: {
-  url?: string | null;
-  name: string;
-  onOpen: () => void;
-}) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const src = safeMarkdownImageUrl(url);
-  return (
-    <button
-      type="button"
-      className="community-cover"
-      onClick={onOpen}
-      aria-label={`打开作品：${name}`}
-    >
-      {src && failedUrl !== src ? (
-        <img
-          src={src}
-          alt={`${name}运行截图`}
-          loading="lazy"
-          decoding="async"
-          onError={() => setFailedUrl(src)}
-        />
-      ) : (
-        <span className="community-cover-placeholder">
-          <span aria-hidden="true">▧</span>
-          <span>暂无运行截图</span>
-        </span>
-      )}
-    </button>
   );
 }
