@@ -1,0 +1,29 @@
+web/src/workspace/SessionPreviewPanel.tsx
+  s_f084de538b079d::t_3922b9ca43307f 3,160-177,208,239-243,251
+web/src/workspace/PhonePreview.tsx
+  s_f084de538b079d::t_3922b9ca43307f 124,128,167-168,170,187-189
+web/src/workspace/DesignReferencePanel.tsx
+  s_f084de538b079d::t_3922b9ca43307f 2-3,37,50,73-97
+web/src/workspace/sessionFeedback.css
+  s_f084de538b079d::t_3922b9ca43307f 49-53
+web/src/workspace/designReference.css
+  s_f084de538b079d::t_3922b9ca43307f 24,29-32,41-44,46-47
+web/src/workspace/phonePreview.css
+  s_f084de538b079d::t_3922b9ca43307f 53,59-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "809646cb437e11dec6bee3d4d462ad099998cc74",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
