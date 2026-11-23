@@ -1,0 +1,28 @@
+web/src/workspace/editWorkspaceState.ts
+  s_f084de538b079d::t_303cf2631a2e1e 99-115,300-304,320-323
+test/editWorkspaceNaming.test.ts
+  s_f084de538b079d::t_303cf2631a2e1e 1-114
+web/src/workspace/EditWorkspace.tsx
+  s_f084de538b079d::t_6d4e3ae968a78d 256-257
+test/editWorkspaceNamingBrowser.test.ts
+  s_f084de538b079d::t_767a12415f86a7 56
+  s_f084de538b079d::t_806475e76cba89 173
+  s_f084de538b079d::t_6d4e3ae968a78d 134-152
+  s_f084de538b079d::t_b003bc9d686841 195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "75ac686e0e6abd71d0bf08227381fa220b6f7ab1",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
