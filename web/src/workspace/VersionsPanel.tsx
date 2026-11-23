@@ -63,10 +63,9 @@ export function versionValidationLabel(summary: VersionMetadata['validationSumma
     case 'failed':
       return '规则检查：未通过';
     case 'stale':
-      return '规则检查：已过期';
     case 'not_checked':
     case undefined:
-      return '规则检查：未检查';
+      return '规则检查：待检查';
     default:
       return `规则检查：未知（${summary?.status}）`;
   }
