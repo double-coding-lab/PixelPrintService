@@ -10,6 +10,194 @@ import { runFailureSchema } from '../src/functions/d2c/run/errors';
 import { sliceNamesRequiredFeedback, toolFeedback } from '../src/functions/d2c/run/toolFeedback';
 import { observeModelRequest } from '../src/functions/d2c/run/agent/modelActivity';
 
+test('历史精确frameworkCode和交付原因映射局部限额，真实模型故障和未知原因保持原义', async () => {
+  const f = await fixture();
+  for (const [frameworkCode, expected] of [
+    ['DEEP_SUBAGENT_MAX_TURNS', 'SUBAGENT_REQUEST_LIMIT'],
+    ['DEEP_SUBAGENT_OUTPUT_LIMIT', 'SUBAGENT_OUTPUT_LIMIT'],
+  ]) {
+    const first = f.event('stage', {
+      stage: 'subagent',
+      agentId: randomUUID(),
+      role: 'ui',
+      status: 'failed',
+      diagnosticFailure: failure('SUBAGENT_FAILED', { stage: 'tool' }),
+      failureDetails: { frameworkCode, message: 'PRIVATE_REASON' },
+    });
+    const second = f.event('stage', {
+      stage: 'subagent',
+      agentId: randomUUID(),
+      role: 'ui',
+      status: 'failed',
+      delivery: { success: false, reason: frameworkCode },
+    });
+    const result = await f.read();
+    for (const seq of [first, second]) {
+      const item = result.items.find((item) => item.seq === seq)!;
+      assert.equal(item.code, expected);
+      assert.equal(item.category, 'subagent');
+      assert.match(item.message, /局部交付未完成/);
+    }
+  }
+  const unknown = f.event('stage', {
+    stage: 'subagent',
+    agentId: randomUUID(),
+    status: 'failed',
+    failureDetails: { frameworkCode: 'DEEP_SUBAGENT_MAX_TURNS_PRIVATE' },
+    message: 'DEEP_SUBAGENT_MAX_TURNS',
+  });
+  const model = f.event('model_status', {
+    status: 'failed',
+    scope: 'ui',
+    agentId: randomUUID(),
+    diagnosticFailure: failure(),
+    failureDetails: { frameworkCode: 'DEEP_SUBAGENT_MAX_TURNS' },
+  });
+  const result = await f.read();
+  assert.equal(result.items.find((item) => item.seq === unknown)!.code, 'EXECUTION_FAILED');
+  assert.equal(result.items.find((item) => item.seq === model)!.code, 'MODEL_REQUEST_FAILED');
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE/);
+});
+
+test('同run同agent明确completed成功只解除已知局部限额，独立failed不按时间或角色合并', async () => {
+  const f = await fixture();
+  const agentId = randomUUID();
+  const seqs = [
+    failure('SUBAGENT_REQUEST_LIMIT', { stage: 'tool' }),
+    failure('SUBAGENT_OUTPUT_LIMIT', { stage: 'tool' }),
+    failure('SUBAGENT_FAILED', { stage: 'tool' }),
+    failure('STORAGE_FAILED', { stage: 'storage' }),
+  ].map((diagnosticFailure) =>
+    f.event('stage', {
+      stage: 'subagent',
+      agentId,
+      role: 'ui',
+      status: 'failed',
+      diagnosticFailure,
+    }),
+  );
+  const legacy = f.event('stage', {
+    stage: 'subagent',
+    agentId,
+    role: 'ui',
+    status: 'failed',
+    failureDetails: { frameworkCode: 'DEEP_SUBAGENT_MAX_TURNS' },
+  });
+  await f.persistence.recordSubagent({
+    stage: 'subagent',
+    agentId,
+    role: 'ui',
+    status: 'completed',
+    delivery: { success: true, files: [], missingFiles: [] },
+  });
+  const before = JSON.stringify(f.tables);
+  const result = await f.read();
+  assert.equal(result.executionErrors, 5);
+  assert.equal(result.total, 5);
+  for (const seq of [seqs[0], seqs[1], legacy])
+    assert.equal(result.items.find((item) => item.seq === seq)!.recovery, 'subsequent_success');
+  for (const seq of seqs.slice(2))
+    assert.equal(result.items.find((item) => item.seq === seq)!.recovery, 'unknown');
+  assert.equal(JSON.stringify(f.tables), before);
+});
+
+test('局部限额成功证据要求同run同agent后续completed且delivery.success严格为true', async () => {
+  for (const mode of [
+    'other-run',
+    'other-agent',
+    'missing-agent',
+    'earlier',
+    'no-delivery',
+    'false',
+    'string',
+    'model',
+    'tool',
+    'interrupted',
+    'failed',
+    'diagnostic',
+  ]) {
+    const f = await fixture();
+    const agentId = randomUUID();
+    const success = {
+      stage: 'subagent',
+      agentId,
+      role: 'ui',
+      status: 'completed',
+      delivery: { success: true },
+    };
+    if (mode === 'earlier') f.event('stage', success);
+    const seq = f.event('stage', {
+      stage: 'subagent',
+      agentId: mode === 'missing-agent' ? undefined : agentId,
+      role: 'ui',
+      status: 'failed',
+      diagnosticFailure: failure('SUBAGENT_REQUEST_LIMIT', { stage: 'tool' }),
+    });
+    const data = {
+      ...success,
+      ...(mode === 'other-agent' ? { agentId: randomUUID() } : {}),
+      ...(mode === 'no-delivery' ? { delivery: undefined } : {}),
+      ...(mode === 'false' ? { delivery: { success: false } } : {}),
+      ...(mode === 'string' ? { delivery: { success: 'true' } } : {}),
+      ...(mode === 'interrupted' ? { interrupted: true } : {}),
+      ...(mode === 'failed' ? { status: 'failed' } : {}),
+      ...(mode === 'diagnostic' ? { diagnosticFailure: failure() } : {}),
+      ...(mode === 'tool' ? { status: 'tool_completed', tool: 'read_file' } : {}),
+      ...(mode === 'model' ? { scope: 'ui' } : {}),
+    };
+    if (mode !== 'earlier')
+      f.event(
+        mode === 'model' ? 'model_status' : 'stage',
+        data,
+        mode === 'other-run' ? randomUUID() : f.queued.runId,
+      );
+    assert.equal(
+      (await f.read()).items.find((item) => item.seq === seq)!.recovery,
+      'unknown',
+      mode,
+    );
+  }
+});
+
+test('局部限额恢复受冻结快照约束，最近工具错误不能解释后续未知失败', async () => {
+  const f = await fixture();
+  const agentId = randomUUID();
+  f.event('stage', {
+    stage: 'subagent',
+    agentId,
+    role: 'ui',
+    status: 'tool_feedback',
+    tool: 'read_file',
+    feedback: toolFeedback('FILE_NOT_FOUND'),
+  });
+  const unknown = f.event('stage', { stage: 'subagent', agentId, role: 'ui', status: 'failed' });
+  const local = f.event('stage', {
+    stage: 'subagent',
+    agentId,
+    role: 'ui',
+    status: 'failed',
+    diagnosticFailure: failure('SUBAGENT_OUTPUT_LIMIT', { stage: 'tool' }),
+  });
+  const frozen = await f.read();
+  f.event('stage', {
+    stage: 'subagent',
+    agentId,
+    role: 'ui',
+    status: 'completed',
+    delivery: { success: true },
+  });
+  const old = await f.read({
+    snapshotSeq: frozen.snapshotSeq,
+    snapshotToken: frozen.snapshotToken,
+  });
+  assert.equal(old.items.find((item) => item.seq === local)!.recovery, 'unknown');
+  const current = await f.read();
+  assert.equal(current.items.find((item) => item.seq === local)!.recovery, 'subsequent_success');
+  assert.equal(current.items.find((item) => item.seq === unknown)!.code, 'EXECUTION_FAILED');
+  assert.equal(current.items.find((item) => item.seq === unknown)!.recovery, 'unknown');
+  assert.equal(current.executionErrors, 2);
+});
+
 /** 正式保存器与租约配合离线事务替身，验证真实投影，不访问数据库或模型。 */
 async function fixture() {
   const f = await messageFixture();

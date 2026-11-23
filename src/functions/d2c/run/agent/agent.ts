@@ -898,6 +898,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
         };
       }
       /** 局部失败交付真实进度和只读上下文；保存失败仍向上抛出，不伪造恢复成功。 */
+      let handoffFailure: ReturnType<typeof diagnoseRunFailure> | undefined;
       async function incomplete(reason: string, extra: Record<string, unknown> = {}) {
         let contextPath = handoff.state.contextPath;
         if (progress && archive) {
@@ -944,6 +945,15 @@ export async function runAgent(input: AgentRunInput): Promise<{
         handoff.state.contextPath = contextPath;
         await progress?.saveHandoff(handoff.state);
         await publish('failed', undefined, {
+          ...(handoffFailure
+            ? {
+                diagnosticFailure: handoffFailure.failure,
+                failureDetails: readFailureDetails({
+                  ...handoffFailure.diagnostics,
+                  subagentPhase: handoffFailure.diagnostics.subagentPhase ?? 'execute',
+                }),
+              }
+            : {}),
           delivery: {
             success: false,
             reason,
@@ -1382,7 +1392,6 @@ export async function runAgent(input: AgentRunInput): Promise<{
           },
         });
         if (ruleRepair?.stalled.length) {
-          await publish('failed');
           return incomplete('RULE_REPAIR_STALLED', {
             ruleRepair: ruleRepair.state,
             stalledScopes: ruleRepair.stalled,
@@ -1394,7 +1403,6 @@ export async function runAgent(input: AgentRunInput): Promise<{
         if (!production && Buffer.byteLength(child.output) > subagentLimits.outputBytes)
           throw new Error('DEEP_SUBAGENT_OUTPUT_LIMIT');
         if (production && (await inspectDelivery()).problems.length > 0) {
-          await publish('failed');
           return incomplete('INCOMPLETE_DELIVERY', {
             ...(childFeedback
               ? childFeedback.feedback?.code === 'RULES_FAILED' &&
@@ -1471,13 +1479,15 @@ export async function runAgent(input: AgentRunInput): Promise<{
             'SUBAGENT_FAILED',
             { stage: 'tool', tool: 'delegate_agent' },
           );
-          await publish('failed', undefined, {
-            diagnosticFailure: failure.failure,
-            failureDetails: readFailureDetails({
-              ...failure.diagnostics,
-              subagentPhase: failure.diagnostics.subagentPhase ?? 'execute',
-            }),
-          });
+          if (limitReason && safeLimit) handoffFailure = failure;
+          else
+            await publish('failed', undefined, {
+              diagnosticFailure: failure.failure,
+              failureDetails: readFailureDetails({
+                ...failure.diagnostics,
+                subagentPhase: failure.diagnostics.subagentPhase ?? 'execute',
+              }),
+            });
         }
         /** 子任务局部限额返回未完成及真实已存文件；共享预算、存储和租约失败继续向上抛出。 */
         let cause = error;

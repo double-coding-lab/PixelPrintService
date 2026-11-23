@@ -12,7 +12,7 @@ import { readFailureDetails } from '../../../shared/failureDetails';
 import { ownedSession, requireIdentifier, SessionError } from '../session/access';
 import { findOrderedRows } from '../utils/orderedRead';
 import { gatewayRequestIdSchema } from './agent/modelActivity';
-import { runFailureSchema, type RunFailure } from './errors';
+import { runFailureSchema, subagentLimitFailureCode, type RunFailure } from './errors';
 import { toolFeedbackSchema } from './toolFeedback';
 
 const limit = 20000;
@@ -93,8 +93,11 @@ function timestamp(value: unknown): string | null {
 }
 
 /** 历史失败也只由固定code映射重建说明，不接受message、detail或cause。 */
-function description(value: unknown, fallback: string) {
-  const code = typeof value === 'string' ? value : '';
+function description(value: unknown, fallback: string, frameworkCode?: unknown) {
+  let code = typeof value === 'string' ? value : '';
+  code = subagentLimitFailureCode(code) ?? code;
+  if (['', 'EXECUTION_FAILED', 'TOOL_FAILED', 'SUBAGENT_FAILED'].includes(code))
+    code = subagentLimitFailureCode(frameworkCode) ?? code;
   if (Object.hasOwn(ruleMessages, code)) return { code, message: ruleMessages[code] };
   const feedback = toolFeedbackSchema.safeParse({ type: 'tool_feedback', ok: false, code });
   if (feedback.success) return { code, message: feedback.data.message };
@@ -122,6 +125,7 @@ function category(
 ): DiagnosticErrorCategory {
   if (Object.hasOwn(ruleMessages, code)) return 'rule';
   if (code === 'STORAGE_FAILED' || stage === 'storage') return 'storage';
+  if (['SUBAGENT_REQUEST_LIMIT', 'SUBAGENT_OUTPUT_LIMIT'].includes(code)) return 'subagent';
   if (tool === 'build_preview' || tool === 'inspect_preview') return 'preview';
   if (code.startsWith('MODEL_') || code === 'CONTEXT_LIMIT' || stage === 'model') return 'model';
   if (code === 'SUBAGENT_FAILED') return 'subagent';
@@ -288,6 +292,7 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
     if (parsed.success && run.runId) savedFailures.set(run.runId, parsed.data);
   }
   const successes = new Map<string, number>();
+  const subagentSuccesses = new Map<string, number>();
   let complete = true;
   for (const row of rows) {
     const runId = identifier(row.runId);
@@ -300,6 +305,20 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
     const subagent = row.kind === 'stage' && data.stage === 'subagent';
     const model = row.kind === 'model_status';
     const agentId = identifier(data.agentId);
+    if (
+      subagent &&
+      data.status === 'completed' &&
+      object(data.delivery).success === true &&
+      agentId &&
+      seq !== null &&
+      data.failure == null &&
+      data.diagnosticFailure == null &&
+      data.interrupted !== true &&
+      data.cancelled !== true
+    ) {
+      const key = JSON.stringify([runId, agentId]);
+      subagentSuccesses.set(key, Math.max(subagentSuccesses.get(key) ?? 0, seq));
+    }
     const owner = agentId ?? (data.agentId === null || data.scope === 'generation' ? 'main' : null);
     const modelOwner = owner
       ? `${runId}:${owner}:${identifier(data.scope) ?? 'unknown'}`
@@ -345,9 +364,11 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
     const command =
       typeof commandValue === 'string' && commands.has(commandValue) ? commandValue : null;
     const reason = object(data.delivery).reason;
+    const details = readFailureDetails({ ...failure, ...object(data.failureDetails) });
     const described = description(
       hasFeedback ? feedback.code : (failure?.code ?? data.code ?? reason),
       model ? 'MODEL_REQUEST_FAILED' : 'EXECUTION_FAILED',
+      hasFeedback ? undefined : details?.frameworkCode,
     );
     const base = model ? 'model' : isTool ? 'tool' : subagent ? 'subagent' : 'execution';
     const kind = category(described.code, stage, tool, base);
@@ -368,7 +389,6 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
         : []),
     ];
     const attempt = typeof data.retryIndex === 'number' ? data.retryIndex + 1 : data.attempt;
-    const details = readFailureDetails({ ...failure, ...object(data.failureDetails) });
     candidates.push({
       keys,
       modelOwner: model ? modelOwner : undefined,
@@ -466,9 +486,21 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
   }
   for (const candidate of candidates) {
     const tool = candidate.item.seq === null ? undefined : evidence.get(candidate.item.seq);
-    if (tool && (toolSuccesses.get(tool.key) ?? 0) > tool.finished)
+    const localLimit = ['SUBAGENT_REQUEST_LIMIT', 'SUBAGENT_OUTPUT_LIMIT'].includes(
+      candidate.item.code,
+    );
+    if (
+      localLimit &&
+      candidate.item.seq !== null &&
+      candidate.item.agentId &&
+      (subagentSuccesses.get(JSON.stringify([candidate.item.runId, candidate.item.agentId])) ?? 0) >
+        candidate.item.seq
+    )
+      candidate.item.recovery = 'subsequent_success';
+    else if (!localLimit && tool && (toolSuccesses.get(tool.key) ?? 0) > tool.finished)
       candidate.item.recovery = 'subsequent_success';
     else if (
+      !localLimit &&
       candidate.modelOwner &&
       candidate.item.seq !== null &&
       (successes.get(candidate.modelOwner) ?? 0) > candidate.item.seq
@@ -596,6 +628,7 @@ export async function readSessionErrors(
               'displayPayload.status': {
                 [Op.in]: [
                   'failed',
+                  'completed',
                   'tool_failed',
                   'tool_feedback',
                   'tool_started',

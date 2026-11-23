@@ -27,6 +27,14 @@ const reasons = {
     '子任务执行或结果交接失败',
     '已保存文件和扫描报告保留，请结合排查编号检查子任务执行与结果交接。',
   ],
+  SUBAGENT_REQUEST_LIMIT: [
+    '子任务达到局部模型请求次数上限，局部交付未完成',
+    '已保存产物保留，主 Agent 可沿原上下文接续完成；此限额仅作用于当前子任务，整轮共享请求预算由 d2c.execution.maxTurns 单独控制。',
+  ],
+  SUBAGENT_OUTPUT_LIMIT: [
+    '子任务达到局部输出上限，局部交付未完成',
+    '已保存产物保留，主 Agent 可沿原上下文接续完成或缩小子任务；截断内容不作为完整交付，整轮共享请求预算由 d2c.execution.maxTurns 单独控制。',
+  ],
   MODEL_EMPTY_RESPONSE: [
     '模型连续返回空回复，任务未完成',
     '已保存文件和工具结果保留，可继续当前任务；请核对模型网关的可见输出及输出长度限制。',
@@ -78,6 +86,13 @@ const reasons = {
 } as const;
 
 export type FailureCode = keyof typeof reasons;
+
+/** 精确映射固定局部限额；调用方须先验证来源，不匹配前缀或异常正文。 */
+export function subagentLimitFailureCode(code: unknown) {
+  if (code === 'DEEP_SUBAGENT_MAX_TURNS') return 'SUBAGENT_REQUEST_LIMIT' as const;
+  if (code === 'DEEP_SUBAGENT_OUTPUT_LIMIT') return 'SUBAGENT_OUTPUT_LIMIT' as const;
+}
+
 export type FailureStage = 'prepare' | 'model' | 'tool' | 'validation' | 'storage' | 'worker';
 export type FailureTool =
   | 'prepare_slices'
@@ -402,6 +417,8 @@ export function diagnoseRunFailure(
 ): RunFailureReport {
   let current = error;
   let classified: RunExecutionError | undefined;
+  let localLimit: ReturnType<typeof subagentLimitFailureCode>;
+  let trustedChain = true;
   const seen = new Set<unknown>();
   const diagnostics: RunFailureReport['diagnostics'] = databaseDiagnostics(error);
   const genericCodes = new Set<FailureCode>([
@@ -445,11 +462,22 @@ export function diagnoseRunFailure(
   for (let depth = 0; current && typeof current === 'object' && depth < 8; depth++) {
     if (seen.has(current)) break;
     seen.add(current);
+    trustedChain &&= current instanceof Error;
     if (
       current instanceof RunExecutionError &&
       (!classified ||
         (!priorityCodes.has(classified.code) && priorityCodes.has(current.code)) ||
-        (genericCodes.has(classified.code) && !genericCodes.has(current.code)))
+        (genericCodes.has(classified.code) && !genericCodes.has(current.code)) ||
+        (current.code === 'MODEL_REQUEST_FAILED' &&
+          ['EXECUTION_FAILED', 'TOOL_FAILED', 'SUBAGENT_FAILED'].includes(classified.code)) ||
+        (['SUBAGENT_REQUEST_LIMIT', 'SUBAGENT_OUTPUT_LIMIT'].includes(classified.code) &&
+          ![
+            'SUBAGENT_REQUEST_LIMIT',
+            'SUBAGENT_OUTPUT_LIMIT',
+            'EXECUTION_FAILED',
+            'SUBAGENT_FAILED',
+            'TOOL_FAILED',
+          ].includes(current.code)))
     )
       classified = current;
     if (current instanceof SubagentExecutionError && diagnostics.subagentId === undefined) {
@@ -524,6 +552,8 @@ export function diagnoseRunFailure(
     const framework = frameworkCodeSchema.safeParse(value.message);
     const frameworkCode = framework.success ? framework : frameworkCodeSchema.safeParse(value.code);
     if (frameworkCode.success) diagnostics.frameworkCode = frameworkCode.data;
+    if (trustedChain && frameworkCode.success)
+      localLimit ??= subagentLimitFailureCode(frameworkCode.data);
     const errorType = errorTypeSchema.safeParse(
       current instanceof StorageOperationError
         ? 'StorageOperationError'
@@ -586,12 +616,21 @@ export function diagnoseRunFailure(
       selectedCode = 'MODEL_RATE_LIMITED';
   }
   if (
-    diagnostics.contentCode &&
-    ['EXECUTION_FAILED', 'TOOL_FAILED', 'SUBAGENT_FAILED'].includes(selectedCode)
+    (diagnostics.contentCode || diagnostics.storageOperation) &&
+    [
+      'EXECUTION_FAILED',
+      'TOOL_FAILED',
+      'SUBAGENT_FAILED',
+      'SUBAGENT_REQUEST_LIMIT',
+      'SUBAGENT_OUTPUT_LIMIT',
+    ].includes(selectedCode)
   ) {
     selectedCode = 'STORAGE_FAILED';
     selectedContext.stage = 'storage';
   }
+  /** 只有可信 cause 链上的精确局部码可细化通用失败，真实模型/存储/停止分类优先。 */
+  if (localLimit && ['EXECUTION_FAILED', 'TOOL_FAILED', 'SUBAGENT_FAILED'].includes(selectedCode))
+    selectedCode = localLimit;
   const failure = runFailureSchema.parse({
     errorId: failureOccurrenceId(error),
     code: selectedCode,

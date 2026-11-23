@@ -34,6 +34,14 @@ const failureReasons = {
     '子任务执行或结果交接失败',
     '已保存文件和扫描报告保留，请结合排查编号检查子任务执行与结果交接。',
   ],
+  SUBAGENT_REQUEST_LIMIT: [
+    '子任务达到局部模型请求次数上限，局部交付未完成',
+    '已保存产物保留，主 Agent 可沿原上下文接续完成；此限额仅作用于当前子任务，整轮共享请求预算由 d2c.execution.maxTurns 单独控制。',
+  ],
+  SUBAGENT_OUTPUT_LIMIT: [
+    '子任务达到局部输出上限，局部交付未完成',
+    '已保存产物保留，主 Agent 可沿原上下文接续完成或缩小子任务；截断内容不作为完整交付，整轮共享请求预算由 d2c.execution.maxTurns 单独控制。',
+  ],
   MODEL_EMPTY_RESPONSE: [
     '模型连续返回空回复，任务未完成',
     '已保存文件和工具结果保留，可继续当前任务；请核对模型网关的可见输出及输出长度限制。',
@@ -373,7 +381,13 @@ function describeSubagent(data: Record<string, unknown>): string {
   };
   const feedback = record(data.feedback);
   const reason = knownKey(codes, feedback.code) ? ` · ${codes[feedback.code]}` : '';
-  return `${role}${shortId}${tool}：${status}${detail}${reason}`;
+  const failure = record(data.diagnosticFailure ?? data.failure);
+  const limit =
+    data.status === 'failed' &&
+    (failure.code === 'SUBAGENT_REQUEST_LIMIT' || failure.code === 'SUBAGENT_OUTPUT_LIMIT')
+      ? ` · ${failureReasons[failure.code].join('；')}`
+      : '';
+  return `${role}${shortId}${tool}：${status}${detail}${reason}${limit}`;
 }
 
 /** 页面展示已开放的文件、用户消息和排队状态，不渲染 HTML 或私有 SDK 数据。 */
