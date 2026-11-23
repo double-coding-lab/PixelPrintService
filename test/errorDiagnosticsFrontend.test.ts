@@ -298,3 +298,21 @@ test('生产面板初始 SSR 为全部会话且统计未知，无副作用请求
   assert.match(html, /统计尚未确认/);
   assert.doesNotMatch(html, /<strong>0<|<details/);
 });
+
+test('子任务失败详情经白名单展示和复制，拒绝服务端额外私有字段', () => {
+  const value = fixture();
+  value.items[0].failureDetails = {
+    errorType: 'TypeError',
+    causeCode: 'ENOTFOUND',
+    subagentPhase: 'execute',
+    statusCode: 503,
+    ...({ stack: 'PRIVATE_STACK', message: 'PRIVATE_MESSAGE' } as object),
+  };
+  const projected = projectErrorDiagnostics(value, 'session/one');
+  const text = errorDiagnosticText('session/one', projected.items[0]);
+  assert.match(text, /TypeError/);
+  assert.match(text, /ENOTFOUND/);
+  assert.match(text, /503/);
+  assert.doesNotMatch(JSON.stringify(projected) + text, /PRIVATE_/);
+  assert.match(render(value), /系统错误码/);
+});

@@ -25,6 +25,7 @@ export type DiagnosticError = {
   errorId: string | null;
   requestId: string | null;
   attempt: number | null;
+  failureDetails?: import('../src/shared/failureDetails').FailureDetails;
   recovery: 'retrying' | 'subsequent_success' | 'unresolved' | 'unknown';
 };
 export type ErrorDiagnosticsQuery = {

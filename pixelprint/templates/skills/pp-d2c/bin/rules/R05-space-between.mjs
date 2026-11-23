@@ -3,6 +3,8 @@
 // 期望: 对应 CSS 类含 justify-content: space-between
 // 反向 warning: 类内含 margin-*:auto / justify-content:flex-* / gap:auto 之类模拟法
 
+import { collectRuleBodies } from '../lib/cssMatch.mjs';
+
 export const id = 'R05';
 export const name = 'space-between';
 
@@ -36,7 +38,7 @@ export function check({ cache, product, config, classMap }) {
 
     for (const cls of classes) {
       for (const s of product.style) {
-        const rules = collectRules(s.content, cls);
+        const rules = collectRuleBodies(s.content, cls);
         for (const r of rules) {
           if (/justify-content\s*:\s*space-between/i.test(r.body)) {
             ok = true;
@@ -45,7 +47,7 @@ export function check({ cache, product, config, classMap }) {
           if (!hitFile) {
             hitFile = s.rel;
             hitLine = r.line;
-            hitSnippet = r.snippet;
+            hitSnippet = r.body.slice(0, 200);
           }
         }
         if (ok) break;
@@ -69,19 +71,4 @@ export function check({ cache, product, config, classMap }) {
   }
 
   return violations;
-}
-
-function collectRules(css, className) {
-  const re = new RegExp(`\\.${escapeRegex(className)}\\b[^{]*\\{([\\s\\S]*?)\\}`, 'g');
-  const out = [];
-  let m;
-  while ((m = re.exec(css)) !== null) {
-    const line = css.slice(0, m.index).split('\n').length;
-    out.push({ line, body: m[1], snippet: m[0].slice(0, 200) });
-  }
-  return out;
-}
-
-function escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

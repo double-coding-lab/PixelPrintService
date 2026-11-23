@@ -6,6 +6,7 @@ import type {
   ErrorDiagnosticsQuery,
 } from '../../../shared/errorDiagnostics';
 import { data, id } from './api';
+import { readFailureDetails } from '../../../src/shared/failureDetails';
 
 const categories: Record<DiagnosticErrorCategory, string> = {
   model: '模型调用异常',
@@ -122,6 +123,7 @@ export function projectErrorDiagnostics(
       errorId: text(item.errorId),
       requestId: text(item.requestId),
       attempt: item.attempt === null ? null : count(item.attempt),
+      failureDetails: readFailureDetails(item.failureDetails),
       recovery:
         typeof item.recovery === 'string' && Object.hasOwn(recoveries, item.recovery)
           ? (item.recovery as DiagnosticError['recovery'])
@@ -192,6 +194,11 @@ export function errorDiagnosticText(sessionId: string, item: ErrorItem): string 
     ['requestId', item.requestId],
     ['尝试次数', item.attempt],
     ['恢复状态', label(recoveries, item.recovery, '恢复状态未知')],
+    ['错误类型', item.failureDetails?.errorType],
+    ['系统错误码', item.failureDetails?.causeCode],
+    ['框架错误码', item.failureDetails?.frameworkCode],
+    ['响应状态码', item.failureDetails?.statusCode],
+    ['子任务阶段', item.failureDetails?.subagentPhase],
   ]
     .map(([key, value]) => `${key}: ${value ?? '未记录'}`)
     .join('\n');
@@ -252,6 +259,11 @@ function ErrorRecord({
             ['agentId', item.agentId ?? '未记录'],
             ['阶段', item.stage ?? '未记录'],
             ['尝试次数', item.attempt ?? '未记录'],
+            ['错误类型', item.failureDetails?.errorType ?? '未记录'],
+            ['系统错误码', item.failureDetails?.causeCode ?? '未记录'],
+            ['框架错误码', item.failureDetails?.frameworkCode ?? '未记录'],
+            ['响应状态码', item.failureDetails?.statusCode ?? '未记录'],
+            ['子任务阶段', item.failureDetails?.subagentPhase ?? '未记录'],
           ].map(([key, value]) => (
             <div key={key}>
               <dt>{key}</dt>

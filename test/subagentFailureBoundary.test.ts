@@ -380,6 +380,11 @@ for (const shape of ['error-cause', 'string-cause', 'outer-local-marker'] as con
       assert.equal(f.files.get(reportPath), report(false));
       assert.equal(f.receipts.length, 0);
       assert.equal(f.events.filter((event) => event.status === 'completed').length, 0);
+      const failed = f.events.find((event) => event.status === 'failed');
+      assert.equal(failed?.diagnosticFailure?.code, 'STORAGE_FAILED');
+      assert.equal(failed?.failureDetails?.subagentPhase, 'execute');
+      assert.ok(failed?.failureDetails?.errorType);
+      assert.ok(!JSON.stringify(failed?.failureDetails).includes('TEST_'));
       const background = await f.progress.background();
       assert.equal(background.length, 1);
       assert.equal(background[0].status, 'pending');
