@@ -46,6 +46,11 @@
   color: #72819a;
   font-size: 12px;
 }
+.session-preview-loading-skeleton {
+  box-sizing: border-box;
+  width: min(280px, 100%);
+  padding: 20px;
+}
 .session-preview[hidden],
 .files-layout[hidden] {
   display: none;

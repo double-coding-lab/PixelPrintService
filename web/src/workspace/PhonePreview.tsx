@@ -121,9 +121,11 @@ export function PhonePreviewButton({ preview }: { preview: PhonePreviewState }) 
 export default function PhonePreview({
   preview,
   children,
+  toolbarStart,
 }: {
   preview: PhonePreviewState;
   children: ReactNode;
+  toolbarStart?: ReactNode;
 }) {
   const [preset, setPreset] = useState<string>('standard');
   const [landscape, setLandscape] = useState(false);
@@ -162,10 +164,10 @@ export default function PhonePreview({
       aria-modal={preview.fullscreen ? true : undefined}
       aria-label={preview.fullscreen ? '全屏手机预览' : undefined}
     >
-      <div className="phone-preview-toolbar">
-        <strong>手机预览</strong>
+      <div className={`phone-preview-toolbar${toolbarStart ? ' has-entry' : ''}`}>
+        {toolbarStart ?? <strong>手机预览</strong>}
         <label>
-          屏幕比例
+          <span className="phone-preview-screen-label">屏幕比例</span>
           <select
             aria-label="手机屏幕比例"
             value={preset}
@@ -182,9 +184,9 @@ export default function PhonePreview({
           size="small"
           onClick={() => setLandscape((value) => !value)}
           aria-label="切换横竖屏"
-        >
-          {landscape ? '切为竖屏' : '切为横屏'}
-        </Button>
+          title={landscape ? '切为竖屏' : '切为横屏'}
+          icon={<Icon name="refresh" />}
+        />
         <span className="phone-preview-dimensions" aria-live="polite">
           {width} × {height} · {Math.round(scale * 100)}%
         </span>

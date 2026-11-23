@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Alert, Button, Empty, Image, Select, Skeleton } from 'antd';
+import { Alert, Button, Empty, Image, Select, Skeleton, Spin } from 'antd';
+import PhonePreview, { PhonePreviewButton, usePhonePreview } from './PhonePreview';
 import type { FileInfo } from './types';
 
 /** 只选正式保存的完整目标根基准，不将切图或运行截图冒充设计原图。 */
@@ -33,6 +34,7 @@ function ReferenceImage({ file, onRefresh }: { file: FileInfo; onRefresh?: () =>
   const [failed, setFailed] = useState(false);
   const [dimensions, setDimensions] = useState('');
   const url = imageUrl(file.url);
+  const phone = usePhonePreview(loaded && !failed && !!url);
   const node = file.path.match(/root-(\d+)_(\d+)\.png$/);
   return (
     <>
@@ -45,6 +47,7 @@ function ReferenceImage({ file, onRefresh }: { file: FileInfo; onRefresh?: () =>
         )}
         <span>图片修订 r{file.revision}</span>
         {dimensions && <span>{dimensions}</span>}
+        <PhonePreviewButton preview={phone} />
         {onRefresh && (
           <Button
             size="small"
@@ -67,22 +70,31 @@ function ReferenceImage({ file, onRefresh }: { file: FileInfo; onRefresh?: () =>
           description="请刷新重试，或在源码与资源中检查已保存的基准图。"
         />
       ) : (
-        <div className="design-reference-canvas">
-          {!loaded && <Skeleton.Image active className="design-reference-loading" />}
-          <Image
-            src={url}
-            referrerPolicy="no-referrer"
-            alt={`原设计稿截图${node ? `，节点 ${node[1]}:${node[2]}` : ''}`}
-            preview={{ mask: '放大查看原图' }}
-            onLoad={(event) => {
-              setDimensions(
-                `${event.currentTarget.naturalWidth} × ${event.currentTarget.naturalHeight} px`,
-              );
-              setLoaded(true);
-            }}
-            onError={() => setFailed(true)}
-          />
-        </div>
+        <>
+          {!loaded && (
+            <div className="design-reference-loading" role="status">
+              <Spin size="small" />
+              <span>正在加载设计稿…</span>
+            </div>
+          )}
+          <PhonePreview preview={phone}>
+            <div className="design-reference-canvas">
+              <Image
+                src={url}
+                referrerPolicy="no-referrer"
+                alt={`原设计稿截图${node ? `，节点 ${node[1]}:${node[2]}` : ''}`}
+                preview={{ mask: '放大查看原图' }}
+                onLoad={(event) => {
+                  const image = event.target;
+                  if (image instanceof HTMLImageElement)
+                    setDimensions(`${image.naturalWidth} × ${image.naturalHeight} px`);
+                  setLoaded(true);
+                }}
+                onError={() => setFailed(true)}
+              />
+            </div>
+          </PhonePreview>
+        </>
       )}
     </>
   );
