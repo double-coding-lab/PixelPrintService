@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 16
+revision: 18
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -105,3 +105,10 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 - 冻结版本预览就绪后持续显示，保留刷新、元素审查、调试及全屏操作；取消单独的关闭/重开预览状态。刷新仍只重取票据，不重新构建。
 - 主站原生单选select统一使用受信SVG箭头，右侧12px、尾部36px留白；RTL箭头换侧，高对比模式沿用系统控件。原生多选/列表框和Ant Design Select保持各自行为，生成预览iframe内控件沿原页面源码。
 - 缺口等待只证明已知依赖仍不存在，样式其他问题可在依赖补齐后的真实编译暴露；请求端与队列worker均复核，重启沿用持久记录。修复阶段的截图批次与检查点边界见[执行复验](deep-agents-execution.md#生成期调度与修复复验)。
+
+## 受控交互动作与截图覆盖
+
+- inspect_preview除entryPath外接受actions和focusSelector；最多12个声明式click/swipe/scroll/expect操作。CSS选择器唯一定位，expect支持可见、文本、属性、scrollLeft范围及水平居中；触摸走真实浏览器输入，鼠标走按下/移动/松开，不开放任意脚本。结果逐步返回固定原因与有界观测。
+- focusSelector滚动到目标并截取该位置视口，适合长页面下方交互；截图仍受12000px、10MiB及现有网络、进程和时限保护。coverage记录page/focused、实际文档坐标及范围，区分height_limit、byte_limit和nested_scroll，覆盖限制与真实运行异常分别判断；截图局部覆盖不能作为整页验收。
+- 同previewId加归一动作/聚焦参数指纹缓存并构造附件身份：重复相同计划复用，不同操作或区域保留独立图片。聊天分别说明定点、内部滚动、高度或字节限制，历史缺覆盖信息仅说明局部截图，不推断为高度超限。
+- 原有无动作截图像素与隔离边界保持；交互收敛见执行主题。真实本地Chromium测试覆盖点击、双向手势、循环边界、聚焦下方、断言失败及网络阻断；Docker仅验证既有协议，不表示真实容器浏览器联调。
