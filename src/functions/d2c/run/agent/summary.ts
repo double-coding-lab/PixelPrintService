@@ -211,10 +211,19 @@ export function createContextSummary(input: {
       const snapshot = `/history/snapshot_${createHash('sha256').update(original).digest('hex')}.json`;
       await input.archive.save(snapshot, original);
       sourceArchive = { path: snapshot, characters: original.length };
-      return wrap({ ...request, model: summaryModel }, (modified) => {
-        input.archive.assertHealthy();
-        return handler({ ...modified, model: request.model });
-      });
+      // 原生中间件还会按已有cutoff取有效消息；保持原消息索引，不能传入已裁剪的effective视图。
+      // 完整原文已保存到上面的JSON快照，精简仅替换正文，不改变数量、ID或工具配对。
+      return wrap(
+        {
+          ...request,
+          messages: input.view?.(request.messages) ?? request.messages,
+          model: summaryModel,
+        },
+        (modified) => {
+          input.archive.assertHealthy();
+          return handler({ ...modified, model: request.model });
+        },
+      );
     },
   });
 }

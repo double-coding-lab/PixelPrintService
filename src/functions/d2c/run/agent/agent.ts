@@ -84,7 +84,7 @@ import {
   type InteractionResume,
 } from '../interaction';
 import { createRecoveryMarker } from './checkpoint';
-import { completedWriteView, fitReadPage, maxReadCharacters } from './context';
+import { modelContextView, fitReadPage, maxReadCharacters } from './context';
 import { restoreSummary } from './recovery';
 import { estimateTokens } from './tokens';
 import { HistoryConversionError, messageToAgentRecords } from './history';
@@ -282,6 +282,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
   const resources = input.resources
     ? createFixedResourceBackend({
         ...input.resources,
+        role: input.specialist,
         assertLease: input.assertLease,
         signal,
       })
@@ -1783,7 +1784,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
     await beforeRequest();
     request = {
       ...request,
-      messages: completedWriteView(request.messages, input.contextBudgetTokens),
+      messages: modelContextView(request.messages, input.contextBudgetTokens),
     };
     const tools = controlledTools.map((value) => ({
       name: value.name,
@@ -2261,7 +2262,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           }),
         transformMessage: input.transformMessage,
         overhead: () => promptOverhead,
-        view: (messages) => completedWriteView(messages, input.contextBudgetTokens),
+        view: (messages) => modelContextView(messages, input.contextBudgetTokens),
       })
     : undefined;
   /** 同名中间件替换是 1.16.0 的公开定制机制，避免默认文件和通用子 Agent 越权。 */
