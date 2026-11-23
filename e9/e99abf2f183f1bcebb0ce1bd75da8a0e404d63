@@ -1,0 +1,23 @@
+.Knowledge/matchers/m-deep-agents-execution.json
+  s_f084de538b079d::t_da5c3ae043dee2 43-48
+.Knowledge/stock-docs/deep-agents-execution.md
+  s_f084de538b079d::t_da5c3ae043dee2 106-111
+.Knowledge/topics/deep-agents-execution.md
+  s_f084de538b079d::t_da5c3ae043dee2 3,148-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "e9e99abf2f183f1bcebb0ce1bd75da8a0e404d63",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
