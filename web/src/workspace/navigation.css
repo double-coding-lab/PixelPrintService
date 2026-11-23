@@ -28,6 +28,7 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
+  scrollbar-width: none;
 }
 .session-navigation .sessions {
   display: flex;
@@ -44,7 +45,14 @@
   align-content: start;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  scrollbar-gutter: stable;
+  scrollbar-width: none;
+}
+/** 隐藏导航滚动条，滚轮、触控板及键盘滚动保持可用。 */
+.session-navigation .nav-contents::-webkit-scrollbar,
+.session-navigation .sessions > .item-list::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 /** 限制会话标题的 Grid/Flex 最小宽度，长名称省略且不挤占操作按钮。 */
 .session-navigation .item-list,
