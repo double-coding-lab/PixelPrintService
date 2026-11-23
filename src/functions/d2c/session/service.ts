@@ -1,3 +1,4 @@
+import { listActiveSessions } from './active';
 import { findOrderedPage, findOrderedRows } from '../utils/orderedRead';
 import { modelActivitySchema } from '../run/agent/modelActivity';
 import { defaultSessionName } from './name';
@@ -302,6 +303,10 @@ export function createSessionService(mysql: Sequelize) {
     throw new SessionError(503, 'MODELS_UNAVAILABLE', '会话模型尚未注册');
   }
   return {
+    /** 跨工作区的活动会话快捷入口沿用当前服务持有的数据库与权限。 */
+    active(userId: string, page = 1, pageSize = 20) {
+      return listActiveSessions(mysql, userId, page, pageSize);
+    },
     /** 有编辑权限的用户可随时修改会话标题，与名称事件在同一事务内保存。 */
     async rename(userId: string, id: string, value: string) {
       const name = sessionName(value);

@@ -506,10 +506,19 @@ export default async function sessionRoutes(
       }),
     );
   });
-  /**
-   * GET /workspaces/:id/sessions：分页查询当前用户工作区下的会话，返回 rows/total。
-   * page 默认 1、上限 1000000，pageSize 默认 20、上限 100；归属由服务检查。
-   */
+  /** 全局快捷入口仅返回有权工作区中的活动会话元信息。 */
+  app.get('/sessions/active', async (request) => {
+    const { page, pageSize } = z
+      .object({
+        page: z.coerce.number().int().min(1).max(1000000).default(1),
+        pageSize: z.coerce.number().int().min(1).max(50).default(20),
+      })
+      .parse(request.query);
+    const result = await service.active((await request.getUser()).userId, page, pageSize);
+    return responseData.pagination({ rows: result.items, total: result.total });
+  });
+
+  /** 分页查询当前用户有权工作区下的会话。 */
   app.get('/workspaces/:id/sessions', async (request) => {
     const { id } = params.parse(request.params);
     const { page, pageSize } = z
