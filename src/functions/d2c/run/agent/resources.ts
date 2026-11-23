@@ -3,6 +3,8 @@ import { StateBackend, type BackendProtocolV2, type FileData } from 'deepagents'
 import { validateResourceBundle, type ResourceBundle } from '../../workspace/resources';
 import { resolveTarget, type PixelPrintTarget } from '../../utils/targets';
 import { normalizeReadPath } from '../../utils/readPath';
+import type { SubagentRole } from '../subagent';
+import { fixedResourceReadGuidance } from './readPolicy';
 
 export const resourcePrefix = '/resources/';
 
@@ -26,6 +28,7 @@ export function createFixedResourceBackend(input: {
   bundle: ResourceBundle;
   bundleHash: string;
   target: PixelPrintTarget;
+  role?: SubagentRole;
   assertLease: () => Promise<void>;
   signal: AbortSignal;
 }) {
@@ -33,13 +36,21 @@ export function createFixedResourceBackend(input: {
   if (bundle.hash !== input.bundleHash) throw new Error('固定资源摘要不匹配');
   if (input.target !== 'h5' && input.target !== 'rn') throw new Error('固定资源目标无效');
   const files: Record<string, Extract<FileData, { mimeType: string }>> = Object.create(null);
+  const implementationPaths = new Set<string>();
   for (const file of bundle.files) {
-    const bytes = Buffer.from(file.content, 'base64');
+    // 角色视图在构造内存Backend前完成；搜索和下载也不能接触UI受限实现的原字节。
+    const guidance = fixedResourceReadGuidance(file.path, input.role);
     let content: string | Uint8Array;
-    try {
-      content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    } catch {
-      content = Uint8Array.from(bytes);
+    if (guidance) {
+      content = guidance;
+      implementationPaths.add(resourcePrefix + file.path);
+    } else {
+      const bytes = Buffer.from(file.content, 'base64');
+      try {
+        content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch {
+        content = Uint8Array.from(bytes);
+      }
     }
     files[resourcePrefix + file.path] = {
       content,
@@ -50,6 +61,13 @@ export function createFixedResourceBackend(input: {
   }
   /** 原生 StateBackend 仅复用其读取、分页和搜索协议，不让它接收图状态或写入。 */
   const source = new StateBackend({ state: { files } });
+  // 发现接口仅展示可阅读资料；直接请求实现路径时，source返回普通阅读引导。
+  const visibleFiles = Object.fromEntries(
+    Object.entries(files).filter(([path]) => !implementationPaths.has(path)),
+  );
+  const discovery = implementationPaths.size
+    ? new StateBackend({ state: { files: visibleFiles } })
+    : source;
   const denied = '固定 Skill 资源只读';
   /** 每次读取重新检查取消与执行资格；返回副本，调用方不能修改包内字节。 */
   async function read<T>(action: () => T | Promise<T>) {
@@ -69,13 +87,13 @@ export function createFixedResourceBackend(input: {
     return resourcePrefix + resourceRelativePath(value);
   }
   const backend: BackendProtocolV2 = {
-    ls: (value) => read(() => source.ls(location(value, true))),
+    ls: (value) => read(() => discovery.ls(location(value, true))),
     read: (value, offset, limit) => read(() => source.read(location(value), offset, limit)),
     readRaw: (value) => read(() => source.readRaw(location(value))),
     glob: (pattern, root) =>
-      read(() => source.glob(pattern, location(root ?? resourcePrefix, true))),
+      read(() => discovery.glob(pattern, location(root ?? resourcePrefix, true))),
     grep: (pattern, root, glob, maxCount) =>
-      read(() => source.grep(pattern, location(root ?? resourcePrefix, true), glob, maxCount)),
+      read(() => discovery.grep(pattern, location(root ?? resourcePrefix, true), glob, maxCount)),
     write: async () => ({ error: denied }),
     edit: async () => ({ error: denied }),
     delete: async () => ({ error: denied }),
@@ -112,7 +130,7 @@ export function createFixedResourceBackend(input: {
     async listFiles(value = resourcePrefix) {
       const root = location(value, true).replace(/\/$/, '') + '/';
       return read(() =>
-        Object.keys(files)
+        Object.keys(visibleFiles)
           .filter((path) => path.startsWith(root))
           .sort(),
       );

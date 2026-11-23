@@ -1,4 +1,5 @@
 import { platformImageInstructions } from './imagePolicy';
+import { uiResourceReadInstructions } from './agent/readPolicy';
 import { z } from 'zod';
 import { toolFeedbackSchema } from './toolFeedback';
 import { runFailureSchema } from './errors';
@@ -110,6 +111,7 @@ export function subagentInstructions(role: SubagentRole, nativeScan = false) {
       ? [
           '生成前必须已有本区块的有效rule-hits.json，整页报告只作参考；缺失或未完成的扫描交回父Agent，由rule_scan处理，不尝试写报告、改报告路径或靠改源码消除报告缺失。',
           '优先读本区块报告、当前节点和已登记素材；按实际命中补读对应rules文档，不为常规实现阅读bin检查器源码，不重复读取整页报告或重新逐叶扫描。设计基线和结构已确认后只说明本步实际工作，不反复复述整页内容。',
+          uiResourceReadInstructions,
         ]
       : []),
     responsibilities[role],
