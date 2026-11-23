@@ -220,3 +220,63 @@ test('实际截图保存后返回持久引用，保存失败不缓存成功结�
   assert.deepEqual(await inspection.resolveImage(saved.imageRef), image);
   await inspection.close();
 });
+
+test('同一源码修订的不同交互与聚焦计划使用独立截图缓存，重复计划复用', async () => {
+  let captures = 0;
+  const saved: string[] = [];
+  const inspection = createPreviewInspection({
+    service: service(),
+    eid: 'employee',
+    sessionId: 'session',
+    signal: new AbortController().signal,
+    assertLease: async () => {},
+    capture: async (input) => {
+      captures++;
+      assert.ok(input.inspection);
+      return {
+        image: Buffer.from(`image-${captures}`),
+        mimeType: 'image/png',
+        width: 375,
+        height: 900,
+        truncated: false,
+        errors: [],
+        missingAssets: [],
+        interaction: {
+          passed: true,
+          steps:
+            input.inspection.actions?.map((action, index) => ({
+              step: index + 1,
+              type: action.type,
+              passed: true,
+              reason: 'completed' as const,
+            })) ?? [],
+        },
+      };
+    },
+    saveCapture: async (value) => {
+      saved.push(value.inspectionKey!);
+      return {
+        imageRef: `attachment://${value.inspectionKey}`,
+        image: { mimeType: 'image/png', data: value.capture.image },
+      };
+    },
+  });
+  const plan = { actions: [{ type: 'click' as const, selector: '#next' }] };
+  const first = JSON.parse(await inspection.tools.inspect(undefined, plan));
+  const repeat = JSON.parse(await inspection.tools.inspect(undefined, plan));
+  const focused = JSON.parse(
+    await inspection.tools.inspect(undefined, { ...plan, focusSelector: '#bottom' }),
+  );
+  assert.equal(captures, 2);
+  assert.equal(first.imageRef, repeat.imageRef);
+  assert.notEqual(first.imageRef, focused.imageRef);
+  assert.equal(new Set(saved).size, 2);
+  assert.equal((await inspection.resolveImage(first.imageRef))?.data.toString(), 'image-1');
+  await assert.rejects(
+    inspection.tools.inspect(undefined, {
+      actions: [{ type: 'evaluate', script: 'private' }],
+    } as never),
+  );
+  assert.equal(captures, 2);
+  await inspection.close();
+});
