@@ -213,11 +213,13 @@ export function createPreviewService(
       configSnapshot: Record<string, unknown>;
       resourceRevisionId: string;
       snapshot: PreviewSnapshotFile[];
+      entryPath: string | null;
     },
     transaction?: Transaction,
   ) {
     if (
       prior?.status !== 'failed' ||
+      (prior.buildManifest as Manifest).entryPath !== input.entryPath ||
       (prior.buildManifest as Manifest).target !== input.target ||
       prior.configSnapshot?.hash !== input.configSnapshot.hash ||
       prior.configSnapshot?.configRevision !== input.configSnapshot.configRevision ||
@@ -227,10 +229,12 @@ export function createPreviewService(
       return null;
     const full = await find(prior.previewId!, transaction);
     return full.status === 'failed' &&
+      input.entryPath &&
       unchangedMissingPreviewFile(
         previewFailureDiagnostic(full.error),
         (full.buildManifest as Manifest).snapshot ?? [],
         input.snapshot,
+        input.entryPath,
       )
       ? full
       : null;
@@ -1026,6 +1030,7 @@ export function createPreviewService(
               configSnapshot: row.configSnapshot!,
               resourceRevisionId: row.resourceRevisionId!,
               snapshot: manifest.snapshot ?? [],
+              entryPath: manifest.entryPath,
             },
           );
           controller.signal.throwIfAborted();

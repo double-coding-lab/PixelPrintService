@@ -107,9 +107,12 @@ async function fixture(t: test.TestContext) {
   };
 }
 
-test('34 unrelated revisions reuse one missing-SCSS failure across restart, then retry when saved', async (t) => {
+test('34 edits to existing imported blocks reuse one missing-SCSS failure across restart, then retry when saved', async (t) => {
   const f = await fixture(t);
-  f.save("import './index.scss'; export default () => <div/>");
+  f.save(
+    "import './index.scss'; import { value } from '../generated/block-0'; export default () => <div>{value}</div>",
+  );
+  for (let i = 0; i < 4; i++) f.save('export const value = -1', `src/generated/block-${i}.ts`);
   const first = await f.failed();
   const original = structuredClone(f.tables.D2cPreview[0].buildManifest);
   let service = f.service;
@@ -160,9 +163,133 @@ test('34 unrelated revisions reuse one missing-SCSS failure across restart, then
   assert.ok(f.calls[1].files.some((file) => file.path === 'src/page/index.scss'));
 });
 
+test('24 edits to an existing sibling preserve the transitive travel-kit failure until its directory entry arrives', async (t) => {
+  const f = await fixture(t);
+  const bridge = 'src/page/blocks/index.ts';
+  f.save("import './blocks'; import { value } from './existing'; export default value");
+  f.save("export { default } from './travel-kit'", bridge);
+  f.save('export const value = 0', 'src/page/existing.ts');
+  const first = await f.failed('./travel-kit', bridge);
+  for (let i = 1; i <= 24; i++) {
+    f.save(`export const value = ${i}`, 'src/page/existing.ts');
+    const state = await f.service.createSession('employee-a', f.id, entry);
+    assert.equal(state.current!.previewId, first.previewId);
+    assert.equal(state.current!.status, 'waiting_files');
+    assert.equal(state.current!.validatedFileRevision, first.fileRevision);
+    assert.equal(await f.service.work(signal()), false);
+  }
+  assert.equal(f.calls.length, 1);
+  f.save('export default 1', 'src/page/blocks/travel-kit/index.tsx');
+  f.fail();
+  assert.equal(
+    (await f.service.createSession('employee-a', f.id, entry)).current!.status,
+    'queued',
+  );
+  await f.service.work(signal());
+  assert.equal(f.calls.length, 2);
+  assert.equal(
+    (await f.service.existingSession('employee-a', f.id, entry)).current!.status,
+    'ready',
+  );
+});
+
+test('24 coupon JSX and SCSS edits wait for travel-kit, then compile the latest files once', async (t) => {
+  const f = await fixture(t);
+  const coupon = 'src/page/blocks/coupon-rush/index.tsx';
+  const style = 'src/page/blocks/coupon-rush/index.scss';
+  f.save(
+    "import Coupon from './blocks/coupon-rush'; import Travel from './blocks/travel-kit'; export default () => <><Coupon/><Travel/></>",
+  );
+  f.save("import './index.scss'; export default () => <div className='coupon'>0</div>", coupon);
+  f.save('.coupon { color: red; }', style);
+  const first = await f.failed('./blocks/travel-kit');
+  const evidence = structuredClone(f.tables.D2cPreview[0].buildManifest);
+  for (let i = 1; i <= 24; i++) {
+    f.save(
+      `import './index.scss'; export default () => <div className='coupon'>${i}</div>`,
+      coupon,
+    );
+    f.save(`.coupon { color: red; padding: ${i}px; .label { font-size: 12px; } }`, style);
+    for (const state of [
+      await f.service.existingSession('employee-a', f.id, entry),
+      await f.service.createSession('employee-a', f.id, entry),
+    ]) {
+      assert.equal(state.current!.previewId, first.previewId);
+      assert.equal(state.current!.status, 'waiting_files');
+      assert.equal(state.current!.validatedFileRevision, first.fileRevision);
+    }
+    assert.equal(await f.service.work(signal()), false);
+  }
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(f.tables.D2cPreview[0].buildManifest, evidence);
+  f.save('export default () => <div/>', 'src/page/blocks/travel-kit/index.tsx');
+  f.fail();
+  await f.service.createSession('employee-a', f.id, entry);
+  await f.service.work(signal());
+  assert.equal(f.calls.length, 2);
+  assert.match(
+    f.calls[1].files.find((file) => file.path === style)!.content.toString(),
+    /padding: 24px/,
+  );
+  assert.equal(
+    (await f.service.existingSession('employee-a', f.id, entry)).current!.status,
+    'ready',
+  );
+});
+
+test('waiting defers uncompiled style faults, then exposes the real failure after the known gap is saved', async (t) => {
+  const f = await fixture(t);
+  f.save("import './index.scss'; import './coupon.scss'");
+  f.save('.coupon { color: red; }', 'src/page/coupon.scss');
+  await f.failed();
+  f.save('.coupon { color: $undefined; }', 'src/page/coupon.scss');
+  assert.equal(
+    (await f.service.createSession('employee-a', f.id, entry)).current!.status,
+    'waiting_files',
+  );
+  assert.equal(f.calls.length, 1);
+  f.save('div {}', 'src/page/index.scss');
+  f.fail({ code: 'STYLE_UNDEFINED_VARIABLE', file: 'src/page/coupon.scss' });
+  await f.service.createSession('employee-a', f.id, entry);
+  await f.service.work(signal());
+  assert.equal(f.calls.length, 2);
+  assert.equal(
+    (await f.service.existingSession('employee-a', f.id, entry)).current!.error!.code,
+    'STYLE_UNDEFINED_VARIABLE',
+  );
+});
+
+test('changing an existing sibling import or syntax exposes the next real compiler error', async (t) => {
+  for (const content of [
+    "import './new-dependency'; export const value = 2",
+    'export const value = ;',
+    'export const value = import(path)',
+    'export const value = import.meta.glob("./*.tsx")',
+  ])
+    await t.test(content, async (t) => {
+      const f = await fixture(t);
+      f.save("import './index.scss'; import { value } from './existing'; export default value");
+      f.save('export const value = 1', 'src/page/existing.ts');
+      const first = await f.failed();
+      f.save(content, 'src/page/existing.ts');
+      const next = await f.service.createSession('employee-a', f.id, entry);
+      assert.notEqual(next.current!.previewId, first.previewId);
+      assert.equal(next.current!.status, 'queued');
+      f.fail({ code: 'SYNTAX_ERROR', file: 'src/page/existing.ts', line: 1 });
+      await f.service.work(signal());
+      assert.equal(
+        (await f.service.existingSession('employee-a', f.id, entry)).current!.error!.code,
+        'SYNTAX_ERROR',
+      );
+      assert.equal(f.calls.length, 2);
+    });
+});
+
 test('worker rechecks queued snapshots after an in-flight build learns a missing dependency', async (t) => {
   const f = await fixture(t);
-  f.save("import './index.scss'");
+  f.save("import './index.scss'; import '../other'");
+  f.save("import './other.scss'; export const x = 0", 'src/other.ts');
+  f.save('.coupon { color: red; }', 'src/other.scss');
   f.fail(missing());
   let entered!: () => void;
   let release!: () => void;
@@ -180,7 +307,8 @@ test('worker rechecks queued snapshots after an in-flight build learns a missing
   const working = f.service.work(signal());
   await started;
   try {
-    f.save('export const x = 1', 'src/other.ts');
+    f.save("import './other.scss'; export const x = 1", 'src/other.ts');
+    f.save('.coupon { color: blue; }', 'src/other.scss');
     assert.equal(
       (await f.service.createSession('employee-a', f.id, entry)).current!.status,
       'queued',
@@ -205,6 +333,43 @@ test('worker rechecks queued snapshots after an in-flight build learns a missing
   await f.service.createSession('employee-a', f.id, entry);
   await f.service.work(signal());
   assert.equal(f.calls.length, 2);
+});
+
+test('worker compiles a queued change to the import chain instead of inheriting an old missing-file error', async (t) => {
+  const f = await fixture(t);
+  f.save("import './index.scss'; import '../other'");
+  f.save('export const value = 0', 'src/other.ts');
+  f.fail(missing());
+  let entered!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.hold(async () => {
+    entered();
+    await gate;
+  });
+  await f.service.createSession('employee-a', f.id, entry);
+  const working = f.service.work(signal());
+  await started;
+  try {
+    f.save("import './new'; export const value = 1", 'src/other.ts');
+    await f.service.createSession('employee-a', f.id, entry);
+  } finally {
+    release();
+  }
+  await working;
+  f.hold();
+  f.fail({ code: 'SYNTAX_ERROR', file: 'src/other.ts' });
+  await f.service.work(signal());
+  assert.equal(f.calls.length, 2);
+  assert.equal(
+    (await f.service.existingSession('employee-a', f.id, entry)).current!.error!.code,
+    'SYNTAX_ERROR',
+  );
 });
 
 test('hero, coupon and child SCSS wait independently; each new dependency resumes automatically', async (t) => {
@@ -237,7 +402,12 @@ test('hero, coupon and child SCSS wait independently; each new dependency resume
       );
       assert.equal(await f.service.work(signal()), false);
     }
-    f.save('export default () => <div/>', item.path);
+    f.save(
+      stage === 1
+        ? "import './index.scss'; export default () => <div/>"
+        : 'export default () => <div/>',
+      item.path,
+    );
     const next = await f.service.createSession('employee-a', f.id, entry);
     assert.equal(next.current!.status, 'queued');
     assert.notEqual(next.current!.previewId, failed.previewId);
@@ -452,7 +622,7 @@ test('explicit retry remains available and no run means missing dependencies rem
   assert.equal(f.tables.D2cPreview[0].previewId, first.previewId);
 });
 
-/** 无源码解析器时，保守地将原文件的所有修改交回编译器；新增二进制同样使证据失效。 */
+/** 即使其他源码可解析，删除、二进制与解析别名仍不能沿用旧等待证据。 */
 test('snapshot comparison invalidates deletions, binary changes and case aliases without retaining a cache', () => {
   const source = (filePath: string, content = ''): PreviewSnapshotFile => ({
     path: filePath,
@@ -462,7 +632,7 @@ test('snapshot comparison invalidates deletions, binary changes and case aliases
     size: Buffer.byteLength(content),
     sha256: hash(content),
   });
-  const prior = [source(entry)];
+  const prior = [source(entry, "import './index.scss'")];
   const added = source('src/other.ts');
   assert.equal(
     unchangedMissingPreviewFile(missing(), prior, [...prior, added]),
@@ -503,4 +673,97 @@ test('snapshot comparison invalidates deletions, binary changes and case aliases
     undefined,
   );
   assert.equal(unchangedMissingPreviewFile(missing(), [...prior, asset], prior), undefined);
+});
+
+test('dependency graph uses real transitive imports, aliases and resolution candidates conservatively', () => {
+  const source = (path: string, content: string): PreviewSnapshotFile => ({
+    path,
+    kind: 'source',
+    content,
+    objectLocator: null,
+    size: Buffer.byteLength(content),
+    sha256: hash(content),
+  });
+  const bridge = 'src/page/bridge.ts';
+  const sibling = 'src/page/existing.ts';
+  const diagnostic = missing('./travel-kit', bridge);
+  const prior = [
+    source(entry, "import '@/page/bridge'; import './existing'; export default 1"),
+    source(bridge, "export { default } from './travel-kit'"),
+    source(sibling, 'export const value = 1'),
+    source('src/style.scss', '.card { color: red; }'),
+    source('src/data.json', '{"value":1}'),
+  ];
+  const change = (name: string, content: string) =>
+    prior.map((file) => (file.path === name ? source(name, content) : file));
+  assert.equal(
+    unchangedMissingPreviewFile(
+      diagnostic,
+      prior,
+      change(sibling, 'export const value = 2'),
+      entry,
+    ),
+    'src/page/travel-kit',
+  );
+  const invalidated = [
+    change(bridge, "export { default } from './travel-kit'; export const value = 1"),
+    change(entry, "import './existing'; export default 1"),
+    change(sibling, "import './new'; export const value = 1"),
+    change(sibling, 'export const value = ;'),
+    change(sibling, 'export const value = require(path)'),
+    change(sibling, 'const load = require; export const value = load(path)'),
+    change(sibling, 'export const value = import.meta.glob("./*.tsx")'),
+    change('src/style.scss', "@use './new'; .card { color: red; }"),
+    change('src/style.scss', "@import './new';"),
+    change('src/style.scss', "@forward './new';"),
+    change('src/style.scss', 'a { background: url($dynamic); }'),
+    change('src/style.scss', '@use'),
+    change('src/data.json', '{"value":}'),
+    prior.filter((file) => file.path !== sibling),
+    [...prior, source('src/page/travel-kit/index.tsx', 'export default 1')],
+    [...prior, source('src/page/bridge/index.tsx', 'export default 1')],
+    [...prior, source('src/page/bridge.web.tsx', 'export default 1')],
+    [...prior, source('src/new.ts', 'export const value = ;')],
+  ];
+  for (const snapshot of invalidated)
+    assert.equal(unchangedMissingPreviewFile(diagnostic, prior, snapshot, entry), undefined);
+
+  const unrelated = [source(entry, 'export default 1'), source(bridge, "import './travel-kit'")];
+  assert.equal(
+    unchangedMissingPreviewFile(diagnostic, unrelated, unrelated, entry),
+    undefined,
+    'an unreachable importer is not evidence for this entry',
+  );
+  for (const content of [
+    "// import './travel-kit'\nexport default 1",
+    'const text = "import \'./travel-kit\'"',
+  ]) {
+    const files = [source(entry, content)];
+    assert.equal(
+      unchangedMissingPreviewFile(missing('./travel-kit'), files, files, entry),
+      undefined,
+      'comments and strings are not imports',
+    );
+  }
+  for (const content of ["import('./travel-kit')", "require('./travel-kit')"]) {
+    const files = [source(entry, content), source(sibling, 'export const value = 1')];
+    assert.equal(
+      unchangedMissingPreviewFile(
+        missing('./travel-kit'),
+        files,
+        [files[0], source(sibling, 'export const value = 2')],
+        entry,
+      ),
+      'src/page/travel-kit',
+    );
+  }
+  const jsImport = [
+    source(entry, "import './travel-kit.js'"),
+    source('src/page/travel-kit.ts', 'export default 1'),
+  ];
+  assert.equal(
+    missingPreviewFile(missing('./travel-kit.js'), jsImport),
+    undefined,
+    'Vite may substitute a TS source for a JS import',
+  );
 });
