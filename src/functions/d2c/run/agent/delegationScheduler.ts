@@ -142,7 +142,15 @@ export function createDelegationScheduler(options: { concurrency: number; signal
 
   /** 父工具副作用仅预留路径互斥，含内部执行清单；权限仍由原工具拒绝，不占子 Agent 名额。 */
   function exclusive<T>(writePaths: string[], action: () => Promise<T>): Promise<T> {
-    const paths = reserve(writePaths, true);
+    // 父操作可指目录；先消除安全的单个尾斜杠，再用相同规范路径检查互斥。
+    const normalized = writePaths.map((value) => {
+      try {
+        return normalizeRelativePath(value);
+      } catch {
+        return invalid(typeof value === 'string' ? value : undefined);
+      }
+    });
+    const paths = reserve(normalized, true);
     return (async () => {
       try {
         signal.throwIfAborted();

@@ -1,4 +1,5 @@
 import { uiPrerequisites } from './uiPrerequisites';
+import { createFileVersions } from './fileVersions';
 import { editArgumentDetail } from '../editFile';
 import { toolArgumentDetail } from './argumentFeedback';
 import { readFailureDetails } from '../../../../shared/failureDetails';
@@ -195,6 +196,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
   }
   let turns = 0;
   let output = '';
+  const fileVersions = createFileVersions();
   let delegations = 0;
   let executionDelegations = 0;
   let promptOverhead = 0;
@@ -412,7 +414,10 @@ export async function runAgent(input: AgentRunInput): Promise<{
             { path, resource },
           );
         return track(
-          input.tools.read(path, resource, offset ?? 0, readLength(length)).then(fitReadOutput),
+          input.tools.read(path, resource, offset ?? 0, readLength(length)).then((value) => {
+            if (!resource) fileVersions.read(path, value);
+            return fitReadOutput(value);
+          }),
         );
       },
       {
@@ -428,7 +433,18 @@ export async function runAgent(input: AgentRunInput): Promise<{
       },
     ),
     tool(
-      ({ path, content, complete, merge }) => {
+      async ({ path, content, complete, merge }) => {
+        const serialized = typeof content === 'string' ? content : JSON.stringify(content);
+        // 识别主Agent沿用旧缓存写法；明确未写入，不伪造缓存更新或文件交付。
+        if (!input.specialist && path === '.d2c-cache/last-page.json')
+          return JSON.stringify({
+            ok: false,
+            skipped: true,
+            reason: 'PLATFORM_MANAGED_CACHE',
+            path,
+            message:
+              '该缓存由平台维护，本次请求未写入。无需重试；执行进度请写入页面目录的.d2c-tasks.md，缓存可用read_file核对。',
+          });
         if (path.startsWith(archivePrefix) || path.startsWith(resourcePrefix))
           throw toolIssue(
             'FILE_WRITE_NOT_ALLOWED',
@@ -441,26 +457,51 @@ export async function runAgent(input: AgentRunInput): Promise<{
             stage: 'tool',
             tool: 'write_file',
           });
-        return track(
+        const result = await track(
           input.saveScanSnapshot
-            ? input.saveScanSnapshot(path, content, complete !== false, merge === true)
-            : input.tools.write(path, content),
+            ? input.saveScanSnapshot(path, serialized, complete !== false, merge === true)
+            : input.tools.write(path, serialized),
         );
+        if (!readToolFeedback(result) && !input.saveScanSnapshot)
+          fileVersions.wrote(path, serialized);
+        return result;
       },
       {
         name: 'write_file',
         description:
-          '通过平台逐文件保存源码。rule_scan可用merge=true提交本批合法rule-hits JSON，平台按rule/nodeId/trigger合并并保存累计报告；传统报告首批须含block/cache_key/generated_at/generated_by/hits，后续批次可只提交hits并继承报告头。平台已保存的原生报告只提交当前nativeScan.fingerprint和本批nativeReview，新增命中再附hits数组，不复制整份报告；重试不重复。中间批complete=false，最终批complete=true。其他文件不可merge，不要等到末尾一次输出大报告。',
+          '通过平台逐文件保存源码。rule_scan可用merge=true提交本批合法rule-hits JSON，平台按rule/nodeId/trigger合并并保存累计报告；传统报告首批须含block/cache_key/generated_at/generated_by/hits，后续批次可只提交hits并继承报告头。平台已保存的原生报告只提交当前nativeScan.fingerprint和本批nativeReview，新增命中再附hits数组，不复制整份报告；rule_scan优先将content作为JSON对象提交，平台负责序列化，仍须携带当前nativeScan.fingerprint。重试不重复。中间批complete=false，最终批complete=true。其他文件不可merge，不要等到末尾一次输出大报告。',
         schema: z.object({
           path: z.string(),
-          content: z.string(),
+          content:
+            input.specialist === 'rule_scan'
+              ? z.union([
+                  z.string(),
+                  z
+                    .object({
+                      nativeScan: z.object({ fingerprint: z.string().min(1).max(200) }).optional(),
+                      nativeReview: z
+                        .array(
+                          z.object({
+                            rule: z.string().min(1).max(80),
+                            nodeId: z.string().min(1).max(200),
+                            decision: z.enum(['hit', 'not_applicable']),
+                            reason: z.string().trim().min(1).max(2000),
+                          }),
+                        )
+                        .max(256)
+                        .optional(),
+                      hits: z.array(z.record(z.string(), z.unknown())).max(256).optional(),
+                    })
+                    .passthrough(),
+                ])
+              : z.string(),
           complete: z.boolean().nullable().optional(),
           merge: z.boolean().nullable().optional(),
         }),
       },
     ),
     tool(
-      ({ path, oldText, newText, expectedSha256 }) => {
+      async ({ path, oldText, newText, expectedSha256 }) => {
         if (path.startsWith(archivePrefix) || path.startsWith(resourcePrefix) || !input.tools.edit)
           throw toolIssue(
             'FILE_WRITE_NOT_ALLOWED',
@@ -468,17 +509,24 @@ export async function runAgent(input: AgentRunInput): Promise<{
             { stage: 'tool', tool: 'edit_file' },
             { path: path.slice(0, 1024) },
           );
-        return track(input.tools.edit(path, oldText, newText, expectedSha256));
+        const result = await track(
+          input.tools.edit(path, oldText, newText, fileVersions.expected(path, expectedSha256)),
+        );
+        fileVersions.edited(path, result);
+        return result;
       },
       {
         name: 'edit_file',
         description:
-          '局部修改已读文本文件。先read_file取得完整文件sha256，oldText须精确且唯一匹配；使用expectedSha256防止覆盖并发变更。同一文件的编辑必须串行，成功后下次编辑使用返回的新sha256，不能复用旧摘要；摘要冲突必须重读。新文件用write_file；禁止借局部编辑改固定配置或证据。',
+          '局部修改已读文本文件。先read_file取得完整文件sha256，oldText须精确且唯一匹配；expectedSha256可省略，平台使用本Agent最近成功读写的回执版本；显式传入时按原值校验，真实并发变化仍拒绝。同一文件的编辑必须串行，成功后下次编辑使用返回的新sha256，不能复用旧摘要；摘要冲突必须重读。新文件用write_file；禁止借局部编辑改固定配置或证据。',
         schema: z.object({
           path: z.string(),
           oldText: z.string().min(1),
           newText: z.string(),
-          expectedSha256: z.string().regex(/^[a-f0-9]{64}$/),
+          expectedSha256: z
+            .string()
+            .regex(/^[a-f0-9]{64}$/)
+            .nullish(),
         }),
       },
     ),
@@ -621,6 +669,17 @@ export async function runAgent(input: AgentRunInput): Promise<{
     { role, task, writePaths, nodeId, resumeAgentId }: DelegationInput,
     restored?: { agentId: string; status: 'pending' | 'settled'; result?: string },
   ) {
+    // 一个机器nodeId只能绑定一份报告，任务文字中的其他节点不能改变真实扫描范围。
+    if (role === 'rule_scan' && writePaths.length !== 1)
+      throw toolIssue(
+        'INVALID_ARGUMENT',
+        'VALIDATION_FAILED',
+        { stage: 'tool', tool: 'delegate_agent' },
+        {
+          detail:
+            'rule_scan每次只接收一个rule-hits.json和对应nodeId。多个区块须分别委派，各自提供真实节点；不要把多个报告放入同一writePaths。此次未扫描、未写入或启动子模型。',
+        },
+      );
     let blockedUiDependencies: Awaited<ReturnType<typeof uiPrerequisites>> = [];
     const key = createHash('sha256')
       .update(JSON.stringify([role, nodeId ?? '', [...writePaths].sort(), task]))
@@ -664,11 +723,11 @@ export async function runAgent(input: AgentRunInput): Promise<{
             nodeId,
             ...(resumeAgentId ? { resumeAgentId } : {}),
             dependencies,
-            nextAction: {
+            nextActions: dependencies.map((item) => ({
               role: 'rule_scan',
               nodeId,
-              writePaths: dependencies.map((item) => item.path),
-            },
+              writePaths: [item.path],
+            })),
             message:
               'UI尚未启动。先为上述区块派发rule_scan，等待真实报告完成并收取结果后再启动UI；整页报告不能代替区块报告。不要让UI补写报告，不要原样重复当前委派。已有源码保留。',
           });
@@ -993,11 +1052,11 @@ export async function runAgent(input: AgentRunInput): Promise<{
         if (role === 'ui' && blockedUiDependencies.length) {
           return incomplete('UI_PREREQUISITES_REQUIRED', {
             dependencies: blockedUiDependencies,
-            nextAction: {
+            nextActions: blockedUiDependencies.map((item) => ({
               role: 'rule_scan',
               nodeId,
-              writePaths: blockedUiDependencies.map((item) => item.path),
-            },
+              writePaths: [item.path],
+            })),
             message:
               '缺少有效区块报告，UI模型未执行。由父级完成rule_scan并收取报告后沿用原任务上下文继续；已有源码保留。',
           });
@@ -1358,6 +1417,47 @@ export async function runAgent(input: AgentRunInput): Promise<{
         });
         return result;
       } catch (error) {
+        // 局部模型限额只阻止新请求；已有交付须先核验，可信故障、取消和共享预算仍不能结算成功。
+        let limitReason: string | undefined;
+        let safeLimit = true;
+        let limitCause: unknown = error;
+        const checkedCauses = new Set<unknown>();
+        while (limitCause && typeof limitCause === 'object' && !checkedCauses.has(limitCause)) {
+          checkedCauses.add(limitCause);
+          if (
+            limitCause instanceof RunExecutionError &&
+            !['TOOL_FAILED', 'MODEL_REQUEST_FAILED'].includes(limitCause.code)
+          )
+            safeLimit = false;
+          if (
+            limitCause instanceof Error &&
+            /^DEEP_SUBAGENT_(?:MAX_TURNS|OUTPUT_LIMIT)$/.test(limitCause.message)
+          )
+            limitReason = limitCause.message;
+          limitCause =
+            limitCause instanceof ToolInvocationError
+              ? limitCause.toolError
+              : 'cause' in limitCause
+                ? limitCause.cause
+                : undefined;
+        }
+        if (production && limitReason && safeLimit && !signal.aborted) {
+          await guard();
+          const delivery = await inspectDelivery();
+          if (!delivery.problems.length) {
+            const result = JSON.stringify({
+              success: true,
+              role,
+              files: [...saved],
+              result: '已核验授权文件及必要检查，交付完整；局部模型限额后未追加模型请求。',
+            });
+            await progress?.complete(result);
+            await publish('completed', undefined, {
+              delivery: { success: true, files: [...saved], missingFiles: [] },
+            });
+            return result;
+          }
+        }
         /** 最近一次纠错可能已经修复，不能拿旧工具反馈解释当前未知异常。 */
         if (!signal.aborted) {
           const failure = diagnoseRunFailure(
@@ -1512,7 +1612,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           tool((params: DelegationInput) => track(launchDelegation(params)), {
             name: 'delegate_agent',
             description:
-              '有持久化子任务时本工具只启动后台工作并返回accepted/agentId，尚未完成。主Agent继续实现自己的区域，为独立子区块保留接口/占位；需要子产物或进行组合、全局检查、预览前用wait_subagents(wait=true)收集结果，不要立刻等待或循环查状态。局部失败返回handoff和resumeAgentId；优先沿用原role/nodeId/writePaths并传resumeAgentId恢复，接管前读取contextPath，不丢弃已有进度。委派独立子Agent：rule_scan扫描规则并保存rule-hits.json；ui仅为真实sub-图层生成区块源码和assets.txt，必须提供nodeId；无sub-整页由主Agent自己出码，Rule-Scan页面根虚拟block不允许委派ui；writePaths列出本次允许保存的全部精确相对文件路径。design/review仍只读。所有子Agent不继承聊天历史、不递归或运行任意脚本，独立且writePaths不重叠的委派可同轮并行调用，最多两个同时执行，共享总预算；UI子Agent须对授权blocks/<alias>目录执行check_rules(block)，修复后重新检查；同一违规连续两轮未改善以RULE_REPAIR_STALLED交回，父级定点接管，不原样重派；不能merge或检查越界目录。父Agent只负责自己的区域与组合，最后一次机械merge不重复深入子区域语义校验；全局单agent复验仅用户主动请求时执行。已知框架检查需要区块目录，与精确writePaths不兼容时保守拒绝，不能扩大写权限。task最多8000个UTF-8字节，中文通常每字3字节；只给目标nodeId、h5/rn、Skill/配置/全局清单/缓存/报告路径及必要约束，不复制源码、规则正文或节点JSON，详情由子Agent读取；rule_scan按rules/README.md原文读取全部规则（不硬编码数量），ui读取扫描报告落实assets.txt消费证明；内层sub返回父级继续派发。',
+              '有持久化子任务时本工具只启动后台工作并返回accepted/agentId，尚未完成。主Agent继续实现自己的区域，为独立子区块保留接口/占位；需要子产物或进行组合、全局检查、预览前用wait_subagents(wait=true)收集结果，不要立刻等待或循环查状态。局部失败返回handoff和resumeAgentId；优先沿用原role/nodeId/writePaths并传resumeAgentId恢复，接管前读取contextPath，不丢弃已有进度。委派独立子Agent：rule_scan每次仅扫描一个nodeId并保存其唯一rule-hits.json；多个区块分别委派，不能共用一个nodeId生成多份报告；ui仅为真实sub-图层生成区块源码和assets.txt，必须提供nodeId；无sub-整页由主Agent自己出码，Rule-Scan页面根虚拟block不允许委派ui；writePaths列出本次允许保存的全部精确相对文件路径。design/review仍只读。所有子Agent不继承聊天历史、不递归或运行任意脚本，独立且writePaths不重叠的委派可同轮并行调用，最多两个同时执行，共享总预算；UI子Agent须对授权blocks/<alias>目录执行check_rules(block)，修复后重新检查；同一违规连续两轮未改善以RULE_REPAIR_STALLED交回，父级定点接管，不原样重派；不能merge或检查越界目录。父Agent只负责自己的区域与组合，最后一次机械merge不重复深入子区域语义校验；全局单agent复验仅用户主动请求时执行。已知框架检查需要区块目录，与精确writePaths不兼容时保守拒绝，不能扩大写权限。task最多8000个UTF-8字节，中文通常每字3字节；只给目标nodeId、h5/rn、Skill/配置/全局清单/缓存/报告路径及必要约束，不复制源码、规则正文或节点JSON，详情由子Agent读取；rule_scan按rules/README.md原文读取全部规则（不硬编码数量），ui读取扫描报告落实assets.txt消费证明；内层sub返回父级继续派发。',
             schema: z.object({
               role: z.enum(['design', 'review', 'rule_scan', 'ui']),
               resumeAgentId: z.string().uuid().nullable().optional(),

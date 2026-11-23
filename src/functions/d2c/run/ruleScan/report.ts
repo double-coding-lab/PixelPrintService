@@ -214,7 +214,7 @@ export function nativeScanInstructions(paths: string[]) {
     '程序命中及报告头由平台保护；读取pending对应的真实规则和必要节点，不逐条重抄已计算的尺寸、填充、布局。未知或变更规则按原文完整判断，不能视为通过。',
     '每个pending中的nodeId都须在报告nativeReview中保存{rule,nodeId,decision:"hit"或"not_applicable",reason:"真实判断理由"}；hit还须保存对应hits项，未命中也要明确理由。分批用write_file(merge=true,complete=false)，最后complete=true。',
     '疑难项每批补交必须携带nativeScan:{fingerprint:当前报告的原值}，包括只追加hits的批次；不使用旧报告指纹或省略当前输入绑定。',
-    '只补疑难判断时，content仅提交{"nativeScan":{"fingerprint":"从当前报告复制原值"},"nativeReview":[{"rule":"实际规则","nodeId":"实际节点","decision":"not_applicable","reason":"真实理由"}]}。无需复制报告头、程序hits或完整报告；新增命中才追加hits数组。content须用JSON序列化，不能拼接未转义的引号或换行。',
+    '只补疑难判断时，content仅提交{"nativeScan":{"fingerprint":"从当前报告复制原值"},"nativeReview":[{"rule":"实际规则","nodeId":"实际节点","decision":"not_applicable","reason":"真实理由"}]}。无需复制报告头、程序hits或完整报告；新增命中才追加hits数组。content优先直接传JSON对象，由平台序列化；兼容字符串时须为合法JSON，不能拼接未转义的引号或换行。',
     'unsupportedRules表示新增或变化的规则：pending根节点是整范围复核任务，读取该规则并检查scope_nodeIds内真实节点；nativeReview按根节点汇总，hits按实际命中节点保存。只修改已授权范围，不能因为规则变化而扩大范围。',
     '这些是生成前约束，代码生成后仍须执行对应端check_rules；deferredChecks是生成后待检查项，不代表已经通过。',
   ].join('\n');

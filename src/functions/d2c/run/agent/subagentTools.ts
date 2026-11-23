@@ -187,6 +187,11 @@ export function createSubagentTools(
       return denied();
     },
     async rules(relative, mode) {
+      try {
+        relative = normalizeRelativePath(relative);
+      } catch {
+        return denied(relative);
+      }
       if (role !== 'ui' || mode !== 'block' || !directories.has(relative)) return denied(relative);
       attempted.add(relative);
       checked.delete(relative);
