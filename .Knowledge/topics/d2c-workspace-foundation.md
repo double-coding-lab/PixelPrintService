@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 14
+revision: 15
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -94,10 +94,15 @@ confidence: inferred
 ## 大正文文件存储
 
 - `content/runtime.ts`已装配当前文件/Figma缓存、Agent恢复、版本/作品冻结、ZIP/广场源码、预览冷重建和临时编辑。三张文件表的可空`contentRef`及预览snapshot记录不可变引用；二进制`objectLocator`沿用原语义。
-- `d2c.contentStorage`默认`schemaReady=false/mode=inline`，默认模型投影和旧INSERT不依赖新列；审阅增量建列并重启后设置`schemaReady=true`。此开关进程内固定；回退写模式时仍保持它为true，以读取历史引用。
+- `d2c.contentStorage`新建配置默认`schemaReady=true/mode=external`，省略配置的旧部署保持`schemaReady=false/mode=inline`，默认模型投影和旧INSERT不依赖新列；审阅增量建列并重启后设置`schemaReady=true`。此开关进程内固定；回退写模式时仍保持它为true，以读取历史引用。
 - `shadow`保留正文与引用兼容旧写入；有inline时优先读取，复制冻结前剔除与当前大小/摘要不符的陈旧引用。确认旧writer退出后才可`external`；低于阈值或超出当前传输能力的正文保留inline。候选阈值262144字节，目标性能待测量。
 - `content/store.ts`以AES-256-GCM、可信scope、独立版本密钥、随机不可变对象、上传回读及大小/摘要核验保护正文；底层复用平台文件客户端，有界并发/排队和流式下载限额，不缓存正文。引用/密钥/定位只在服务端，浏览器与编辑DTO仍返回授权字符串。
 - 上传和正文还原在业务事务外执行，提交前重验权限、修订及租约/CAS；版本、作品、预览复用同一不可变对象。数据库失败保留旧状态及未引用对象；当前阶段不做GC。
 - `content:audit`仅生成容量SELECT；`content:migrate`提供固定表组、默认dry-run、BIGINT分页、逐行正文、原子私有游标、分批resume及restore回填。外置apply要求显式确认；冲突/活动预览/故障保留失败行之前游标。目标库DDL、迁移和性能验证由部署方执行。
 - 回滚旧程序前先停止外置写入、恢复全部所需inline并核验，保留元数据/对象/历史正文密钥；仅关mode不能让旧程序读取引用。执行时间线保持现有存储；检查点与pending writes的独立外置开关及恢复边界见执行专题。
 - 可执行配置、迁移顺序及阶段划分见[工作区基础终稿](../stock-docs/d2c-workspace-foundation.md#大正文文件存储)。
+
+## 规则检查状态展示
+
+- 前端版本及作品的规则检查文案将stale、not_checked和缺失状态统一展示为“待检查”；passed仍显示“通过”，failed显示“未通过”，未知状态保留明确提示。
+- 后台继续保留stale与修订绑定；源码修改使旧结论失效，暂存版本保存当时检查状态，展示文案不改变校验或恢复逻辑。

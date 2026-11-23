@@ -37,6 +37,8 @@
 | runtime.d2c.storage.enabled | 启用文件持久化，默认 true |
 | runtime.d2c.secrets.activeKeyId | 当前 Figma 凭据加密密钥版本 |
 | runtime.d2c.secrets.keys | 版本到真实密钥材料的映射，初始化生成，服务端直接使用；没有外部密钥解析器 |
+| runtime.d2c.contentStorage / checkpointStorage | 新建配置默认 external、schemaReady=true；分别控制文件正文和检查点/中间写入，阈值默认262144字节 |
+| runtime.d2c.contentStorage.encryption / checkpointStorage.encryption | setup分别生成32字节随机密钥的Base64；持久保存并保留历史keyId |
 | runtime.d2c.limits.textFileBytes | 单个文本文件写入上限，示例默认100MiB（104857600字节），包括源码和受控节点缓存 |
 | runtime.d2c.limits.filesPerSession | 单会话文件数量上限 |
 | runtime.d2c.limits.uploadBytes | 单次上传最大字节数，默认30MB |
@@ -54,3 +56,5 @@ node scripts/setup.mjs --config new-user.private.json --user alice
 ```
 
 将其 `auth.users[0]` 加入正式配置的 `auth.users` 数组，然后重启。仅复制用户记录，不要替换正式配置中的会话和凭据加密密钥。临时配置也含随机密钥，删除前妥善处理且不要提交。
+
+新默认值适用于使用初始化脚本创建的配置。已有配置保持原值；缺省存储块仍按旧库模式读取。已有数据库必须先补齐两阶段引用列，再启用schemaReady；新建库由db:init或容器入口创建字段。

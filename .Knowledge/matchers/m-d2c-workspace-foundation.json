@@ -44,6 +44,8 @@
     "文件存储迁移",
     "contentStorage",
     "content:migrate",
-    "正文回填"
+    "正文回填",
+    "待检查",
+    "规则检查"
   ]
 }

@@ -1,5 +1,6 @@
 # 检查点与中间写入外置：第二阶段
 
+新部署默认：setup生成的contentStorage与checkpointStorage均为external、schemaReady=true，并生成独立密钥；运行前由db:init或容器入口创建新表。下文inline/shadow配置用于已有库的分阶段升级，已有配置不会自动改写。
 2026-11-21。用户授权双仓同步实现，内仓兼容旧检查点和中间写入。代码独立于第一阶段提交，分支codex/content-storage-phase2。当前实施和离线验证，不执行目标库DDL/DML、真实上传、历史迁移或清理。
 
 ## 范围与观测

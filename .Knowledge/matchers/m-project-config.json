@@ -17,6 +17,9 @@
     "写入上限",
     "100MiB",
     "requestTimeoutMs",
-    "单次请求超时"
+    "单次请求超时",
+    "external",
+    "contentStorage",
+    "checkpointStorage"
   ]
 }

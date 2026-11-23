@@ -27,6 +27,8 @@ docker compose up --build -d
 
 访问 `http://localhost:8080`，登录后在页面保存 Figma Token、创建工作区和会话。容器首次启动会创建缺失的数据表，不会删除现有数据。请为此发行版使用独立数据库。
 
+新建配置默认将 `runtime.d2c.contentStorage` 和 `runtime.d2c.checkpointStorage` 设置为 `external`、`schemaReady: true`，初始化脚本会分别生成正文加密密钥。首次启动或 `npm run db:init` 创建的新表包含引用列；小于阈值或超过单对象限额的正文仍留库。已有 `project.config.json` 不会被覆盖；已有数据库升级时需先执行两个阶段的增量 SQL，再调整对应配置并重启。
+
 首次构建需要下载 npm 包、Python 包、Chromium 和系统依赖。构建网络需能访问公共软件源；可按部署网络配置标准 HTTP_PROXY / HTTPS_PROXY。后续预览和截图不在请求中下载依赖。
 
 容器内的 `localhost` 指向容器自身；模型运行在宿主机时，填写可从容器访问的地址。macOS / Windows Docker Desktop 通常可用 `host.docker.internal`。

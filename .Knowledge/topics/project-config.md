@@ -1,6 +1,6 @@
 ---
 id: project-config
-revision: 3
+revision: 4
 summary: "本地配置字段、模型预算、存储与生效时机"
 primary: config
 confidence: inferred
@@ -41,3 +41,8 @@ project.config.json、配置填写、运行配置、modelConfigs、contextBudget
 ## 单次模型请求超时
 
 - modelConfigs 每个模型可设置 requestTimeoutMs，单位毫秒，默认 180000，范围 1000–600000。新轮次保存模型快照；已有显式快照不被配置覆盖，旧快照缺少字段时回退默认值。主/子模型及摘要共用此字段，整轮 runTimeoutMs 和 maxTurns 继续独立生效。
+
+## 新建部署的正文外置默认值
+
+- 示例及setup生成的runtime.d2c.contentStorage与checkpointStorage默认mode=external、schemaReady=true，阈值262144字节；setup分别生成独立32字节标准Base64正文密钥。
+- 新建表由db:init或容器入口创建引用列。已有project.config.json不覆盖，省略存储块仍兼容旧库；已有数据库先补齐两阶段引用列再启用，不能仅复制新默认值。

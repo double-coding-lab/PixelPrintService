@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 10
+revision: 11
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -106,7 +106,7 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 
 ## 检查点和中间写入外置
 
-- `d2c.checkpointStorage`独立于文件正文开关，默认`schemaReady=false/mode=inline`；配置位于project.config.json的runtime.d2c。三列新引用就绪后重启启用，旧schema默认SELECT/INSERT不依赖新列。
+- `d2c.checkpointStorage`独立于文件正文开关，新建配置默认`schemaReady=true/mode=external`，省略配置的旧部署保持`schemaReady=false/mode=inline`；配置位于project.config.json的runtime.d2c。三列新引用就绪后重启启用，旧schema默认SELECT/INSERT不依赖新列。
 - 两表保留typed BLOB，新增checkpointRef/metadataRef及数据库writeRef（模型valueRef）；shadow双写兼容旧writer，external仅外置合格大载荷，旧BLOB始终优先读取。回退inline仍保留schemaReady、历史密钥和对象；旧程序回滚前必须restore全部所需BLOB。
 - `content/binaryStore.ts`保存任意typed bytes，gzip获益时压缩，再以独立密钥AES-256-GCM加密；引用pixelprint.blob.v1绑定行身份、namespace、checkpoint/task/idx及typed编码，回读校验且解压有界。超出传输能力的合法载荷留库，定位/密钥不公开、不进入日志。
 - 序列化/上传及还原/反序列化在租约事务外。提交仍经原leases.commit；失租、取消或提交失败保留旧状态。普通write重复first-wins，特殊负idx last-wins，整批提交原子；重复普通写预检跳过无用上传，最后仍重验租约。
