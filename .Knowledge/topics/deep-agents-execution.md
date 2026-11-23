@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 12
+revision: 13
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -88,7 +88,7 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 
 ## UI任务准入与编译反馈
 
-- 正式执行器具备scanRules时，UI启动前核对授权区块的rule-hits.json结构、当前原生扫描指纹与疑难判断完成情况。缺失或未完成报告返回UI_PREREQUISITES_REQUIRED、dependencies和rule_scan的nextAction，此时不启动UI模型、不消耗执行委派次数；父级收取区块报告后继续。整页报告不能替代区块报告。
+- 正式执行器具备scanRules时，UI启动前核对授权区块的rule-hits.json结构、当前原生扫描指纹与疑难判断完成情况。缺失或未完成报告返回UI_PREREQUISITES_REQUIRED、dependencies和逐区块rule_scan的nextActions，此时不启动UI模型、不消耗执行委派次数；父级收取区块报告后继续。整页报告不能替代区块报告。
 - 已持久化的旧后台任务经原身份保存依赖交接，保留源码、检查点和上下文。UI仍禁止修改规则报告，实际源码违规继续由真实检查和有界无进展交接处理。路径占用反馈要求先收取相关任务，授权范围保持不变。
 - UI读取以本区块报告、节点、素材表及必要规则文档为主；bin检查器实现由父级排查。完整缓存和历史继续保留，进度说明复用已确认基线，聚焦区块与实际变化。
 - edit_file在参数解析和实际编辑两层返回摘要类型/长度、空原片段及无变化的具体反馈，不回传正文、不代填摘要；并发摘要冲突仍需重新读取。
@@ -125,3 +125,13 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - 历史INVALID_ARGUMENT未保存具体字段时不能倒推出当时参数；同一子任务的通用失败与父级交接失败须关联分析，不能直接算作两个独立根因。真实规则失败、摘要冲突和片段不唯一保留校验。回归见toolArgumentDetail、editArgumentFeedback、errorDiagnostics、failureDetails及subagentFailureBoundary。
 - H5检查器共享cssMatch词法与作用域解析：完整类名、静态SCSS嵌套&、多父选择器及分组at-rule按真实主体收集直接声明，避免.card读取.card-title或子级声明；R05共用相同规则。它不执行Sass mixin、循环或动态插值，也不模拟浏览器条件和级联。回归见ruleClassBoundary、ruleCssParsing及ruleAssetEvidence，规则脚本可脱离node_modules运行。
 - 已冻结工作区须更新对应规则资源；部署新平台代码不会自动改写线上旧脚本或历史结果。字体问题独立处理，本轮未调整字体资源。
+
+## 执行前置条件与减少无效重试
+
+- 一次`rule_scan`委派只允许一个`nodeId`对应一份`rule-hits.json`；多个区块分别委派，避免用同一个节点生成多个区块报告。多报告请求在扫描、保存和子模型执行前拒绝；旧后台描述也不得按歧义范围续扫。UI准入反馈的`nextActions`逐项列出独立扫描任务，待报告真实完成后再继续UI，报告写权限保持分离。
+- 生产子任务因自身模型请求或输出上限退出时，先复核实际交付。仅授权文件齐全、报告完整且当前指纹及必要最新检查均通过时，保存真实成功回执，不再追加模型请求；部分报告、缺文件或待检查仍按缺口交接。共享请求预算、取消、存储和租约等可信故障不能被局部限额吞掉。
+- `rule_scan`的`write_file.content`兼容字符串，也可传结构化报告对象，由程序序列化；原生增量仍需当前`nativeScan.fingerprint`及真实`nativeReview`，保留合并、命中和最终交付校验，不用空对象冒充完整报告。
+- `edit_file.expectedSha256`允许省略或null：只使用本Agent最近一次真实读取、整文件保存或局部编辑回执中的完整摘要。每个Agent独立、最多保留256个路径；重启后的新执行若无回执须先重读。显式摘要原样核验，外部并发变更和非唯一片段仍拒绝；不查询当前内容后自动覆盖，也不猜测或截短摘要。
+- 安全目录尾斜杠在调度锁及子任务授权前统一规范化；路径穿越、兄弟或越权目录仍拒绝。主Agent写平台维护的`.d2c-cache/last-page.json`返回`skipped/PLATFORM_MANAGED_CACHE`，明确未写入且无需重试；其他受保护写入不放开，执行进度写页面目录`.d2c-tasks.md`。
+- 切图命名未齐使用`SLICE_NAMES_REQUIRED`及有界`needsNames`提示补齐，保留时间线但不计入执行错误、工具纠正、规则失败或错误总数；真正无效参数与历史`INVALID_ARGUMENT`仍保留原错误计量。历史记录不会因新版本自动改写。
+- 实现见`agent/agent.ts`、`agent/fileVersions.ts`、`agent/delegationScheduler.ts`、`agent/subagentTools.ts`、`run/slices.ts`与`run/errorDiagnostics.ts`。回归覆盖副作用前拒绝、局部限额的完整/部分交付、版本回执隔离及真实冲突、目录授权和命名统计；无需新增数据库表或运行配置。预览去重见[生成期缺依赖等待](d2c-preview-editing.md#生成期缺依赖等待)。

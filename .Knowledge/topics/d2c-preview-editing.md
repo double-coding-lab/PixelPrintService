@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 9
+revision: 10
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -89,3 +89,10 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 - 进入作品库会话版本详情时，入口仅从该冻结版本的 TSX/JSX 源码选择，按目录语义优先首页：`pages/home|index|page|main/index`（支持 `src/` 前缀），其次平铺首页、根 App/index/main、其他页面及通用源码；`blocks`、`components`、测试目录内组件排后。同级按路径深度、数值自然路径顺序稳定选择。
 - 截图场景默认选 `pages/page/index.tsx`，保留区块入口供手动切换。文件列表重排不覆盖仍有效的手动选择；已选文件移除时回退到首选页面；切换版本重新选择默认入口。目录规则无法推断任意业务首页时，用户仍可手动指定。
 - 实现为 `previewEntry.ts`、`PreviewPanel.previewEntries`；回归见 `previewUi` 与 `libraryManagementBrowser`。此规则作用于作品库冻结版本，不修改编译器或会话执行流程。
+
+## 生成期缺依赖等待
+
+- 同会话、入口、运行修订、目标、配置及资源范围内，最近持久化的`MODULE_NOT_FOUND`可作为等待依据：原失败快照中的文件未改动、未删除，缺失的本地源码/样式依然未保存时，无关新增源码不再反复触发同一必失败构建。排队worker领取后也复核，避免前一构建刚失败而新快照已经入队的竞态；依据来自既有预览记录，服务重启后仍可读取。
+- 依赖补齐后自动继续真实编译；旧文件改变、删除，新增二进制或路径大小写冲突时保守交回编译器。显式重试可绕过等待去重；缺包、非法路径、语法错误、较新的真实失败或成功不能被旧缺依赖记录覆盖。
+- 仅有活动run时把真实缺文件状态投影为`waiting_files`；run结束仍显示实际失败。冻结版本及临时编辑构建不套用生成期等待，不用占位源码或伪造成功；原失败输入快照保持不变，不将新修订声称为已编译。
+- 实现见`preview/session.ts`的`unchangedMissingPreviewFile`及`preview/service.ts`；`previewDependencyWaiting.test.ts`覆盖连续无关修订、依赖分阶段补齐、作用域隔离、队列竞态、显式重试和重启恢复。本次无需新增DDL或配置。
