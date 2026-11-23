@@ -717,3 +717,284 @@ test('历史终态未带failure时关联同轮安全错误，避免重复计算�
   assert.equal(snapshot.items[0].code, 'NETWORK_TIMEOUT');
   assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE/);
 });
+
+/** 只写平台已保存的公开摘要，不向诊断读取器提供原始工具参数。 */
+function toolPair(
+  f: Awaited<ReturnType<typeof fixture>>,
+  options: {
+    tool?: string;
+    detail?: string;
+    agentId?: string;
+    runId?: string;
+    result?: Record<string, unknown>;
+    callId?: string;
+  } = {},
+) {
+  const {
+    tool = 'read_file',
+    detail = '读取会话文件：pages/a.tsx',
+    agentId,
+    runId,
+    result = {},
+    callId = randomUUID(),
+  } = options;
+  const identity = agentId ? { stage: 'subagent', agentId, role: 'ui', tool } : { name: tool };
+  const start = f.event(
+    agentId ? 'stage' : 'tool_call',
+    {
+      ...identity,
+      callId,
+      detail,
+      status: agentId ? 'tool_started' : 'started',
+    },
+    runId,
+  );
+  const end = f.event(
+    agentId ? 'stage' : 'tool_result',
+    {
+      ...identity,
+      callId,
+      status: agentId ? 'tool_completed' : 'completed',
+      ...result,
+    },
+    runId,
+  );
+  return { start, end };
+}
+
+test('同轮同Agent同工具同对象后续成功恢复纠正，保留历史错误数量且不返回操作摘要', async () => {
+  const f = await fixture();
+  const failed = toolPair(f, { result: { feedback: toolFeedback('FILE_NOT_FOUND') } });
+  toolPair(f);
+  const child = randomUUID();
+  const childFailure = toolPair(f, {
+    agentId: child,
+    tool: 'check_rules',
+    detail: '检查规则：pages/a · block',
+    result: { status: 'tool_feedback', feedback: toolFeedback('RULES_FAILED') },
+  });
+  toolPair(f, { agentId: child, tool: 'check_rules', detail: '检查规则：pages/a · block' });
+  const result = await f.read();
+  assert.equal(result.total, 1);
+  assert.equal(result.toolCorrections, 1);
+  assert.equal(result.ruleFailures, 1);
+  assert.equal(
+    result.items.find((item) => item.seq === failed.end)?.recovery,
+    'subsequent_success',
+  );
+  assert.equal(
+    result.items.find((item) => item.seq === childFailure.end)?.recovery,
+    'subsequent_success',
+  );
+  assert.doesNotMatch(JSON.stringify(result), /pages\/a|PRIVATE/);
+});
+
+test('不同文件、命令、资源域、Agent、轮次和无可靠对象均不猜测恢复', async (t) => {
+  const cases = [
+    { next: { detail: '读取会话文件：pages/b.tsx' } },
+    { next: { detail: '读取固定资源：pages/a.tsx' } },
+    { next: { agentId: randomUUID() } },
+    { next: { runId: randomUUID() } },
+    { next: { tool: 'write_file', detail: '写入文件：pages/a.tsx' } },
+    { first: { detail: '读取会话文件：' }, next: { detail: '读取会话文件：' } },
+    {
+      first: { detail: `读取会话文件：${'a'.repeat(200)}` },
+      next: { detail: `读取会话文件：${'a'.repeat(200)}` },
+    },
+    {
+      first: { tool: 'figma', detail: 'Figma：fetch-node · 节点 92:1' },
+      next: { tool: 'figma', detail: 'Figma：inspect-node · 节点 92:1' },
+    },
+    {
+      first: { tool: 'figma', detail: 'Figma：fetch-node · 节点 92:1' },
+      next: { tool: 'figma', detail: 'Figma：fetch-node · 节点 92:2' },
+    },
+  ];
+  for (const [index, entry] of cases.entries())
+    await t.test(String(index), async () => {
+      const f = await fixture();
+      const failed = toolPair(f, {
+        ...entry.first,
+        result: { feedback: toolFeedback('INVALID_ARGUMENT') },
+      });
+      toolPair(f, entry.next);
+      f.event('run_status', { status: 'succeeded' });
+      assert.equal(
+        (await f.read()).items.find((item) => item.seq === failed.end)?.recovery,
+        'unknown',
+      );
+    });
+});
+
+test('取消、未知、恢复补写、反馈和失败结果均不是明确成功证据', async (t) => {
+  for (const result of [
+    { status: 'unknown' },
+    { status: 'cancelled' },
+    { status: 'failed' },
+    { recovered: true },
+    { interrupted: true },
+    { cancelled: true },
+    { result: 'unknown' },
+    { resultStatus: 'unknown' },
+    { ok: false },
+    { feedback: toolFeedback('INVALID_ARGUMENT') },
+    { feedback: {} },
+    { failure: {} },
+    { diagnosticFailure: {} },
+  ])
+    await t.test(JSON.stringify(result), async () => {
+      const f = await fixture();
+      const failed = toolPair(f, { result: { feedback: toolFeedback('FILE_NOT_FOUND') } });
+      toolPair(f, { result });
+      assert.equal(
+        (await f.read()).items.find((item) => item.seq === failed.end)?.recovery,
+        'unknown',
+      );
+    });
+});
+
+test('成功必须有唯一且晚于失败的调用起点，旧事件或并发在途成功不能关联', async (t) => {
+  for (const mode of ['missing', 'duplicate', 'parallel', 'result-before-call', 'invalid-agent'])
+    await t.test(mode, async () => {
+      const f = await fixture();
+      const callId = randomUUID();
+      const start = () =>
+        f.event('tool_call', {
+          callId,
+          name: 'read_file',
+          detail: '读取会话文件：pages/a.tsx',
+          status: 'started',
+          ...(mode === 'invalid-agent' ? { agentId: 'token-private' } : {}),
+        });
+      if (mode === 'parallel') start();
+      const failed = toolPair(f, { result: { feedback: toolFeedback('FILE_NOT_FOUND') } });
+      if (['duplicate', 'invalid-agent'].includes(mode)) start();
+      if (mode === 'duplicate') start();
+      f.event('tool_result', { callId, name: 'read_file', status: 'completed' });
+      if (mode === 'result-before-call') start();
+      assert.equal(
+        (await f.read()).items.find((item) => item.seq === failed.end)?.recovery,
+        'unknown',
+      );
+    });
+});
+
+test('主子相同callId不去重且成功不跨Agent；冻结分页重算不吸入边界后成功', async () => {
+  const f = await fixture();
+  const callId = randomUUID();
+  const main = toolPair(f, { callId, result: { feedback: toolFeedback('FILE_NOT_FOUND') } });
+  toolPair(f, {
+    callId,
+    agentId: randomUUID(),
+    result: { status: 'tool_feedback', feedback: toolFeedback('FILE_NOT_FOUND') },
+  });
+  const frozen = await f.read({ pageSize: 1 });
+  assert.equal(frozen.total, 2);
+  toolPair(f);
+  const fresh = await f.read();
+  assert.equal(fresh.total, 2);
+  assert.equal(fresh.items.find((item) => item.seq === main.end)?.recovery, 'subsequent_success');
+  // 新连接不共享缓存，验证SQL冻结条件而不是仅验证命中缓存。
+  const cold = await readSessionErrors(
+    { models: f.mysql.models } as typeof f.mysql,
+    'employee-a',
+    f.id,
+    {
+      snapshotSeq: frozen.snapshotSeq,
+      snapshotToken: frozen.snapshotToken,
+      before: 1,
+      pageSize: 1,
+    },
+  );
+  assert.equal(cold.total, 2);
+  assert.equal(cold.snapshotToken, frozen.snapshotToken);
+  assert.equal(cold.items[0].recovery, 'unknown');
+});
+
+test('正式保存器的主工具摘要/结果与子工具事件均提供可靠恢复证据', async () => {
+  const f = await fixture();
+  for (const fail of [true, false]) {
+    const callId = randomUUID();
+    await f.persistence.record({
+      kind: 'tool_call',
+      name: 'edit_file',
+      callId,
+      sdkItem: {
+        type: 'function_call',
+        name: 'edit_file',
+        callId,
+        arguments: JSON.stringify({
+          path: 'pages/a.tsx',
+          content: 'PRIVATE_SOURCE',
+          expectedSha256: 'PRIVATE_HASH',
+        }),
+      },
+    });
+    await f.persistence.record({
+      kind: 'tool_result',
+      name: 'edit_file',
+      callId,
+      sdkItem: {
+        type: 'function_call_result',
+        callId,
+        output: JSON.stringify(fail ? toolFeedback('INVALID_ARGUMENT') : { ok: true }),
+      },
+    });
+    const agentId = '00000000-0000-4000-8000-000000000001';
+    const childCall = randomUUID();
+    await f.persistence.recordSubagent({
+      stage: 'subagent',
+      agentId,
+      role: 'ui',
+      status: 'tool_started',
+      tool: 'read_file',
+      callId: childCall,
+      detail: '读取会话文件：pages/a.tsx',
+    });
+    await f.persistence.recordSubagent({
+      stage: 'subagent',
+      agentId,
+      role: 'ui',
+      status: fail ? 'tool_feedback' : 'tool_completed',
+      tool: 'read_file',
+      callId: childCall,
+      ...(fail ? { feedback: toolFeedback('FILE_NOT_FOUND') } : {}),
+    });
+  }
+  const result = await f.read();
+  assert.equal(result.total, 2);
+  assert.ok(result.items.every((item) => item.recovery === 'subsequent_success'));
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE|pages\/a/);
+});
+
+test('命令和规则模式精确匹配，不能以未通过规则的completed事件作为成功', async () => {
+  for (const mismatch of [false, true]) {
+    const f = await fixture();
+    toolPair(f, {
+      tool: 'figma',
+      detail: 'Figma：fetch-node · 节点 92:1',
+      result: { feedback: toolFeedback('INVALID_ARGUMENT') },
+    });
+    toolPair(f, {
+      tool: 'figma',
+      detail: 'Figma：fetch-node · 节点 92:1',
+      result: mismatch ? { command: 'export-image' } : {},
+    });
+    toolPair(f, {
+      tool: 'check_rules',
+      detail: '检查规则：pages/a · block',
+      result: { feedback: toolFeedback('RULES_FAILED') },
+    });
+    toolPair(f, {
+      tool: 'check_rules',
+      detail: mismatch ? '检查规则：pages/a · merge' : '检查规则：pages/a · block',
+      result: { ruleCheck: { passed: false } },
+    });
+    const result = await f.read();
+    assert.equal(
+      result.items.find((item) => item.tool === 'figma')?.recovery,
+      mismatch ? 'unknown' : 'subsequent_success',
+    );
+    assert.equal(result.items.find((item) => item.tool === 'check_rules')?.recovery, 'unknown');
+  }
+});

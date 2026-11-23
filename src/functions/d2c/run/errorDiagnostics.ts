@@ -8,6 +8,7 @@ import type {
   ErrorDiagnostics,
   ErrorDiagnosticsQuery,
 } from '../../../../shared/errorDiagnostics';
+import { readFailureDetails } from '../../../shared/failureDetails';
 import { ownedSession, requireIdentifier, SessionError } from '../session/access';
 import { findOrderedRows } from '../utils/orderedRead';
 import { gatewayRequestIdSchema } from './agent/modelActivity';
@@ -128,6 +129,117 @@ function category(
   return base;
 }
 
+/** 仅使用已有公开动作摘要定位操作对象；不读取SDK、正文或原始参数。
+ * 摘要中的字段可能在200字符处截断，无法证明完整对象时保持未知。
+ */
+function toolTarget(tool: string, detail: unknown): string | null {
+  if (typeof detail !== 'string' || detail.length > 512 || /[\u0000-\u001f\u007f]/.test(detail))
+    return null;
+  let fields: string[] | undefined;
+  if (tool === 'read_file') {
+    const match =
+      /^读取(固定资源|会话文件)：(.+?)( · 字符偏移 \d+，(?:自动页长|请求 \d+ 字符))?$/.exec(detail);
+    if (match) fields = [match[1], match[2], match[3] ?? ''];
+  } else if (['write_file', 'edit_file', 'delete_file'].includes(tool)) {
+    const prefix = {
+      write_file: '写入文件：',
+      edit_file: '局部修改文件：',
+      delete_file: '删除文件：',
+    }[tool]!;
+    if (detail.startsWith(prefix)) fields = [detail.slice(prefix.length)];
+  } else if (tool === 'check_rules') {
+    const match = /^检查规则：(.+) · (block|merge)$/.exec(detail);
+    if (match) fields = [match[1], match[2]];
+  } else if (tool === 'prepare_slices') {
+    const match = /^准备切图：([a-z0-9][a-z0-9-]{0,63})$/.exec(detail);
+    if (match) fields = [match[1]];
+  } else if (tool === 'figma') {
+    const match =
+      /^Figma：(fetch-node|inspect-node|export-image|screenshot) · 节点 (\d+:\d+)( · 子树分页 \d+)?$/.exec(
+        detail,
+      );
+    if (match) fields = [match[1], match[2], match[3] ?? ''];
+  }
+  if (!fields || fields.some((field) => field.length >= 200) || !fields[0]) return null;
+  return JSON.stringify([tool, ...fields]);
+}
+
+type ToolEvidence = { key: string; started: number; finished: number; success: boolean };
+
+/** 同run同Agent的唯一callId配对；缺起点、重复编号或未知结果不能推断成功。 */
+function toolEvidence(rows: D2cTimeline[]) {
+  const calls = new Map<string, { row: D2cTimeline; start: boolean }[]>();
+  for (const row of rows) {
+    const data = object(row.displayPayload);
+    const child = row.kind === 'stage' && data.stage === 'subagent';
+    const start = row.kind === 'tool_call' || (child && data.status === 'tool_started');
+    if (!start && row.kind !== 'tool_result' && !(child && String(data.status).startsWith('tool_')))
+      continue;
+    const runId = identifier(row.runId);
+    const callId = identifier(row.toolCallId ?? data.callId);
+    if (row.toolCallId != null && data.callId != null && row.toolCallId !== data.callId) continue;
+    const agentId = identifier(data.agentId);
+    // 主工具事件的既有契约没有agentId；显式非法身份不能回退成主Agent。
+    const owner =
+      (agentId ? `agent:${agentId}` : null) ??
+      (!child &&
+      data.agentId == null &&
+      (data.scope == null || ['main', 'generation'].includes(String(data.scope)))
+        ? 'main'
+        : null);
+    if (!runId || !callId || !owner || !Number.isSafeInteger(row.seq)) continue;
+    const key = JSON.stringify([runId, owner, callId]);
+    const group = calls.get(key) ?? [];
+    group.push({ row, start });
+    calls.set(key, group);
+  }
+  const bySeq = new Map<number, ToolEvidence>();
+  for (const group of calls.values()) {
+    if (group.length !== 2) continue;
+    const begin = group.find((entry) => entry.start)?.row;
+    const end = group.find((entry) => !entry.start)?.row;
+    if (!begin || !end || begin.seq! >= end.seq!) continue;
+    const a = object(begin.displayPayload),
+      b = object(end.displayPayload);
+    const tool = a.name ?? a.tool;
+    if (typeof tool !== 'string' || !tools.has(tool) || (b.name ?? b.tool ?? tool) !== tool)
+      continue;
+    if (!['started', 'tool_started'].includes(String(a.status))) continue;
+    const target = toolTarget(tool, a.detail);
+    if (!target || (b.detail != null && b.detail !== a.detail)) continue;
+    const command = tool === 'figma' ? JSON.parse(target)[1] : null;
+    if (
+      (a.command != null && a.command !== command) ||
+      (b.command != null && b.command !== command)
+    )
+      continue;
+    const evidence: ToolEvidence = {
+      key: JSON.stringify([
+        begin.runId,
+        a.agentId == null ? 'main' : `agent:${identifier(a.agentId)}`,
+        target,
+      ]),
+      started: begin.seq!,
+      finished: end.seq!,
+      success:
+        ['completed', 'tool_completed'].includes(String(b.status)) &&
+        b.feedback == null &&
+        b.failure == null &&
+        b.diagnosticFailure == null &&
+        b.recovered !== true &&
+        b.interrupted !== true &&
+        b.cancelled !== true &&
+        b.ok !== false &&
+        b.result == null &&
+        b.resultStatus == null &&
+        object(b.ruleCheck).passed !== false &&
+        object(b.delivery).success !== false,
+    };
+    bySeq.set(end.seq!, evidence);
+  }
+  return bySeq;
+}
+
 /** 参数拒绝非法游标，before始终是去重、筛选后的记录偏移数。 */
 function validate(query: ErrorDiagnosticsQuery) {
   if (query.runId !== undefined) {
@@ -151,6 +263,11 @@ function validate(query: ErrorDiagnosticsQuery) {
 /** 读取已有公开事件并构造安全候选；没有可靠关联的不同历史记录分别保留。 */
 function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
   const candidates: Candidate[] = [];
+  const evidence = toolEvidence(rows);
+  const toolSuccesses = new Map<string, number>();
+  for (const entry of evidence.values())
+    if (entry.success)
+      toolSuccesses.set(entry.key, Math.max(toolSuccesses.get(entry.key) ?? 0, entry.started));
   const terminalEvents = new Set<string>();
   const stopped = new Set(['failed', 'interrupted', 'succeeded', 'cancelled', 'paused']);
   const stoppedRuns = new Set(
@@ -236,11 +353,20 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
     const operationId = identifier(data.operationId);
     const callId = identifier(row.toolCallId ?? data.callId);
     const keys = [
-      ...(errorId ? [`error:${errorId}`] : []),
-      ...(operationId ? [`operation:${runId}:${operationId}`] : []),
-      ...(callId ? [`call:${runId}:${callId}`] : []),
+      ...(errorId ? [`error:${runId}:${errorId}`] : []),
+      ...(operationId
+        ? [
+            `operation:${runId}:${agentId ? `agent:${agentId}` : subagent ? 'unknown' : 'main'}:${operationId}`,
+          ]
+        : []),
+      ...(callId
+        ? [
+            `call:${runId}:${agentId ? `agent:${agentId}` : subagent ? 'unknown' : 'main'}:${callId}`,
+          ]
+        : []),
     ];
     const attempt = typeof data.retryIndex === 'number' ? data.retryIndex + 1 : data.attempt;
+    const details = readFailureDetails(data.failureDetails);
     candidates.push({
       keys,
       modelOwner: model ? modelOwner : undefined,
@@ -252,6 +378,7 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
             : 'executionErrors',
       item: {
         id: '',
+        ...(details ? { failureDetails: details } : {}),
         seq,
         at: timestamp(row.createdAt),
         runId,
@@ -312,7 +439,7 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
       'execution',
     );
     candidates.push({
-      keys: failure ? [`error:${failure.errorId}`] : [],
+      keys: failure ? [`error:${runId}:${failure.errorId}`] : [],
       bucket: kind === 'rule' ? 'ruleFailures' : 'executionErrors',
       item: {
         id: '',
@@ -335,7 +462,10 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
     });
   }
   for (const candidate of candidates) {
-    if (
+    const tool = candidate.item.seq === null ? undefined : evidence.get(candidate.item.seq);
+    if (tool && (toolSuccesses.get(tool.key) ?? 0) > tool.finished)
+      candidate.item.recovery = 'subsequent_success';
+    else if (
       candidate.modelOwner &&
       candidate.item.seq !== null &&
       (successes.get(candidate.modelOwner) ?? 0) > candidate.item.seq
@@ -397,6 +527,8 @@ function deduplicate(candidates: Candidate[], sessionId: string) {
         'attempt',
       ] as const)
         if (item[field] === null) Object.assign(item, { [field]: other.item[field] });
+      if (!item.failureDetails && other.item.failureDetails)
+        item.failureDetails = other.item.failureDetails;
       if (other.item.scope === 'subagent') item.scope = 'subagent';
       if (other.item.recovery === 'subsequent_success') item.recovery = 'subsequent_success';
       else if (item.recovery === 'unknown' && other.item.recovery === 'retrying')
@@ -454,11 +586,19 @@ export async function readSessionErrors(
           sessionId,
           seq: { [Op.lte]: snapshotSeq },
           [Op.or]: [
-            { kind: { [Op.in]: ['tool_result', 'model_status', 'run_status'] } },
+            { kind: { [Op.in]: ['tool_call', 'tool_result', 'model_status', 'run_status'] } },
             {
               kind: 'stage',
               'displayPayload.stage': 'subagent',
-              'displayPayload.status': { [Op.in]: ['failed', 'tool_failed', 'tool_feedback'] },
+              'displayPayload.status': {
+                [Op.in]: [
+                  'failed',
+                  'tool_failed',
+                  'tool_feedback',
+                  'tool_started',
+                  'tool_completed',
+                ],
+              },
             },
           ],
         },
