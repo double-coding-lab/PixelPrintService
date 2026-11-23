@@ -72,10 +72,21 @@ export async function sanitizeResources(root) {
             return value;
           }
         });
-        if (entry.name === 'SKILL.md' && !text.includes('通用发行版字体约定')) {
-          text =
-            '> 通用发行版字体约定：字体资源仅使用用户提供的真实可访问地址。未配置字体时使用系统回退；/fonts/ 和 example.com 均为示例，禁止当作已存在的远程资源。\n\n' +
-            text;
+        if (entry.name === 'SKILL.md') {
+          const note =
+            '> 通用发行版字体约定：字体资源仅使用用户提供的真实可访问地址。未配置字体时使用系统回退；/fonts/ 和 example.com 均为示例，禁止当作已存在的远程资源。';
+          // 兼容旧发行包：YAML frontmatter必须位于文首，说明放在闭合分隔符后。
+          text = text.replace(/^> 通用发行版字体约定[^\n]*\r?\n(?:\r?\n)?/, '');
+          if (!text.includes('通用发行版字体约定')) {
+            const header = text.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/);
+            text = header
+              ? header[0] +
+                '\n' +
+                note +
+                '\n\n' +
+                text.slice(header[0].length).replace(/^\r?\n/, '')
+              : note + '\n\n' + text;
+          }
         }
         await fs.writeFile(filename, text);
       }

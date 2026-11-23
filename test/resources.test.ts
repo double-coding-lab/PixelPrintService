@@ -17,6 +17,10 @@ test('resource updates retain public presets and discard unsupported integration
     await writeFile(
       skill,
       [
+        '---',
+        'name: demo',
+        'description: test resource',
+        '---',
         'import { View } from "@tarojs/components";',
         'import { Private } from "@private/widgets";',
         'https://assets.private.invalid/fonts/Display.woff2',
@@ -27,6 +31,8 @@ test('resource updates retain public presets and discard unsupported integration
     const { sanitizeResources } = await import('../scripts/sanitize-resources.mjs');
     await sanitizeResources(root);
     const result = await readFile(skill, 'utf8');
+    assert.match(result, /^---\nname: demo\ndescription: test resource\n---\n/);
+    assert.ok(result.indexOf('通用发行版字体约定') > result.indexOf('\n---'));
     assert.match(result, /@tarojs\/components/);
     assert.doesNotMatch(result, /@private|private\.invalid/);
     assert.match(result, /\/fonts\/Display\.woff2/);
@@ -39,6 +45,10 @@ test('resource updates retain public presets and discard unsupported integration
     );
     await sanitizeResources(root);
     assert.equal(await readFile(skill, 'utf8'), result);
+    const note = result.match(/^> 通用发行版字体约定[^\n]*/m)![0];
+    await writeFile(skill, note + '\n\n' + result.replace(note + '\n\n', ''));
+    await sanitizeResources(root);
+    assert.equal(await readFile(skill, 'utf8'), result, '旧包说明前置时应修复且保持幂等');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

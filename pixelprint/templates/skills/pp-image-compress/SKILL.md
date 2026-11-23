@@ -1,9 +1,9 @@
-> 通用发行版字体约定：字体资源仅使用用户提供的真实可访问地址。未配置字体时使用系统回退；/fonts/ 和 example.com 均为示例，禁止当作已存在的远程资源。
-
 ---
 name: pp-image-compress
 description: 无损压缩指定文件夹下的 PNG/JPEG 图片到 compressed/ 子目录（Python + Pillow）；触发：pp-image-compress、压缩图片、无损压缩、优化图片体积
 ---
+
+> 通用发行版字体约定：字体资源仅使用用户提供的真实可访问地址。未配置字体时使用系统回退；/fonts/ 和 example.com 均为示例，禁止当作已存在的远程资源。
 
 # pp-image-compress Skill
 

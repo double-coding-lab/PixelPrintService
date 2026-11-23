@@ -1,9 +1,9 @@
-> 通用发行版字体约定：字体资源仅使用用户提供的真实可访问地址。未配置字体时使用系统回退；/fonts/ 和 example.com 均为示例，禁止当作已存在的远程资源。
-
 ---
 name: pp-strip-nodeid
 description: 清理 D2C 产物中的 data-node-id 调试锚点，并保存 nodeId→代码位置映射供局部修复定位；触发：pp-strip-nodeid、清理 data-node-id、去掉 nodeId、上线前清理调试属性
 ---
+
+> 通用发行版字体约定：字体资源仅使用用户提供的真实可访问地址。未配置字体时使用系统回退；/fonts/ 和 example.com 均为示例，禁止当作已存在的远程资源。
 
 # pp-strip-nodeid Skill
 

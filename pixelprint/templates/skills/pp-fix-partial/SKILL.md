@@ -1,9 +1,9 @@
-> 通用发行版字体约定：字体资源仅使用用户提供的真实可访问地址。未配置字体时使用系统回退；/fonts/ 和 example.com 均为示例，禁止当作已存在的远程资源。
-
 ---
 name: pp-fix-partial
 description: D2C 出码后的局部 UI 修复，仅重跑指定区块不重刷整页，复用 .d2c-cache 元数据与资产；触发：pp-fix-partial、修复这块、这一小块不对、重新生成某区域
 ---
+
+> 通用发行版字体约定：字体资源仅使用用户提供的真实可访问地址。未配置字体时使用系统回退；/fonts/ 和 example.com 均为示例，禁止当作已存在的远程资源。
 
 # pp-fix-partial Skill
 
