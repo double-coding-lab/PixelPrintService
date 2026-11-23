@@ -1,0 +1,35 @@
+src/shared/failureDetails.ts
+  s_f084de538b079d::t_c370b914823fa7 1-114
+test/toolArgumentDetail.test.ts
+  s_f084de538b079d::t_c370b914823fa7 1-188
+src/functions/d2c/run/agent/argumentFeedback.ts
+  s_f084de538b079d::t_c370b914823fa7 1-52
+src/functions/d2c/run/instructions.ts
+  s_f084de538b079d::t_6a811d8a331801 46
+test/failureDetails.test.ts
+  s_f084de538b079d::t_c370b914823fa7 1-66
+src/functions/d2c/run/subagent.ts
+  s_f084de538b079d::t_6a811d8a331801 5,38
+src/functions/d2c/run/agent/agent.ts
+  s_f084de538b079d::t_6a811d8a331801 3-4,215,354,424-426,476,509,511,523,574,596-597,599,602,606-607,935,1362-1367,1369-1373,1375,1576,1597,1602,2033-2036,2043-2056
+test/subagentFailureBoundary.test.ts
+  s_f084de538b079d::t_6a811d8a331801 383-387
+src/functions/d2c/run/errors.ts
+  s_f084de538b079d::t_6a811d8a331801 1,167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "7763ca0c18ceb00af1fb48087ee7eefd0b29f979",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
