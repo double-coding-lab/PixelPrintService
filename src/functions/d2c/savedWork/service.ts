@@ -1,7 +1,7 @@
-import { workCoverAttributes, workCoverPattern, workCoverUrl } from '../utils/workCover';
+import { safeRuntimeCoverUrl } from '../utils/runtimeCover';
 import { findOrderedRows } from '../utils/orderedRead';
 import { createHash, randomUUID } from 'node:crypto';
-import { Op, UniqueConstraintError, type Sequelize, type Transaction } from 'sequelize';
+import { UniqueConstraintError, type Sequelize, type Transaction } from 'sequelize';
 import type { D2cSavedWork } from '../../../models/D2cSavedWork';
 import type { D2cSavedWorkFile } from '../../../models/D2cSavedWorkFile';
 import type { PreviewSnapshotFile } from '../preview/session';
@@ -44,6 +44,7 @@ export type SaveSavedWorkInput = {
   draft: SavedWorkDraft;
 };
 export type SavedWorkOptions = {
+  readCovers?: (userId: string, sourceIds: string[]) => Promise<Map<string, string>>;
   binary: () => { downloadFile(locator: Record<string, unknown>): Promise<Buffer> };
   readLimits: () => SavedWorkLimits;
 };
@@ -385,9 +386,18 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
       )
         throw new SessionError(422, 'INVALID_PAGE', '分页参数无效');
       const where = { ownerEid: eid };
-      const rows = await works.findAll({
+      const rows = await findOrderedRows(works, 'workId', {
         where,
-        attributes: ['workId', 'name', 'target', 'revision', 'createdAt', 'updatedAt'],
+        attributes: [
+          'workId',
+          'name',
+          'target',
+          'revision',
+          'createdAt',
+          'updatedAt',
+          'sourceId',
+          'configSnapshot',
+        ],
         order: [
           ['updatedAt', 'DESC'],
           ['workId', 'DESC'],
@@ -395,28 +405,22 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
         limit: pageSize,
         offset: (page - 1) * pageSize,
       });
-      const coverFiles = rows.length
-        ? await files.findAll({
-            where: {
-              ownerEid: eid,
-              [Op.or]: rows.map((row) => ({ workId: row.workId, workRevision: row.revision })),
-              kind: { [Op.in]: ['asset', 'attachment'] },
-              path: { [Op.regexp]: workCoverPattern },
-            },
-            attributes: ['ownerEid', 'workId', 'workRevision', ...workCoverAttributes],
-          })
-        : [];
+      const missing = rows.filter(
+        (row) => !safeRuntimeCoverUrl(row.configSnapshot?.runtimeCoverUrl),
+      );
+      const inherited =
+        options.readCovers && missing.length
+          ? await options.readCovers(
+              eid,
+              missing.map((row) => row.sourceId),
+            )
+          : new Map<string, string>();
       return {
         items: rows.map((row) => ({
           ...metadata(row),
-          coverUrl: workCoverUrl(
-            coverFiles.filter(
-              (file) =>
-                file.ownerEid === eid &&
-                file.workId === row.workId &&
-                file.workRevision === row.revision,
-            ),
-          ),
+          coverUrl:
+            safeRuntimeCoverUrl(row.configSnapshot?.runtimeCoverUrl) ??
+            safeRuntimeCoverUrl(inherited.get(row.sourceId)),
         })),
         total: await works.count({ where }),
         page,
@@ -518,6 +522,18 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
         const prior = await works.findOne({ where: initialWhere });
         if (prior) return metadata(prior);
       }
+      const source = await works.findOne({
+        where: { ownerEid: eid, workId: workId ?? draft.sourceId },
+      });
+      let runtimeCoverUrl = safeRuntimeCoverUrl(source?.configSnapshot?.runtimeCoverUrl);
+      if (!runtimeCoverUrl && options.readCovers) {
+        const urls = await options.readCovers(eid, [source?.sourceId ?? draft.sourceId]);
+        runtimeCoverUrl = safeRuntimeCoverUrl(urls.get(source?.sourceId ?? draft.sourceId));
+      }
+      const configSnapshot = {
+        ...draft.configSnapshot,
+        ...(runtimeCoverUrl ? { runtimeCoverUrl } : {}),
+      };
       const destinationId = workId ?? randomUUID();
       const prepared: FrozenSnapshotFile[] = [];
       /** Upload/readback must finish before opening the short database transaction. */
@@ -548,7 +564,7 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
                 sourceId: draft.sourceId,
                 entryPath: draft.entryPath,
                 entries: draft.entries,
-                configSnapshot: draft.configSnapshot,
+                configSnapshot,
               },
               { where: { ownerEid: eid, workId, revision: expectedRevision }, transaction },
             );
@@ -573,7 +589,7 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
                 baseFileRevision: draft.baseFileRevision,
                 entryPath: draft.entryPath,
                 entries: draft.entries,
-                configSnapshot: draft.configSnapshot,
+                configSnapshot,
               },
               { transaction },
             );

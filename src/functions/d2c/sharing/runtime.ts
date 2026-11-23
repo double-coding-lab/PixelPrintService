@@ -1,3 +1,4 @@
+import { publishedRuntimeCoverUrls } from './runtimeCover';
 import type { FastifyInstance } from 'fastify';
 import { createD2cConfigReader } from '@/config/d2c';
 import { createPreviewCache } from '../preview/cache';
@@ -47,7 +48,10 @@ export function installSharingEditors(app: FastifyInstance) {
     return {
       ...options,
       sharing: createSharingService(app.mysql, options),
-      works: createSavedWorkService(app.mysql, options),
+      works: createSavedWorkService(app.mysql, {
+        ...options,
+        readCovers: (userId, sourceIds) => publishedRuntimeCoverUrls(app.mysql, userId, sourceIds),
+      }),
     };
   }
 

@@ -14,7 +14,7 @@ import {
 const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const settings = { textFileBytes: 10000, filesPerSession: 100, uploadBytes: 100000 };
 /** In-memory transaction adapter asserts owner filters on every database read/update. */
-function fixture() {
+function fixture(readCovers?: (user: string, ids: string[]) => Promise<Map<string, string>>) {
   type Row = Record<string, any>;
   let workRows: Row[] = [];
   let fileRows: Row[] = [];
@@ -48,7 +48,8 @@ function fixture() {
           return query('work', q, workRows)[0] ?? null;
         },
         async findAll(q: Row) {
-          return query('work-list', q, workRows).slice(q.offset, q.offset + q.limit);
+          const rows = query('work-list', q, workRows);
+          return q.limit === undefined ? rows : rows.slice(q.offset, q.offset + q.limit);
         },
         async count(q: Row) {
           return query('count', q, workRows).length;
@@ -91,6 +92,7 @@ function fixture() {
     },
   } as unknown as Sequelize;
   const service = createSavedWorkService(mysql, {
+    readCovers,
     readLimits: () => settings,
     binary: () => ({
       async downloadFile(locator) {
@@ -369,4 +371,53 @@ test('reject invalid metadata, paths, limits, entries and integrity before writi
     () => f.service.save('alice', { name: '', draft: draft() }),
     reason('INVALID_SAVED_WORK'),
   );
+});
+
+test('saved runtime cover is frozen from trusted source, preserved on overwrite and used without publication reads', async () => {
+  let reads = 0;
+  let published = true;
+  const url = 'https://images.example.test/runtime.png';
+  const f = fixture(async (_user, ids) => {
+    reads++;
+    return published ? new Map(ids.map((id) => [id, url])) : new Map();
+  });
+  const snapshot = draft();
+  snapshot.configSnapshot = {
+    ...snapshot.configSnapshot,
+    runtimeCoverUrl: 'https://evil.example.test/forged.png',
+  };
+  const result = await f.service.save('alice', { draft: snapshot });
+  assert.equal(f.workRows()[0].configSnapshot.runtimeCoverUrl, url);
+  published = false;
+  assert.equal((await f.service.list('alice')).items[0].coverUrl, url);
+  const next = {
+    ...draft(),
+    editId: 'edit-next',
+    revision: 1,
+    sourceId: result.workId,
+    baseFileRevision: result.revision,
+  };
+  await f.service.save('alice', {
+    workId: result.workId,
+    expectedRevision: result.revision,
+    draft: next,
+  });
+  assert.equal((await f.service.list('alice')).items[0].coverUrl, url);
+  assert.equal(reads, 1);
+  assert.equal((await f.service.list('bob')).items.length, 0);
+});
+
+test('legacy saved cover follows published source in one batch, unsafe or missing covers stay empty', async () => {
+  const f = fixture(
+    async (_user, ids) => new Map(ids.map((id) => [id, 'https://images.example.test/runtime.png'])),
+  );
+  await f.service.save('alice', { draft: draft() });
+  delete f.workRows()[0].configSnapshot.runtimeCoverUrl;
+  assert.equal(
+    (await f.service.list('alice')).items[0].coverUrl,
+    'https://images.example.test/runtime.png',
+  );
+  const noCover = fixture(async () => new Map([['public-source', 'javascript:bad']]));
+  await noCover.service.save('alice', { draft: draft() });
+  assert.equal((await noCover.service.list('alice')).items[0].coverUrl, null);
 });

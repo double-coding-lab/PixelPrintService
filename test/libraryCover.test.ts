@@ -187,52 +187,37 @@ test('gallery batches one metadata query for the authorized ready page and numer
   );
 });
 
-test('saved asset fallback SQL enforces owner and exact page work/revision pairs without design roots', async (t) => {
+test('saved covers use frozen runtime images, with no design fallback or foreign-owner metadata', async (t) => {
   const f = fixture();
   t.after(() => f.db.close());
   f.work('a', 2);
   f.work('b', 3);
-  f.work('off-page', 1, 'alice', '2026-11-01');
   f.work('foreign-work', 1, 'bob');
-  for (const [ownerEid, workId, workRevision, label] of [
-    ['alice', 'a', 1, 'obsolete'],
-    ['alice', 'a', 3, 'cross-pair-a'],
-    ['alice', 'b', 2, 'cross-pair-b'],
-    ['bob', 'a', 2, 'cross-owner'],
-    ['alice', 'off-page', 1, 'off-page'],
-    ['bob', 'foreign-work', 1, 'foreign'],
-    ['alice', 'a', 2, 'correct'],
-  ] as const)
-    f.insert('d2c_saved_work_file', {
-      ownerEid,
-      workId,
-      workRevision,
-      ...raster('static/theme-page/hero.png', 10000, label),
-    });
-  for (const file of [
-    raster('static/theme-page/icon.png', 100),
-    raster('static/theme-page/z.webp', 1000),
-    raster('static/theme-page/a.jpg', 1000),
-    { ...raster('static/theme-page/broken.png', 999999), pathHash: 'bad' },
-  ])
-    f.insert('d2c_saved_work_file', { ownerEid: 'alice', workId: 'b', workRevision: 3, ...file });
+  f.db
+    .prepare("UPDATE d2c_saved_work SET configSnapshot = ? WHERE workId = 'a'")
+    .run(JSON.stringify({ runtimeCoverUrl: 'https://images.example.test/runtime.png' }));
+  f.insert('d2c_saved_work_file', {
+    ownerEid: 'alice',
+    workId: 'b',
+    workRevision: 3,
+    ...image('0_1', 'wrong-design'),
+  });
   const result = await f.saved.list('alice', 1, 2);
-  assert.equal(result.total, 3);
+  assert.equal(result.total, 2);
   assert.deepEqual(
     result.items.map((item) => [item.workId, item.coverUrl]),
     [
-      ['b', raster('static/theme-page/a.jpg', 1000).objectLocator.url],
-      ['a', raster('static/theme-page/hero.png', 10000, 'correct').objectLocator.url],
+      ['b', null],
+      ['a', 'https://images.example.test/runtime.png'],
     ],
   );
-  assert.doesNotMatch(JSON.stringify(result), /configSnapshot|objectLocator|ownerEid|sha256/);
-  const covers = coverQueries(f.queries, 'd2c_saved_work_file');
-  assert.equal(covers.length, 1);
-  assert.match(covers[0], /`ownerEid` = 'alice'/);
-  assert.match(covers[0], /`workId` = 'b' AND .*`workRevision` = 3/);
-  assert.match(covers[0], /`workId` = 'a' AND .*`workRevision` = 2/);
-  assert.match(covers[0], / OR /);
-  assert.doesNotMatch(covers[0], /off-page|foreign-work/);
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /configSnapshot|objectLocator|ownerUserId|sha256|wrong-design/,
+  );
+  assert.equal(f.queries.filter((q) => q.includes('FROM `d2c_saved_work_file`')).length, 0);
+  for (const query of f.queries.filter((q) => q.includes('configSnapshot')))
+    assert.doesNotMatch(query, /ORDER BY/);
 });
 
 test('frozen raster fallback checks MIME, rejects private/unsafe paths, and skips invalid large candidates', () => {

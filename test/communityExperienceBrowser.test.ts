@@ -87,6 +87,7 @@ test(
     let hold = false;
     let active = 0;
     let maxActive = 0;
+    let showSavedCover = false;
     const server = createServer(async (req, res) => {
       const url = new URL(req.url!, 'http://local');
       if (url.pathname === '/app.js') {
@@ -113,7 +114,22 @@ test(
           total: 3,
         });
       if (url.pathname === '/api/d2c/plaza/sessions/share') return send(session);
-      if (url.pathname === '/api/d2c/my-works') return send({ items: [], total: 0 });
+      if (url.pathname === '/api/d2c/my-works')
+        return send({
+          items: showSavedCover
+            ? [
+                {
+                  workId: 'saved',
+                  name: '已保存同源作品',
+                  target: 'h5',
+                  revision: 1,
+                  createdAt: session.createdAt,
+                  coverUrl: session.coverUrl,
+                },
+              ]
+            : [],
+          total: showSavedCover ? 1 : 0,
+        });
       if (url.pathname.endsWith('/timeline')) {
         active++;
         maxActive = Math.max(maxActive, active);
@@ -248,6 +264,16 @@ test(
       '/plaza',
     );
     await page.getByText('点击“保存为作品”后即可在这里查看。', { exact: false }).waitFor();
+    showSavedCover = true;
+    await page.evaluate('window.mount("plaza")');
+    await cover.waitFor();
+    const plazaImage = await cover.locator('img').getAttribute('src');
+    await page.evaluate('window.mount("my-works")');
+    const savedCover = page.getByRole('button', { name: '打开作品：已保存同源作品', exact: true });
+    await savedCover.waitFor();
+    assert.equal(await savedCover.locator('img').getAttribute('src'), plazaImage);
+    assert.equal(await savedCover.locator('img').getAttribute('alt'), '已保存同源作品运行截图');
+    assert.equal(await page.getByText('作品图片', { exact: true }).count(), 0);
     assert.deepEqual(errors, []);
   },
 );

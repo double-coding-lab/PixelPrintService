@@ -499,7 +499,7 @@ export default function CommunityPanel({
                   <WorkCover
                     url={item.coverUrl}
                     name={item.name}
-                    kind={'shareId' in item ? 'runtime' : 'work'}
+                    kind="runtime"
                     className="community-cover"
                     onOpen={() => onSelect(resource)}
                   />

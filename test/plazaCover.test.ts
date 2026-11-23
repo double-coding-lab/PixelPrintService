@@ -1,4 +1,5 @@
 import './helpers/projectFixture';
+import { publishedRuntimeCoverUrls } from '../src/functions/d2c/sharing/runtimeCover';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
@@ -56,7 +57,7 @@ function fixture() {
   const models = {
     D2cSessionShare: {
       findOne: async (o: Row) => read(shares, o)[0],
-      findAll: async (o: Row) => read(shares, o),
+      findAll: async (o: Row) => read(o.where[Op.and] ? liveShares() : shares, o),
       findAndCountAll: async (o: Row) => ({
         rows: liveShares()
           .slice(o.offset, o.offset + o.limit)
@@ -90,6 +91,28 @@ function fixture() {
     D2cWorkspace: {
       findOne: async (o: Row) => read(workspaces, o)[0],
       findAll: async (o: Row) => read(workspaces, o),
+    },
+    D2cMessageAttachment: {
+      findAll: async (o: Row) => {
+        assert.deepEqual(o.attributes, [
+          'sessionId',
+          'attachmentId',
+          'objectLocator',
+          'size',
+          'mimeType',
+        ]);
+        return db
+          .prepare('SELECT * FROM d2c_message_attachment')
+          .all()
+          .flatMap((a: Row) =>
+            a.expiresAt === null &&
+            o.where[Op.or].some(
+              (pair: Row) => pair.sessionId === a.sessionId && pair.attachmentId === a.attachmentId,
+            )
+              ? [{ ...a, objectLocator: JSON.parse(a.objectLocator) }]
+              : [],
+          );
+      },
     },
     D2cFile: {},
     D2cTimeline: {},
@@ -142,6 +165,7 @@ function fixture() {
   }
   return {
     db,
+    mysql: { models } as unknown as Sequelize,
     service,
     capture,
     sessions,
@@ -294,4 +318,28 @@ test('withdrawal, token rotation and soft deletion during cover lookup block det
       else assert.deepEqual((await f.service.list('viewer')).items, []);
     }
   }
+});
+
+test('saved cover resolves the same earliest plaza screenshot, skips drafts and rechecks publication', async (t) => {
+  const f = fixture();
+  t.after(() => f.db.close());
+  const imageUrl = 'https://images.example.test/runtime.png';
+  const locator = JSON.stringify({ url: imageUrl, size: 123, mimeType: 'image/png' });
+  f.capture(10, { objectLocator: locator });
+  f.capture(20, {
+    objectLocator: JSON.stringify({
+      url: 'https://images.example.test/later.png',
+      size: 123,
+      mimeType: 'image/png',
+    }),
+  });
+  const map = await publishedRuntimeCoverUrls(f.mysql, 'viewer', [shareId]);
+  assert.equal(map.get(shareId), imageUrl);
+  assert.equal(f.queries.length, 1);
+  assert.equal((await publishedRuntimeCoverUrls(f.mysql, 'viewer', ['not-a-public-id'])).size, 0);
+  f.afterCover(() => {
+    f.shares[0].enabled = false;
+  });
+  assert.equal((await publishedRuntimeCoverUrls(f.mysql, 'viewer', [shareId])).size, 0);
+  await assert.rejects(publishedRuntimeCoverUrls(f.mysql, '', [shareId]), { statusCode: 401 });
 });
