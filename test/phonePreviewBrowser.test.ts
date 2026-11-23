@@ -16,7 +16,7 @@ const chrome = [
 ].find((path): path is string => !!path && existsSync(path));
 
 test(
-  '真实浏览器：手机尺寸、旋转、原生及降级全屏、退出和iframe保留',
+  '真实浏览器：视口尺寸、百分比缩放、适合窗口、原生及降级全屏、退出和iframe保留',
   {
     skip: !chrome || process.env.PIXELPRINT_BROWSER_TESTS !== '1',
     timeout: 60000,
@@ -193,13 +193,53 @@ test(
     await command('Page.navigate', { url: `http://127.0.0.1:${port}/` }, sessionId);
     await wait('window.frameData?.width===390&&window.frameData.height===844');
     await evaluate(
-      `(()=>{const select=document.querySelector('[aria-label="手机屏幕比例"]');select.value='classic';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+      `(()=>{const select=document.querySelector('[aria-label="预览视口尺寸"]');select.value='classic';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
     );
     await wait('window.frameData.width===375&&window.frameData.height===667');
     await evaluate(
-      `(()=>{const select=document.querySelector('[aria-label="手机屏幕比例"]');select.value='standard';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+      `(()=>{const select=document.querySelector('[aria-label="预览视口尺寸"]');select.value='standard';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
     );
     await wait('window.frameData.width===390&&window.frameData.height===844');
+    assert.equal(
+      await evaluate(
+        'document.querySelector(".phone-preview-device").getBoundingClientRect().width',
+      ),
+      390,
+    );
+    assert.equal(
+      await evaluate('!!document.querySelector("button[aria-label=切换横竖屏]")'),
+      false,
+    );
+    await evaluate(
+      `(()=>{const select=document.querySelector('[aria-label="预览显示缩放"]');select.value='0.5';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await wait(
+      'document.querySelector(".phone-preview-device").getBoundingClientRect().width===195',
+    );
+    assert.equal(await evaluate('window.frameData.width'), 390);
+    assert.equal(await evaluate('window.frameData.height'), 844);
+    await evaluate(
+      `(()=>{const select=document.querySelector('[aria-label="预览显示缩放"]');select.value='2';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await wait(
+      'document.querySelector(".phone-preview-device").getBoundingClientRect().width===780',
+    );
+    assert.equal(await evaluate('document.querySelector("iframe").offsetWidth'), 390);
+    assert.equal(
+      await evaluate(
+        'document.querySelector(".phone-preview-stage").scrollHeight>document.querySelector(".phone-preview-stage").clientHeight',
+      ),
+      true,
+    );
+    await evaluate(
+      `(()=>{const select=document.querySelector('[aria-label="预览显示缩放"]');select.value='fit';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await wait(
+      'document.querySelector(".phone-preview-device").getBoundingClientRect().height<=document.querySelector(".phone-preview-stage").clientHeight-31',
+    );
+    assert.equal(await evaluate('window.frameData.width'), 390);
+    assert.equal(await evaluate('window.frameData.height'), 844);
+
     await evaluate(
       `window.originalFrame=document.querySelector('iframe');originalFrame.contentWindow.postMessage('increment','*')`,
     );
@@ -239,19 +279,43 @@ test(
       'document.querySelector(".phone-preview-shell").classList.contains("is-fullscreen")',
     );
     await evaluate(
-      `const select=document.querySelector('[aria-label="手机屏幕比例"]');select.value='android';select.dispatchEvent(new Event('change',{bubbles:true}))`,
+      `const select=document.querySelector('[aria-label="预览视口尺寸"]');select.value='android';select.dispatchEvent(new Event('change',{bubbles:true}))`,
     );
     await wait('window.frameData.width===360&&window.frameData.height===800');
-    await click('切为横屏');
-    await wait('window.frameData.width===800&&window.frameData.height===360');
+    await evaluate(
+      `(()=>{const select=document.querySelector('[aria-label="预览显示缩放"]');select.value='1';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await evaluate(
+      `(()=>{const select=document.querySelector('[aria-label="预览视口尺寸"]');select.value='responsive';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await wait('window.frameData.width>360&&window.frameData.height>400');
+    assert.equal(
+      await evaluate(
+        'Math.abs(window.frameData.width-(document.querySelector(".phone-preview-stage").clientWidth-32))<=1',
+      ),
+      true,
+    );
+    assert.equal(
+      await evaluate(
+        'Math.abs(window.frameData.height-(document.querySelector(".phone-preview-stage").clientHeight-32))<=1',
+      ),
+      true,
+    );
+    await command(
+      'Emulation.setDeviceMetricsOverride',
+      { width: 900, height: 700, deviceScaleFactor: 1, mobile: false },
+      sessionId,
+    );
+    await wait(
+      'window.frameData.width===document.querySelector(".phone-preview-stage").clientWidth-32&&window.frameData.width<1000',
+    );
+    assert.equal(await evaluate('document.querySelector("iframe")===window.originalFrame'), true);
     assert.equal(
       await evaluate('document.querySelector("iframe").getAttribute("sandbox")'),
       'allow-scripts',
     );
     assert.equal(await evaluate('window.frameData.counter'), 1);
     assert.equal(frameLoads, 1);
-    await click('切为竖屏');
-    await wait('window.frameData.height===800');
     const screenshot = await command('Page.captureScreenshot', { format: 'png' }, sessionId);
     await writeFile('/tmp/pixelprint-phone-preview.png', Buffer.from(screenshot.data, 'base64'));
     await evaluate(
