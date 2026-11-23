@@ -40,6 +40,11 @@
     "检查点外置",
     "中间写入外置",
     "checkpointStorage",
-    "checkpoint:migrate"
+    "checkpoint:migrate",
+    "死锁",
+    "1213",
+    "事务回滚",
+    "数据库错误码",
+    "技能发现失败"
   ]
 }

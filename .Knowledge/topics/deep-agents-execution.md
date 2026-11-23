@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 14
+revision: 15
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -145,3 +145,11 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - UI固定资源视图将H5/RN生成Skill的`bin/`实现脚本、依赖脚本和源码映射替换为普通阅读引导，发现/搜索接口仅展示可消费资料，直接读取或下载也不提供实现原文。先读本区块报告的hits/constraints/deferredChecks、命中规则文档与实际违规证据；检查器实现争议交由父Agent排查。规则Markdown、配置、模板和授权业务源码正常读取；主Agent、review和rule_scan继续具备原有只读范围，执行检查器及规则验收不变。
 - 图片只在当前模型请求边界物化，重复引用保留定位与来源说明；设计稿/素材与运行截图分别解释，未载入和视觉拒绝仍如实标记。后续请求按当前历史重新准备视觉输入，不能用跨请求标记代替模型真实看图。
 - 实现入口为`agent/context.ts`、`agent/summary.ts`、`agent/images.ts`、`agent/readPolicy.ts`及`agent/resources.ts`。离线回归覆盖真实Agent工具循环、原生摘要原文归档、不同版本与分页、未知写入、角色边界和图片去重；模型请求次数与Token的实际收益须由发布后的真实会话确认，无新增DDL或运行配置。
+
+## 数据库事务死锁与诊断
+
+- leases.commit先后核对原租约，在短事务成功提交时按数据库时间续租；长事务越过原期限仍整体回滚。通用回调默认不重放；已核对的检查点/中间写、消息、文件记录、截图附件、队列交接及领取/等待/结算事务，遇ER_LOCK_DEADLOCK仅在确认回滚后以新事务最多重试两次，短退避带抖动，每次重验owner、期限及适用的停止标记。执行信号已取消时不继续重试；心跳保留原死锁/锁超时重试，过期回收保留跳过冲突候选的策略，避免嵌套重试。
+- 主记录保持工作区→会话→轮次锁序；中间写同批按idx升序加锁，普通非负idx仍first-wins、特殊负idx仍last-wins。序列化与正文/图片上传在重试事务外完成，本地文件修订只在提交成功后推进；提交后通知异常、提交结果不确定、锁等待超时和其他存储故障不按普通写入死锁重放，模型/工具请求不随事务重试。
+- 失败诊断的databaseCode采用共享枚举，databaseErrno为正整数，databaseSqlState限五位大写字母或数字；这些安全字段随Run失败、时间线及错误列表保存并在前端展示/复制，不公开SQL、绑定值、异常正文或堆栈。历史记录缺字段保持未知，无新增表列。实现见src/common/deadlockTransaction.ts、run/leases.ts与shared/failureDetails.ts；回归覆盖回滚、次数上限、取消/过期、提交后失败和上传/模型不重复。
+
+- 公共资源发行说明放在Skill的YAML frontmatter闭合分隔符之后，旧包前置说明会被规范化；保持首行---与声明字段，避免DEEP_SKILL_DISCOVERY_FAILED。sanitize-resources.mjs重复执行幂等，端到端回归使用公共仓库自身模板。
