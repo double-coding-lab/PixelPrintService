@@ -1,6 +1,6 @@
 ---
 id: d2c-session-plaza
-revision: 6
+revision: 7
 summary: "登录用户会话广场、独立编辑副本与个人作品再次编辑"
 primary: feature
 confidence: inferred
@@ -66,3 +66,11 @@ sourceDoc: ".Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md"
 - 服务端在列表分页后批量查询本页冻结图片元数据，返回安全 `coverUrl` 或 null；封面选择不读取源码/正文引用、不下载图片、不构建预览。版本沿用已完成版本及团队筛选；个人作品查询同时约束当前账号与每个作品的精确修订，保存副本不依赖源会话或原发布继续存在。
 - 图片路径、路径摘要、图片格式、大小与内容摘要须匹配冻结定位；异常候选跳过。原始定位及配置保持私有。广场继续使用首张运行截图，作品图片只说明已保存的图片来源，不能作为运行或规则验收通过的证明。无需新增表、数据迁移或配置；仅更新服务与前端即可生效。
 - 实现入口：`version/gallery.ts`、`savedWork/service.ts`、`utils/workCover.ts`、`WorkCover.tsx`；回归覆盖冻结来源、分页批量读取、账号/修订隔离、无图及坏图回退和真实浏览器的列表交互。
+
+## 保存记录删除
+
+- 会话版本列表和详情按服务端 `canDelete` 展示删除入口，仅创建者可删除已就绪版本；个人作品列表和详情仅允许本人删除。点击后先确认，取消或关闭确认框不发删除请求，失败保留记录并可刷新。
+- `DELETE /versions/:versionId` 与预览创建共用版本行锁，在短事务内移除该版本的冻结文件、预览登记及版本行。旧固定链接和票据随预览登记移除而失效，已下载内容或浏览器已加载画面无法追溯撤回。
+- `DELETE /my-works/:id` 必填 `expectedRevision`，在本人作品行锁内核对当前修订并清理该作品所有冻结修订与作品行；旧列表遇到新修订返回409，刷新后由用户重新确认。再次编辑保存成功会刷新作品详情修订。
+- 删除后列表重新加载，末页空缺时修正页码；详情删除后返回列表。服务端继承登录及同源保护，保留源会话、工作区、独立保存副本和共享对象存储；无需新增表、迁移或配置。真实工作台会话沿用原删除流程。
+- 实现为 `version/gallery.ts`、`savedWork/service.ts`、`DeleteSavedItem`、`WorksPanel`、`CommunityPanel`；回归见 `libraryDelete`、`versionRoutes`、`sharingRoutes` 与 `libraryManagementBrowser`。

@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 5
+revision: 6
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -72,3 +72,9 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 - 会话和版本预览列表、当前预览及构建输入涉及大字段时先按标识排序分页，再读取正文；保留输入修订与权限过滤。数据库排序缓冲不足的诊断见[工作区主题](d2c-workspace-foundation.md#大字段排序与数据库诊断)。
 - 源码变化后，主Agent下一次模型请求可只读查询当前输入的自动预览状态。失败按previewId、有效修订及诊断去重，最多保留64个已反馈键；等待文件、排队和构建中保持原状态，无变化时跳过，不因反馈启动新构建。
 - 本地Sass编译将未定义变量映射为STYLE_UNDEFINED_VARIABLE，提供工作区相对文件与行列；其他样式解析错误使用SYNTAX_ERROR，原始异常和源码保持私有。历史错误记录只展示当时已保存字段，新分类对新构建生效；编译成功与视觉通过分开判断。
+
+## 会话版本默认首页入口
+
+- 进入作品库会话版本详情时，入口仅从该冻结版本的 TSX/JSX 源码选择，按目录语义优先首页：`pages/home|index|page|main/index`（支持 `src/` 前缀），其次平铺首页、根 App/index/main、其他页面及通用源码；`blocks`、`components`、测试目录内组件排后。同级按路径深度、数值自然路径顺序稳定选择。
+- 截图场景默认选 `pages/page/index.tsx`，保留区块入口供手动切换。文件列表重排不覆盖仍有效的手动选择；已选文件移除时回退到首选页面；切换版本重新选择默认入口。目录规则无法推断任意业务首页时，用户仍可手动指定。
+- 实现为 `previewEntry.ts`、`PreviewPanel.previewEntries`；回归见 `previewUi` 与 `libraryManagementBrowser`。此规则作用于作品库冻结版本，不修改编译器或会话执行流程。
