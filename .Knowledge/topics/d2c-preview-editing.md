@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 5
+revision: 6
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -62,8 +62,8 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 
 ## 全屏手机比例预览
 
-- 当前会话运行预览、在线编辑副本（含广场/作品复用）与已保存版本预览共用PhonePreview。页面就绪后可点“全屏预览”，默认390×844，支持375×667、375×812、430×932、360×800、412×915及横竖屏切换；模拟CSS视口，不修改UA、DPR或系统安全区。
-- 手机视口保持选定宽高，仅用外层等比缩放适应屏幕，iframe内部滚动；常规模式沿用原375/750/自适应控件。进入、退出和比例切换复用同一iframe，不重签票据、不发起编译、不修改源码或预览缓存。
+- 当前会话运行预览、在线编辑副本（含广场/作品复用）与已保存版本预览共用PhonePreview。普通模式和全屏模式均提供手机屏幕比例选择，默认390×844，支持375×667、375×812、430×932、360×800、412×915及横竖屏切换；模拟CSS视口，不修改UA、DPR或系统安全区。
+- 手机视口保持选定宽高，仅用外层等比缩放适应屏幕，iframe内部滚动；普通模式同样以可用区域等比适配，不将手机视口拉伸填满容器。进入、退出和比例切换复用同一iframe，不重签票据、不发起编译、不修改源码或预览缓存。
 - 优先使用用户点击触发的浏览器Fullscreen API；不支持或拒绝时使用页面内全屏。退出按钮、Esc、浏览器退出全屏、预览隐藏/失效和卸载均清理状态，恢复焦点、页面滚动及背景inert状态；原sandbox allow-scripts和无same-origin边界保持。
 - 实现位于web/src/workspace/PhonePreview.tsx、phoneViewport.ts与phonePreview.css；真实浏览器回归覆盖真实iframe尺寸、比例/旋转、原生和降级全屏、交互状态保留与只加载一次，参见test/phonePreviewBrowser.test.ts。
 
