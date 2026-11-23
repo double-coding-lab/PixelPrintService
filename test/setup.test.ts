@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, copyFile, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, copyFile, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +28,22 @@ test('setup generates usable private configuration and never overwrites it', asy
     const initial = await readFile(filename, 'utf8');
     const config = JSON.parse(initial);
     const { parseD2cRuntimeConfig } = await import('../src/config/d2c');
-    assert.equal(parseD2cRuntimeConfig(config.runtime).modelConfigs.length, 1);
+    const runtime = parseD2cRuntimeConfig(config.runtime);
+    assert.equal(runtime.modelConfigs.length, 1);
+    const bodyKeys: string[] = [];
+    for (const name of ['contentStorage', 'checkpointStorage'] as const) {
+      const settings = runtime.d2c[name];
+      assert.ok(settings);
+      assert.equal(settings.mode, 'external');
+      assert.equal(settings.schemaReady, true);
+      assert.ok(settings.encryption);
+      const material = settings.encryption.keys[settings.encryption.activeKeyId];
+      const key = Buffer.from(material, 'base64');
+      assert.equal(key.length, 32);
+      assert.equal(key.toString('base64'), material);
+      bodyKeys.push(material);
+    }
+    assert.notEqual(bodyKeys[0], bodyKeys[1]);
     assert.equal(config.runtime.d2c.limits.textFileBytes, 100 * 1024 * 1024);
     assert.equal(config.runtime.d2c.limits.uploadBytes, 30000000);
     assert.equal(config.database.host, 'mysql');
@@ -44,6 +59,18 @@ test('setup generates usable private configuration and never overwrites it', asy
     if (process.platform !== 'win32') assert.equal((await stat(filename)).mode & 0o777, 0o600);
     execFileSync(process.execPath, [script, '--user', 'other'], { cwd, env, stdio: 'pipe' });
     assert.equal(await readFile(filename, 'utf8'), initial);
+    // An existing deployment's chosen modes and encryption material must survive a newer setup.
+    config.runtime.d2c.contentStorage.mode = 'inline';
+    config.runtime.d2c.contentStorage.schemaReady = false;
+    config.runtime.d2c.checkpointStorage.mode = 'shadow';
+    const existing = JSON.stringify(config, null, 2) + '\n';
+    await writeFile(filename, existing);
+    execFileSync(process.execPath, [script, '--user', 'other'], { cwd, env, stdio: 'pipe' });
+    assert.equal(await readFile(filename, 'utf8'), existing);
+    assert.equal(
+      parseD2cRuntimeConfig(JSON.parse(existing).runtime).d2c.contentStorage!.mode,
+      'inline',
+    );
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

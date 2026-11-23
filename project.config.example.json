@@ -79,8 +79,8 @@
         "uploadBytes": 30000000
       },
       "contentStorage": {
-        "schemaReady": false,
-        "mode": "inline",
+        "schemaReady": true,
+        "mode": "external",
         "thresholdBytes": 262144,
         "concurrency": 2,
         "encryption": {
@@ -89,8 +89,8 @@
         }
       },
       "checkpointStorage": {
-        "schemaReady": false,
-        "mode": "inline",
+        "schemaReady": true,
+        "mode": "external",
         "thresholdBytes": 262144,
         "concurrency": 2,
         "encryption": {

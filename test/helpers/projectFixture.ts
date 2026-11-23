@@ -11,6 +11,11 @@ const config = JSON.parse(
 );
 config.auth.sessionSecret = 'offline-test-secret-'.repeat(3);
 config.auth.users = [{ id: 'offline-test', name: 'Offline test', passwordHash: 'scrypt$fixture' }];
+/** 既有业务测试显式覆盖为旧库模式；新部署的external默认值由setup集成测试验证。 */
+for (const name of ['contentStorage', 'checkpointStorage']) {
+  config.runtime.d2c[name].schemaReady = false;
+  config.runtime.d2c[name].mode = 'inline';
+}
 writeFileSync(configFile, JSON.stringify(config), { mode: 0o600 });
 const previous = process.env.PIXELPRINT_CONFIG;
 process.env.PIXELPRINT_CONFIG = configFile;
