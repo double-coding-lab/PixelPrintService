@@ -9,6 +9,7 @@ import { App as AntApp, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useConfirm } from './components/useConfirm';
 import WorkspaceSwitcher from './workspace/WorkspaceSwitcher';
+import ActiveSessions from './workspace/ActiveSessions';
 import WorkspacePanel from './workspace/WorkspacePanel';
 import WorkspaceHome from './workspace/WorkspaceHome';
 import CredentialSettings from './workspace/CredentialSettings';
@@ -96,7 +97,9 @@ function App() {
   }, []);
 
   async function select(workspaceId: string, sessionId = '') {
-    await navigation.current?.navigate({ view: 'workbench', workspaceId, sessionId });
+    return (
+      (await navigation.current?.navigate({ view: 'workbench', workspaceId, sessionId })) ?? false
+    );
   }
 
   /** 删除确认已包含草稿提醒，直接替换失效定位。 */
@@ -170,6 +173,11 @@ function App() {
           )}
         </div>
         <div className="header-actions">
+          <ActiveSessions
+            blocked={busy}
+            currentSessionId={!works.active ? selection.sessionId : ''}
+            onSelect={select}
+          />
           <CredentialSettings />
           <TeamSettings />
         </div>

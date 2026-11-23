@@ -138,7 +138,7 @@ test(
             builder.onResolve(
               {
                 filter:
-                  /^\.\/workspace\/(?:CommunityPanel|WorkspacePanel|WorkspaceHome|WorkspaceSwitcher|WorksPanel|CredentialSettings|TeamSettings)$/,
+                  /^\.\/(?:workspace\/)?(?:CommunityPanel|WorkspacePanel|WorkspaceHome|WorkspaceSwitcher|WorksPanel|CredentialSettings|TeamSettings)$/,
               },
               ({ path }) => ({
                 path: path.split('/').pop()!,
@@ -150,7 +150,7 @@ test(
               resolveDir: root,
               contents:
                 path === 'TeamSettings'
-                  ? `export const TeamProvider=({children})=>children;export default function Settings(){return null}`
+                  ? `export const TeamProvider=({children})=>children;export const useTeams=()=>({teams:[]});export default function Settings(){return null}`
                   : path === 'CommunityPanel'
                     ? `import React from 'react'; export default function Panel({kind,resourceId,onSelect,onDirty,onBusy,onDeleted,plazaScope='all',onScopeChange,onKindChange,navigationDisabled}){return <section data-testid="community" data-kind={kind} data-resource={resourceId} data-scope={plazaScope}>
                 {!resourceId && <nav aria-label="广场分类">{[['all','全部作品'],['mine','我发布的作品'],['saved','已保存作品']].map(([value,label])=><button key={value} disabled={navigationDisabled} aria-current={(value==='saved'?kind==='my-works':kind==='plaza'&&plazaScope===value)?'page':undefined} onClick={()=>{if(value==='saved'){if(kind!=='my-works')onKindChange?.('my-works');}else{onScopeChange?.(value);if(kind!=='plaza')onKindChange?.('plaza');}}}>{label}</button>)}</nav>}
