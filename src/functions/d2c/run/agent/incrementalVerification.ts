@@ -1,5 +1,6 @@
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { createMiddleware } from 'langchain';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { confirmedWrite } from './context';
 
@@ -126,7 +127,9 @@ export function createIncrementalVerificationMiddleware(input: {
 }) {
   const terminal = async (state: Verification) => {
     const message = new AIMessage({
-      id: `interaction-result-${state.admissionId ?? 'resume'}-${state.guidance.at(-1) ?? 'initial'}`,
+      id: createHash('sha256')
+        .update(JSON.stringify([state.admissionId ?? 'resume', state.guidance.at(-1) ?? 'initial']))
+        .digest('hex'),
       content: state.passed
         ? passed
         : [incomplete, ...state.problems.map((problem) => `- ${problem}`)].join('\n'),
@@ -163,7 +166,7 @@ export function createIncrementalVerificationMiddleware(input: {
               HumanMessage.isInstance(value) &&
               value.id &&
               value.text.trim() &&
-              !/^(?:平台交付核对|平台交互验收|\[平台通知\]|以下是.*(?:图片|截图)|继续(?:当前任务|执行)?[。！!\s]*$)/u.test(
+              !/^(?:平台交付核对|平台交互验收|\[平台通知\]|以下是.*(?:图片|截图)|继续[。！!\s]*$|继续(?:当前任务|执行)(?:[。！!\s]|$))/u.test(
                 value.text,
               ),
           );

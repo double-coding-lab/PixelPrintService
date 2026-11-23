@@ -112,10 +112,14 @@ async function scenario(
     }),
   });
   let guided = false;
+  const finalIds: string[] = [];
   const input: Parameters<typeof runAgent>[0] = {
     model,
     messages: [new HumanMessage({ id: 'request', content: '点击名字' })],
     instructions: '仅修改已有页面的交互',
+    onMessage: async (message) => {
+      if (message.id && message.text.startsWith('本次交互')) finalIds.push(message.id);
+    },
     reasoningUserText: '点击名字',
     reasoningAdmissionId: 'request',
     reasoningContext: { hasSourceFiles: true, hasDesign: true },
@@ -149,12 +153,13 @@ async function scenario(
   const result = await runAgent(input);
   return {
     result,
+    finalIds,
     rerun: async (id: string, text: string) => {
       const next = await runAgent({
         ...input,
         messages: [new HumanMessage({ id, content: text })],
         reasoningUserText: text,
-        reasoningAdmissionId: id === 'resume' ? undefined : id,
+        reasoningAdmissionId: id.startsWith('resume') ? undefined : id,
       });
       return { next, calls, inspections };
     },
@@ -198,6 +203,11 @@ test('同批并行写入和截图不能作为最后修订已通过的证据', as
 test('运行中新增滑动要求重新核对验收范围，不复用旧点击通过结论', async () => {
   const f = await scenario('guidance');
   assert.equal(f.inspections, 4, JSON.stringify(f));
+  assert.ok(f.finalIds.length > 0);
+  assert.ok(
+    f.finalIds.every((id) => /^[0-9a-f]{64}$/.test(id)),
+    '追加指引后的交付ID也必须适配消息列64字符',
+  );
   assert.match(f.result.output, /尚未通过/);
 });
 
@@ -207,6 +217,13 @@ test('验收预算随原生检查点恢复，继续不重置，新的明确任�
   assert.equal(resumed.inspections, 3);
   assert.equal(resumed.calls, 3);
   assert.match(resumed.next.output, /尚未通过/);
+  const platformResume = await f.rerun(
+    'resume-platform',
+    '继续当前任务。先核对已保存文件和工具结果，保留既有产物，不重复执行结果未知的副作用；按当前会话上下文继续。',
+  );
+  assert.equal(platformResume.inspections, 3);
+  assert.equal(platformResume.calls, 3);
+  assert.match(platformResume.next.output, /尚未通过/);
   const next = await f.rerun('new-request', '点击名字并修复选中态');
   assert.equal(next.inspections, 6);
   assert.equal(next.calls, 6);
