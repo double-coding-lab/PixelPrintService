@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 15
+revision: 17
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -153,3 +153,11 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - 失败诊断的databaseCode采用共享枚举，databaseErrno为正整数，databaseSqlState限五位大写字母或数字；这些安全字段随Run失败、时间线及错误列表保存并在前端展示/复制，不公开SQL、绑定值、异常正文或堆栈。历史记录缺字段保持未知，无新增表列。实现见src/common/deadlockTransaction.ts、run/leases.ts与shared/failureDetails.ts；回归覆盖回滚、次数上限、取消/过期、提交后失败和上传/模型不重复。
 
 - 公共资源发行说明放在Skill的YAML frontmatter闭合分隔符之后，旧包前置说明会被规范化；保持首行---与声明字段，避免DEEP_SKILL_DISCOVERY_FAILED。sanitize-resources.mjs重复执行幂等，端到端回归使用公共仓库自身模板。
+
+## 生成期调度与修复复验
+
+- 已知、授权且路径互斥的独立子任务一次提交到现有队列，并发上限维持两个，完成后自动补位；尚未描述的任务由主Agent明确委派。`wait_subagents(wait=true,mode=any)`收取未观察的已完成结果，否则等待任一完成，旧结果仅返回状态；默认或显式`all`保持全部等待，组合、整页检查、预览与最终交付的程序屏障固定用`all`。取消和fatal原样中止，无忙轮询。
+- 子任务自身请求/输出限额使用`SUBAGENT_REQUEST_LIMIT` / `SUBAGENT_OUTPUT_LIMIT`，保留实际文件、缺口和原上下文供主任务接续；同一次局部限额只发布一条含诊断和交付的失败事件。共享预算、存储、模型和租约故障沿原分类；同轮同子任务明确后续交付成功时标记已恢复，历史未知原因保持未知。
+- 主Agent已有真实运行截图后的修复阶段，三次成功源码修改或修改后三个工具步骤触发正常`inspect_preview`调用，复验先于下一次模型请求；活跃子任务未收齐时先保持原汇合边界。源码写入/编辑只认完整配对和成功回执，失败不计修改。平台插入截图不额外请求模型，也不重放已有写入。
+- 截图欠账与当前入口随原生检查点保存，按入口保留最多16份计数；冷启动的内存标记不覆盖持久欠账，收尾继续检查不足批次的未复验修改。旧图缺少计数时从已有真实工具历史建立基线。截图失败结清该批尝试，后续实际修改才重新触发，最终交付检查继续生效；截图可用不代表模型已看到或视觉验收通过。
+- 实现与回归：`agent/backgroundDelegations.ts`、`agent/visualInspection.ts`、`agent/agent.ts`，以及`backgroundAgentGraph`、`backgroundDelegations`、`visualInspectionProgress`和局部限额诊断测试。部署后用于后续执行，不改写历史记录或自动重跑会话；无需新增表或运行配置。
