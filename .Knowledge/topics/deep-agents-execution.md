@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 11
+revision: 12
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -114,3 +114,14 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - `checkpoint:migrate`提供checkpoints/writes固定表组、dry-run、BIGINT上界/分页、逐行CAS、0600游标续迁和精确BLOB回填。预演无对象IO或更新锁；apply按父会话→载荷行锁定，活动会话及并发变化停在安全游标，不改图状态或删除历史。DDL及实际迁移由部署方执行。
 - 原typed格式、全部channel_values、父链delta replay、归档和原生interrupt继续保留；损坏引用不静默变成新图。时间线外置、历史保留/对象GC和通道级增量属于后续独立范围，不按相同大小删除快照。
 - 配置/SQL/启用与回滚说明见[执行终稿](../stock-docs/deep-agents-execution.md#检查点和中间写入外置)。
+
+## 工具参数纠错与历史排查边界
+
+- 工具输入解析失败按注册Zod对象契约反馈出错顶层字段、固定校验类型、必填性、合法枚举及类型/长度/数值范围，最多12条；仅从受信契约生成提示，参数值、嵌套字典键和自定义异常正文保持私有。edit_file摘要类型与长度沿用专门反馈，错误调用不执行副作用，模型可修正后继续。
+- read_file默认读取会话文件，offset/length允许省略；figma的非相关可选字段、ask_user选项和预览entryPath允许省略。真正必填项、命令枚举、数字范围和子Agent权限仍按契约校验，字符串数字及错误模式不自动猜测转换。
+- prepare_slices的slug为1至64位小写英文、数字或连字符，首位为英文或数字；check_rules接收目录path和block/merge模式。同一文件编辑串行使用上次成功回执的新sha256，真实冲突仍需重新读取；last-page等缓存由平台维护，执行进度写入页面目录.d2c-tasks.md。
+- 子Agent失败事件保存固定异常类型、系统码、框架码、HTTP状态及执行阶段的安全投影；抽屉详情和复制诊断沿同一白名单读取。历史缺少原始字段时原因保持未知，不用最近一次已修复的工具反馈解释后来异常；失败阶段以真实边界为准。
+- 工具错误只有在同轮次、同Agent、同工具及同操作对象存在完整起止配对和明确的后续成功时才标记subsequent_success；错误数量保留。缺身份、调用号重复、对象截断、分页水位外的成功、结果不明及取消均保持未知，不按时间相近推断恢复。
+- 历史INVALID_ARGUMENT未保存具体字段时不能倒推出当时参数；同一子任务的通用失败与父级交接失败须关联分析，不能直接算作两个独立根因。真实规则失败、摘要冲突和片段不唯一保留校验。回归见toolArgumentDetail、editArgumentFeedback、errorDiagnostics、failureDetails及subagentFailureBoundary。
+- H5检查器共享cssMatch词法与作用域解析：完整类名、静态SCSS嵌套&、多父选择器及分组at-rule按真实主体收集直接声明，避免.card读取.card-title或子级声明；R05共用相同规则。它不执行Sass mixin、循环或动态插值，也不模拟浏览器条件和级联。回归见ruleClassBoundary、ruleCssParsing及ruleAssetEvidence，规则脚本可脱离node_modules运行。
+- 已冻结工作区须更新对应规则资源；部署新平台代码不会自动改写线上旧脚本或历史结果。字体问题独立处理，本轮未调整字体资源。
