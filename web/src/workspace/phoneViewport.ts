@@ -30,3 +30,25 @@ export function phoneViewportScale(
     ),
   );
 }
+
+/** 视口尺寸与展示缩放分别计算；适合窗口时按可用区域生成响应式视口。 */
+export function previewViewportLayout(
+  availableWidth: number,
+  availableHeight: number,
+  preset: string,
+  zoom: number | 'fit',
+) {
+  const device = phoneViewports.find((item) => item.id === preset) ?? phoneViewports[2];
+  const fixedScale = zoom === 'fit' ? 1 : zoom;
+  const width =
+    preset === 'responsive'
+      ? Math.max(1, Math.floor((availableWidth - 32) / fixedScale))
+      : device.width;
+  const height =
+    preset === 'responsive'
+      ? Math.max(1, Math.floor((availableHeight - 32) / fixedScale))
+      : device.height;
+  const scale =
+    zoom === 'fit' ? phoneViewportScale(availableWidth, availableHeight, width, height) : zoom;
+  return { width, height, scale };
+}

@@ -80,6 +80,7 @@ export default function SessionPreviewPanel({
   const selectedEntry = files?.some((file) => file.path === entryPath) ? entryPath : '';
   const fileKey = files ? previewFileKey(files) : undefined;
   const [state, setState] = useState<SessionPreviewState | null>(null);
+  const [observedEntry, setObservedEntry] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const [ticketRetry, setTicketRetry] = useState(0);
@@ -88,13 +89,20 @@ export default function SessionPreviewPanel({
   const width = 'auto';
   const phone = usePhonePreview(active && !!shown);
   const watcher = useRef<ReturnType<typeof watchSessionPreview> | null>(null);
-  const ready = state?.current?.status === 'ready' ? state.current : state?.lastReady;
-  const building = previewBuilding(state);
-  const waiting = state?.current?.status === 'waiting_files';
+  const currentState = observedEntry === selectedEntry ? state : null;
+  const candidate =
+    currentState?.current?.status === 'ready' ? currentState.current : currentState?.lastReady;
+  const ready =
+    candidate && (!selectedEntry || candidate.entryPath === selectedEntry) ? candidate : undefined;
+  const building = previewBuilding(currentState);
+  const waiting = currentState?.current?.status === 'waiting_files';
   const loading =
     !error &&
-    state?.current?.status !== 'failed' &&
-    (!state || building || !!incoming || (!!ready && !shown));
+    currentState?.current?.status !== 'failed' &&
+    (!currentState ||
+      building ||
+      !!incoming ||
+      (!!ready && ready.previewId !== shown?.preview.previewId));
   const inspector = usePreviewInspector(
     `${sessionId}:${selectedEntry}:${shown?.url ?? ''}:${width}`,
     active,
@@ -104,7 +112,10 @@ export default function SessionPreviewPanel({
     const watch = watchSessionPreview({
       sessionId,
       entryPath: selectedEntry,
-      onState: setState,
+      onState: (value) => {
+        setState(value);
+        setObservedEntry(selectedEntry);
+      },
       onError: setError,
     });
     watcher.current = watch;
@@ -141,7 +152,10 @@ export default function SessionPreviewPanel({
         if (controller.signal.aborted) return;
         if (!validPreviewTicket(ticket, ready.previewId, ready.target))
           throw new Error('预览票据无效或已到期');
-        setIncoming({ ...ticket, preview: ready });
+        if (ticket.url === shown?.url) {
+          setShown({ ...ticket, preview: ready });
+          setIncoming(null);
+        } else setIncoming({ ...ticket, preview: ready });
         renewal = setTimeout(
           () => setTicketRetry((value) => value + 1),
           Math.max(1000, (Date.parse(ticket.expiresAt) - Date.now()) * 0.8),
@@ -163,7 +177,10 @@ export default function SessionPreviewPanel({
       <select
         aria-label="当前会话预览入口"
         value={selectedEntry || state.current?.entryPath || ''}
-        onChange={(event) => setEntryPath(event.target.value)}
+        onChange={(event) => {
+          setError('');
+          setEntryPath(event.target.value);
+        }}
       >
         <option value="">请选择页面入口</option>
         {state.entries.map((entry) => (
@@ -183,7 +200,7 @@ export default function SessionPreviewPanel({
             ? '等待文件保存'
             : building
               ? '正在更新预览'
-              : state?.current?.status === 'failed'
+              : currentState?.current?.status === 'failed'
                 ? '构建失败'
                 : loading
                   ? '正在加载预览'
@@ -213,21 +230,21 @@ export default function SessionPreviewPanel({
             type="info"
             showIcon
             title="等待生成文件保存，保存后将自动更新预览"
-            description={state?.current?.waitingForFile}
+            description={currentState?.current?.waitingForFile}
           />
         )}
-        {state?.current?.status === 'failed' && (
+        {currentState?.current?.status === 'failed' && (
           <Alert
             type="error"
             showIcon
-            title={state.current.error?.message || '预览构建失败，后续文件更新将自动重试'}
-            description={<PreviewErrorDetails error={state.current.error} />}
+            title={currentState.current.error?.message || '预览构建失败，后续文件更新将自动重试'}
+            description={<PreviewErrorDetails error={currentState.current.error} />}
           />
         )}
         {!shown &&
           !error &&
           !waiting &&
-          state?.current?.status !== 'failed' &&
+          currentState?.current?.status !== 'failed' &&
           (loading ? (
             <div className="session-preview-loading" role="status" aria-live="polite">
               <div className="session-preview-loading-heading">
@@ -248,13 +265,25 @@ export default function SessionPreviewPanel({
             </div>
           ))}
         <PreviewInspector inspector={inspector} onLocateSource={onLocateSource} />
-        <PhonePreview preview={phone} toolbarStart={entrySelector}>
+        <PhonePreview
+          preview={phone}
+          toolbarStart={entrySelector}
+          loading={
+            shown && loading && !waiting
+              ? {
+                  title: building ? '正在构建预览…' : '正在切换页面…',
+                  entryPath: selectedEntry || ready?.entryPath,
+                }
+              : undefined
+          }
+        >
           <SessionPreviewFrames
             inspectorRef={inspector.frameRef}
             shown={shown}
             incoming={incoming}
             width={width}
             onReady={(frame) => {
+              if (selectedEntry && frame.preview.entryPath !== selectedEntry) return;
               setShown(frame);
               setIncoming(null);
             }}

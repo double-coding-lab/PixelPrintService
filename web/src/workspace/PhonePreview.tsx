@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Button } from 'antd';
+import { Button, Spin } from 'antd';
 import Icon from '../components/Icon';
-import { phoneViewports, phoneViewportScale } from './phoneViewport';
+import { phoneViewports, previewViewportLayout } from './phoneViewport';
 
 /** 全屏只改变原DOM的展示方式，保留iframe、票据及页面交互状态。 */
 export function usePhonePreview(available: boolean) {
@@ -103,6 +103,19 @@ export function usePhonePreview(available: boolean) {
 }
 export type PhonePreviewState = ReturnType<typeof usePhonePreview>;
 
+export type PreviewLoadingState = { title: string; entryPath?: string | null };
+
+/** 加载提示位于显示区域内，独立于页面缩放和滚动位置。 */
+export function PreviewLoading({ title, entryPath }: PreviewLoadingState) {
+  return (
+    <div className="preview-loading-indicator" role="status" aria-live="polite">
+      <Spin size="large" />
+      <strong>{title}</strong>
+      {entryPath && <code>{entryPath}</code>}
+    </div>
+  );
+}
+
 /** 常规工具条中的全屏入口，未有可见页面时禁用。 */
 export function PhonePreviewButton({ preview }: { preview: PhonePreviewState }) {
   return (
@@ -117,30 +130,40 @@ export function PhonePreviewButton({ preview }: { preview: PhonePreviewState }) 
   );
 }
 
-/** 普通与全屏模式共用手机视口和同一iframe，仅等比缩放展示。 */
+/** 视口控制页面布局，缩放只控制显示大小；普通与全屏共用同一 iframe。 */
 export default function PhonePreview({
   preview,
   children,
   toolbarStart,
+  loading,
 }: {
   preview: PhonePreviewState;
   children: ReactNode;
   toolbarStart?: ReactNode;
+  loading?: PreviewLoadingState;
 }) {
   const [preset, setPreset] = useState<string>('standard');
-  const [landscape, setLandscape] = useState(false);
-  const [scale, setScale] = useState(1);
+  const [zoom, setZoom] = useState<number | 'fit'>(1);
+  const [available, setAvailable] = useState({ width: 422, height: 876 });
   const stage = useRef<HTMLDivElement>(null);
   const exit = useRef<HTMLButtonElement>(null);
-  const device = phoneViewports.find((item) => item.id === preset) ?? phoneViewports[2];
-  const width = landscape ? device.height : device.width;
-  const height = landscape ? device.width : device.height;
+  const visible = preview.available || !!loading;
+  const { width, height, scale } = previewViewportLayout(
+    available.width,
+    available.height,
+    preset,
+    zoom,
+  );
+  const fittedScale = previewViewportLayout(available.width, available.height, preset, 'fit').scale;
   useEffect(() => {
     if (!stage.current) return;
     const element = stage.current;
     const resize = () => {
-      const box = element.getBoundingClientRect();
-      setScale(phoneViewportScale(box.width, box.height, width, height));
+      const width = element.clientWidth;
+      const height = element.clientHeight;
+      setAvailable((prior) =>
+        prior.width === width && prior.height === height ? prior : { width, height },
+      );
     };
     resize();
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(resize);
@@ -150,16 +173,16 @@ export default function PhonePreview({
       observer?.disconnect();
       window.removeEventListener('resize', resize);
     };
-  }, [preview.fullscreen, preview.available, width, height]);
+  }, [preview.fullscreen, preview.available]);
   useEffect(() => {
     if (preview.fullscreen) exit.current?.focus();
   }, [preview.fullscreen]);
   return (
     <div
       ref={preview.root}
-      className={`phone-preview-shell${preview.fullscreen ? ' is-fullscreen' : ''}${!preview.available ? ' is-pending' : ''}`}
-      aria-hidden={!preview.available}
-      inert={!preview.available}
+      className={`phone-preview-shell${preview.fullscreen ? ' is-fullscreen' : ''}${!visible ? ' is-pending' : ''}`}
+      aria-hidden={!visible}
+      inert={!visible}
       role={preview.fullscreen ? 'dialog' : undefined}
       aria-modal={preview.fullscreen ? true : undefined}
       aria-label={preview.fullscreen ? '全屏手机预览' : undefined}
@@ -167,12 +190,15 @@ export default function PhonePreview({
       <div className={`phone-preview-toolbar${toolbarStart ? ' has-entry' : ''}`}>
         {toolbarStart ?? <strong>手机预览</strong>}
         <label>
-          <span className="phone-preview-screen-label">屏幕比例</span>
+          <span className="phone-preview-screen-label">视口</span>
           <select
-            aria-label="手机屏幕比例"
+            aria-label="预览视口尺寸"
             value={preset}
             onChange={(event) => setPreset(event.target.value)}
           >
+            <option value="responsive">
+              适合窗口{preset === 'responsive' ? ` · ${width} × ${height}` : ''}
+            </option>
             {phoneViewports.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.label}
@@ -180,15 +206,25 @@ export default function PhonePreview({
             ))}
           </select>
         </label>
-        <Button
-          size="small"
-          onClick={() => setLandscape((value) => !value)}
-          aria-label="切换横竖屏"
-          title={landscape ? '切为竖屏' : '切为横屏'}
-          icon={<Icon name="refresh" />}
-        />
+        <label className="phone-preview-zoom">
+          <span className="phone-preview-screen-label">缩放</span>
+          <select
+            aria-label="预览显示缩放"
+            value={zoom}
+            onChange={(event) =>
+              setZoom(event.target.value === 'fit' ? 'fit' : Number(event.target.value))
+            }
+          >
+            <option value="fit">自动适应 · {Math.round(fittedScale * 100)}%</option>
+            {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => (
+              <option key={value} value={value}>
+                {value * 100}%
+              </option>
+            ))}
+          </select>
+        </label>
         <span className="phone-preview-dimensions" aria-live="polite">
-          {width} × {height} · {Math.round(scale * 100)}%
+          {width} × {height}
         </span>
         {preview.fullscreen && (
           <Button ref={exit} size="small" onClick={preview.close} icon={<Icon name="minimize" />}>
@@ -196,18 +232,32 @@ export default function PhonePreview({
           </Button>
         )}
       </div>
-      <div ref={stage} className="phone-preview-stage">
+      <div className="phone-preview-display" aria-busy={!!loading}>
         <div
-          className="phone-preview-device"
-          style={{ width: width * scale, height: height * scale }}
+          ref={stage}
+          className="phone-preview-stage"
+          inert={!!loading}
+          aria-hidden={loading ? true : undefined}
         >
-          <div
-            className="phone-preview-canvas"
-            style={{ width, height, transform: `scale(${scale})` }}
-          >
-            {children}
+          <div className="phone-preview-stage-content">
+            <div
+              className="phone-preview-device"
+              style={{ width: width * scale, height: height * scale }}
+            >
+              <div
+                className="phone-preview-canvas"
+                style={{ width, height, transform: `scale(${scale})` }}
+              >
+                {children}
+              </div>
+            </div>
           </div>
         </div>
+        {loading && (
+          <div className="phone-preview-loading">
+            <PreviewLoading {...loading} />
+          </div>
+        )}
       </div>
     </div>
   );

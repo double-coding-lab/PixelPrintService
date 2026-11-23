@@ -98,6 +98,7 @@ export default function PreviewPanel({
   const [previewState, setPreview] = useState<Preview | null>(null);
   const [ticketState, setTicket] = useState<Ticket | null>(null);
   const [expired, setExpired] = useState(false);
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
   const width = 'auto';
   const [busy, setBusy] = useState<'generate' | 'ticket' | null>(null);
   const [error, setError] = useState('');
@@ -123,6 +124,17 @@ export default function PreviewPanel({
     active && !!ticket && !expired,
   );
   const building = !!preview && preview.status !== 'ready' && preview.status !== 'failed';
+  const previewLoading =
+    !error &&
+    !pollError &&
+    !expired &&
+    preview?.status !== 'failed' &&
+    (checking || !!busy || building || (!!ticket && loadedUrl !== ticket.url))
+      ? {
+          title: building || busy === 'generate' ? '正在构建预览…' : '正在加载页面…',
+          entryPath: selectedEntry,
+        }
+      : undefined;
 
   /** 固定链接仅来自当前入口已校验的长期票据，切换或失效时清除旧地址。 */
   useEffect(() => {
@@ -281,7 +293,12 @@ export default function PreviewPanel({
           <select
             value={selectedEntry}
             disabled={!!busy || building || !entries.length}
-            onChange={(event) => setEntryPath(event.target.value)}
+            onChange={(event) => {
+              setChecking(true);
+              setError('');
+              setPollError('');
+              setEntryPath(event.target.value);
+            }}
           >
             <option value="" disabled>
               选择 TSX / JSX 源码
@@ -347,19 +364,22 @@ export default function PreviewPanel({
       {ticket && expired && (
         <Alert type="warning" title="预览票据已到期，请手动点击刷新预览" showIcon />
       )}
-      {ticket && !expired && (
-        <PhonePreview preview={phone}>
-          <div className="version-preview-viewport">
-            <iframe
-              key={`${ticket.url}:${width}`}
-              ref={inspector.frameRef}
-              title="已保存版本浏览器预览"
-              src={ticket.url}
-              sandbox="allow-scripts"
-              referrerPolicy="no-referrer"
-              style={{ width: width === 'auto' ? '100%' : width }}
-            />
-          </div>
+      {(previewLoading || (ticket && !expired)) && (
+        <PhonePreview preview={phone} loading={previewLoading}>
+          {ticket && !expired && (
+            <div className="version-preview-viewport">
+              <iframe
+                key={`${ticket.url}:${width}`}
+                ref={inspector.frameRef}
+                title="已保存版本浏览器预览"
+                onLoad={() => setLoadedUrl(ticket.url)}
+                src={ticket.url}
+                sandbox="allow-scripts"
+                referrerPolicy="no-referrer"
+                style={{ width: width === 'auto' ? '100%' : width }}
+              />
+            </div>
+          )}
         </PhonePreview>
       )}
     </section>

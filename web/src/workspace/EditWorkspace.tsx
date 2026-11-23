@@ -550,7 +550,26 @@ export function EditWorkspaceSurface({
             {copy.preview.status === 'failed' && copy.preview.error && (
               <Alert type="error" showIcon title={copy.preview.error} />
             )}
-            <PhonePreview preview={phone}>
+            <PhonePreview
+              preview={phone}
+              loading={
+                !state.error &&
+                copy.preview.status !== 'failed' &&
+                (pending === 'saving' ||
+                  copy.preview.status === 'building' ||
+                  (!!url && displayedUrl !== url))
+                  ? {
+                      title:
+                        pending === 'saving'
+                          ? '正在切换页面…'
+                          : copy.preview.status === 'building'
+                            ? '正在构建预览…'
+                            : '正在加载页面…',
+                      entryPath,
+                    }
+                  : undefined
+              }
+            >
               <div className="edit-workspace-stage">
                 <EditWorkspacePreviewFrames
                   url={url}
