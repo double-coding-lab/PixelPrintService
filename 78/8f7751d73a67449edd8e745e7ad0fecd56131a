@@ -1,0 +1,39 @@
+test/appRoutesBrowser.test.ts
+  s_f084de538b079d::t_fa352d04c029ec 155-156,211,224-244,248,263,278-293
+web/src/styles.css
+  s_f084de538b079d::t_fa352d04c029ec 73-98
+web/src/components/Icon.tsx
+  s_f084de538b079d::t_fa352d04c029ec 22
+web/src/workspace/PreviewPanel.tsx
+  s_f084de538b079d::t_fa352d04c029ec 88,94,120,123,127-132,168,170,194,269,340
+web/src/main.tsx
+  s_f084de538b079d::t_fa352d04c029ec 52,184-187,192
+web/src/workspace/PublishedSessionActions.tsx
+  s_f084de538b079d::t_fa352d04c029ec 1-81
+web/src/workspace/community.css
+  s_f084de538b079d::t_fa352d04c029ec 240-308
+test/publicationsUiBrowser.test.ts
+  s_f084de538b079d::t_fa352d04c029ec 1-574
+web/src/workspace/CommunityPanel.tsx
+  s_f084de538b079d::t_fa352d04c029ec 3,39,45,97,104,226,391,413-417,426-430,432-433,446,465,471-481,485,488-524,536,587-594,598-599,602,624-628,631-632
+web/src/workspace/works.css
+  s_f084de538b079d::t_fa352d04c029ec 126,147-152,177-206,217-219,226-229
+web/src/workspace/WorksPanel.tsx
+  s_f084de538b079d::t_fa352d04c029ec 8,44,107,139-140,148,235,304,310,312-315,317,319-322,324,328,330-338,359,393-394,469-470,473
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "788f7751d73a67449edd8e745e7ad0fecd56131a",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
