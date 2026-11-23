@@ -1,0 +1,41 @@
+src/functions/d2c/savedWork/service.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 337-363
+test/versionRoutes.test.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1-305
+web/src/workspace/EditWorkspace.tsx
+  s_e16f52fd1de115::t_1c8dd03c44c49b 43,54,75,168,181,369-371
+test/sharingRoutes.test.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 40-44,75-107
+src/functions/d2c/version.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 84-92
+src/functions/d2c/sharing/routes.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 172-184
+web/src/workspace/DeleteSavedItem.tsx
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1-75
+web/src/workspace/works.css
+  s_e16f52fd1de115::t_1c8dd03c44c49b 312-322
+web/src/workspace/WorksPanel.tsx
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1,32,151-156,169-173,270-279,419-428
+src/functions/d2c/version/gallery.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 8,14,19,23,152,168,172-200
+test/libraryDelete.test.ts
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1-390
+web/src/workspace/CommunityPanel.tsx
+  s_e16f52fd1de115::t_1c8dd03c44c49b 1,273-274,279,289,304,309-316,354-356,369-372,405,435-445
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "ebb504d15030245963bd9886983a867bab9f5e80",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
