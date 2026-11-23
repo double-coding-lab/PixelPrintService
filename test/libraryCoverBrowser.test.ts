@@ -1,3 +1,4 @@
+import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -8,9 +9,11 @@ import { build } from 'esbuild';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const playwright = fileURLToPath(
-  new URL('../preview-browser/node_modules/playwright-core/index.mjs', import.meta.url),
-);
+const playwright =
+  process.env.PIXELPRINT_PLAYWRIGHT_MODULE ??
+  fileURLToPath(
+    new URL('../preview-browser/node_modules/playwright-core/index.mjs', import.meta.url),
+  );
 
 /** 真实列表组件与样式配受控API，验证两种列表、坏图回退和键盘导航；不连接业务服务。 */
 test(
@@ -176,7 +179,10 @@ test(
       );
       assert.equal(await page.getByRole('alert').count(), 0);
       const imageBounds = await cover.boundingBox();
-      const bodyBounds = await cover.locator('xpath=..').locator('.work-card-body').boundingBox();
+      const bodyBounds = await cover
+        .locator('xpath=ancestor::article[1]')
+        .locator('.work-card-body')
+        .boundingBox();
       assert.ok(imageBounds && bodyBounds && imageBounds.x >= bodyBounds.x + bodyBounds.width);
       const imageSize = await cover.locator('img').boundingBox();
       assert.ok(imageSize && Math.abs(imageSize.height / imageSize.width - 2) < 0.02);

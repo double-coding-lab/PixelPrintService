@@ -1,3 +1,4 @@
+import { comparePreviewEntries } from './previewEntry';
 import PhonePreview, { PhonePreviewButton, usePhonePreview } from './PhonePreview';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Button } from 'antd';
@@ -49,7 +50,9 @@ export function PreviewErrorDetails({ error }: { error: Preview['error'] }) {
 
 /** 入口保留冻结源码的实际相对路径，仅允许 TSX/JSX 源文件。 */
 export function previewEntries(files: FileInfo[]) {
-  return files.filter((file) => file.kind === 'source' && /\.(tsx|jsx)$/i.test(file.path));
+  return files
+    .filter((file) => file.kind === 'source' && /\.(tsx|jsx)$/i.test(file.path))
+    .sort((a, b) => comparePreviewEntries(a.path, b.path));
 }
 
 /** 票据仅允许当前预览的同源隔离入口，不接受外部地址或查询参数。 */

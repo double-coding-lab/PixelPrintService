@@ -1,6 +1,6 @@
 ---
 id: d2c-session-plaza
-revision: 6
+revision: 8
 summary: "登录用户会话广场、独立编辑副本与个人作品再次编辑"
 primary: feature
 confidence: inferred
@@ -71,3 +71,11 @@ sourceDoc: ".Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md"
 
 - CommunityPanel的广场列表与个人作品统一复用library-works-grid/library-work-card：左侧标题、类型、作者与操作，右侧固定高度封面；窄屏仍保持左右结构，长图按原比例在图片区滚动。
 - WorkCover的运行截图同样支持方向键、翻页键与Home/End滚动，Enter/点击沿用打开详情。广场仍取运行截图，作品库仍取冻结作品图片，安全地址、懒加载与无图/坏图占位沿用原逻辑。桌面与390px窄屏使用真实组件和隔离接口验证，不改变列表接口或存储。
+
+## 保存记录删除
+
+- 会话版本列表和详情按服务端 `canDelete` 展示删除入口，仅创建者可删除已就绪版本；个人作品列表和详情仅允许本人删除。点击后先确认，取消或关闭确认框不发删除请求，失败保留记录并可刷新。
+- `DELETE /versions/:versionId` 与预览创建共用版本行锁，在短事务内移除该版本的冻结文件、预览登记及版本行。旧固定链接和票据随预览登记移除而失效，已下载内容或浏览器已加载画面无法追溯撤回。
+- `DELETE /my-works/:id` 必填 `expectedRevision`，在本人作品行锁内核对当前修订并清理该作品所有冻结修订与作品行；旧列表遇到新修订返回409，刷新后由用户重新确认。再次编辑保存成功会刷新作品详情修订。
+- 删除后列表重新加载，末页空缺时修正页码；详情删除后返回列表。服务端继承登录及同源保护，保留源会话、工作区、独立保存副本和共享对象存储；无需新增表、迁移或配置。真实工作台会话沿用原删除流程。
+- 实现为 `version/gallery.ts`、`savedWork/service.ts`、`DeleteSavedItem`、`WorksPanel`、`CommunityPanel`；回归见 `libraryDelete`、`versionRoutes`、`sharingRoutes` 与 `libraryManagementBrowser`。

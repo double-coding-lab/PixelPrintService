@@ -1,3 +1,4 @@
+import DeleteSavedItem from './DeleteSavedItem';
 import WorkCover from './WorkCover';
 import FileTypeIcon from '../components/FileTypeIcon';
 import { lazy, Suspense, useEffect, useState } from 'react';
@@ -28,6 +29,7 @@ type Work = VersionMetadata & {
   createdUserId: string | null;
   creatorName: string | null;
   coverUrl?: string | null;
+  canDelete?: boolean;
 };
 type WorkPage = { rows: Work[]; total: number; page: number; pageSize: number };
 type WorkDetail = Work & { files: FileInfo[] };
@@ -150,7 +152,12 @@ export default function WorksPanel({
         if (versionId) {
           setDetail(value as WorkDetail);
           setFileId((value as WorkDetail).files[0]?.fileId ?? '');
-        } else setList(value as WorkPage);
+        } else {
+          const result = value as WorkPage;
+          const lastPage = Math.max(1, Math.ceil(result.total / 12));
+          if (page > lastPage) setPage(lastPage);
+          else setList(result);
+        }
         setLoading(false);
       },
       (reason) => {
@@ -163,6 +170,11 @@ export default function WorksPanel({
     return () => controller.abort();
   }, [effectiveScope, teamId, page, versionId, reload, directory.revision]);
   const selected = detail?.files.find((file) => file.fileId === fileId);
+  function deleted() {
+    if (versionId) onSelect('');
+    else if (list?.rows.length === 1 && page > 1) setPage((value) => value - 1);
+    else setReload((value) => value + 1);
+  }
   return (
     <section className="works-panel">
       <div className="works-heading">
@@ -261,6 +273,16 @@ export default function WorksPanel({
                   </div>
                 </div>
                 <div className="work-summary-actions">
+                  {detail.canDelete && (
+                    <DeleteSavedItem
+                      kind="version"
+                      itemId={detail.versionId}
+                      name={detail.name}
+                      onDeleted={deleted}
+                      onRefresh={() => setReload((value) => value + 1)}
+                    />
+                  )}
+
                   <Button
                     type="primary"
                     icon={<Icon name="file" />}
@@ -403,6 +425,16 @@ export default function WorksPanel({
                       <ValidationTag summary={work.validationSummary} />
                     </div>
                     <div className="work-card-actions">
+                      {work.canDelete && (
+                        <DeleteSavedItem
+                          kind="version"
+                          itemId={work.versionId}
+                          name={work.name}
+                          onDeleted={deleted}
+                          onRefresh={() => setReload((value) => value + 1)}
+                        />
+                      )}
+
                       <Button type="text" onClick={() => onSelect(work.versionId)}>
                         查看版本
                       </Button>

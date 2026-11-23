@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 8
+revision: 9
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -83,3 +83,9 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 - 只选择文件摘要中 asset/attachment 类型且路径为 `design-reference/root-<nodeId_safe>.png` 的完整根基准图；不把运行截图或切图当原设计稿。
 - 使用现有文件摘要中的图片 URL，共用 PhonePreview 的固定手机视口，默认390×844，可选择尺寸、横竖屏及全屏；图片按视口宽度等比显示，长图在视口内滚动，保留点击放大原图、节点/修订信息及多根图选择。缺图显示空状态，图片加载使用紧凑提示，失败保留明确说明与刷新入口。
 - 会话随现有文件刷新读取当前稳定图，作品版本只读冻结文件；页面不重新调用 Figma，也不自动补造旧会话缺失的设计基准图。
+
+## 会话版本默认首页入口
+
+- 进入作品库会话版本详情时，入口仅从该冻结版本的 TSX/JSX 源码选择，按目录语义优先首页：`pages/home|index|page|main/index`（支持 `src/` 前缀），其次平铺首页、根 App/index/main、其他页面及通用源码；`blocks`、`components`、测试目录内组件排后。同级按路径深度、数值自然路径顺序稳定选择。
+- 截图场景默认选 `pages/page/index.tsx`，保留区块入口供手动切换。文件列表重排不覆盖仍有效的手动选择；已选文件移除时回退到首选页面；切换版本重新选择默认入口。目录规则无法推断任意业务首页时，用户仍可手动指定。
+- 实现为 `previewEntry.ts`、`PreviewPanel.previewEntries`；回归见 `previewUi` 与 `libraryManagementBrowser`。此规则作用于作品库冻结版本，不修改编译器或会话执行流程。

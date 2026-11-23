@@ -1,3 +1,4 @@
+import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -167,6 +168,7 @@ test('gallery batches one metadata query for the authorized ready page and numer
     ['b', 'a'],
   );
   assert.equal(result.total, 3);
+  assert.ok(result.rows.every((row) => row.canDelete === true));
   assert.equal(result.rows[0].coverUrl, raster('static/theme-page/cover.JPEG').objectLocator.url);
   assert.equal(result.rows[1].coverUrl, image('2_2').objectLocator.url);
   assert.doesNotMatch(JSON.stringify(result), /objectLocator|sha256|pathHash|configSnapshot/);
@@ -177,6 +179,8 @@ test('gallery batches one metadata query for the authorized ready page and numer
   assert.doesNotMatch(query, /off-page|not-ready|foreign/);
   const all = await f.gallery.list('bob', 'all');
   assert.equal(all.total, 4);
+  assert.equal(all.rows.find((row) => row.versionId === 'foreign')!.canDelete, true);
+  assert.equal(all.rows.find((row) => row.versionId === 'a')!.canDelete, false);
   assert.equal(
     all.rows.find((row) => row.versionId === 'foreign')!.coverUrl,
     image('0_1', 'foreign').objectLocator.url,

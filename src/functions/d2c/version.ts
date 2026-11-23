@@ -81,6 +81,15 @@ export default async function versionRoutes(
       ),
     });
   });
+  /** 删除仅交给创建者授权的版本服务，沿用会话插件的登录及同源保护。 */
+  app.delete('/versions/:versionId', async (request) => {
+    const { versionId } = z.object({ versionId: z.string().min(1).max(64) }).parse(request.params);
+    return responseData.success({
+      data: await (
+        await options.service()
+      ).gallery.remove((await request.getUser()).userId, versionId),
+    });
+  });
   /** 共享版本详情不返回私有配置和对话。 */
   app.get('/versions/:versionId', async (request) => {
     const { versionId } = z.object({ versionId: z.string().min(1).max(64) }).parse(request.params);
