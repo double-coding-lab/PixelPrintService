@@ -1,0 +1,21 @@
+test/incrementalInteraction.test.ts
+  s_a4e26e740c8ebc::t_718b735e53ea2c 120-122,156,162,206-210
+src/functions/d2c/run/agent/incrementalVerification.ts
+  s_a4e26e740c8ebc::t_718b735e53ea2c 130-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "c465b295f5be08163e007640a789af7f09688617",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
