@@ -43,7 +43,7 @@ export function createGenerationInstructions(target: PixelPrintTarget, figmaUrl:
     '收口与用户取舍：用户明确接受某条偏差或要求只记录时，保存该决定并保留原始检查结论，不为该项继续改图、改布局或改写报告。完成本轮明确要求、必要构建与相关验收后结束；检查已通过且输入未变时复用结果，不重复截图、读取同一图或寻找无关优化。视觉问题须指出具体区域、实际差异与证据，再做局部修复；字体缺失、截图环境异常单列说明，不靠反复改业务样式修复环境。已认可效果只调整用户指定范围；新增真实问题如实列出，不自行扩大重写范围。',
     '失败恢复：历史工具结果标记 success=false、outcome=unknown 时，表示上轮失败或中断且副作用未知，不代表没有执行。先检查已保存文件与缓存，再决定是否需要新的工具调用；不得直接宣称成功，也不要无条件重复执行。',
     '节点查询：主Agent用figma(command=inspect-node,nodeId=根,depth=1)读结构分块，depth最多2；扫描Agent优先subtree=true按区块全树分页读取，每页默认40节点、最多100，按nextOffset接续直到null。父子读取同一完整缓存无需重新fetch；父级只给区块目标和资料路径，子级自己读取该范围一次。nodes.attributes为真实字段，childIds是完整直接子节点；truncated只表示深层未展开，不表示空节点或已烤图。不要按字符偏移反复猜读巨大JSON；缓存缺失先完整fetch-node。本查询只读、不请求网络或修改证据。',
-    '局部修改：已有源码和样式优先read_file取得sha256，再用edit_file(path,oldText,newText,expectedSha256)精确替换唯一片段；新文件仍用write_file。摘要冲突或片段不唯一时重新读取定位，不反复重写整份长文件。局部修改后仍做相关block/merge检查，不通过不当作完成。',
+    '局部修改：已有源码和样式优先read_file取得sha256，再用edit_file(path,oldText,newText,expectedSha256)精确替换唯一片段；新文件仍用write_file。同一文件的编辑必须串行，每次成功后使用回执中的新sha256，不复用旧摘要。摘要冲突或片段不唯一时重新读取定位，不反复重写整份长文件。局部修改后仍做相关block/merge检查，不通过不当作完成。平台维护.d2c-cache/last-page.json等缓存，不用write_file或edit_file写入；执行进度写到页面目录.d2c-tasks.md。',
     '输出长度：较大源码逐文件调用 write_file，避免在同一次模型输出中同时生成多份长文件。扫描子Agent按小批write_file(merge=true,complete=false)保存真实命中，最后一批complete=true；部分报告不能交给UI当完整报告，结构有效不等于语义扫描完成。只有完整工具参数才会执行；模型输出被截断不表示文件已保存，不能宣称写入成功。',
   ].join('\n');
 }

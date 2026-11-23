@@ -2,6 +2,7 @@ import { platformImageInstructions } from './imagePolicy';
 import { z } from 'zod';
 import { toolFeedbackSchema } from './toolFeedback';
 import { runFailureSchema } from './errors';
+import { failureDetailsSchema } from '../../../shared/failureDetails';
 
 /** 只读专家和执行角色分别限额；共享预算仍由主入口管理，不允许递归分派。 */
 export const subagentLimits = {
@@ -34,6 +35,7 @@ export const subagentEventSchema = z.object({
   ]),
   diagnosticVersion: z.literal(1).optional(),
   diagnosticFailure: runFailureSchema.optional(),
+  failureDetails: failureDetailsSchema.optional(),
   task: z.string().max(600).optional(),
   delivery: z
     .object({

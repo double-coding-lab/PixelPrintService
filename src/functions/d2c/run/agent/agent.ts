@@ -1,5 +1,7 @@
 import { uiPrerequisites } from './uiPrerequisites';
 import { editArgumentDetail } from '../editFile';
+import { toolArgumentDetail } from './argumentFeedback';
+import { readFailureDetails } from '../../../../shared/failureDetails';
 import { createRuleRepairMiddleware, ruleRepairReport, type RuleRepairState } from './ruleRepair';
 import { runGraphWithRecovery } from './graphRecovery';
 import { createBackgroundDelegations } from './backgroundDelegations';
@@ -210,7 +212,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
     );
   }
   /** 未指定长度时按可用Token选择候选页，正文再按真实估算收缩；显式长度仍作为上限。 */
-  function readLength(length: number | null) {
+  function readLength(length?: number | null) {
     return length ?? Math.min(maxReadCharacters, Math.max(1, readBudget() * 4));
   }
   /** 同轮并行读取共享剩余空间，避免每个工具都独占整轮预算。 */
@@ -349,7 +351,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       },
     ),
     tool(
-      ({ path, resource, offset, length }) => {
+      ({ path, resource = false, offset, length }) => {
         if (path.startsWith(archivePrefix)) {
           if (resource) throw new Error('内部历史须使用 resource=false');
           const read = archive?.readText ?? input.readHistory;
@@ -419,9 +421,9 @@ export async function runAgent(input: AgentRunInput): Promise<{
           '读取会话文本或 PNG/JPEG/WebP 图片；图片作为视觉输入。resource=true 读取固定 Skill，resource=false 读取会话文件或 /history/ 内部历史。文本length=null由平台按当前剩余Token预算自动选择页长，小文件尽量一次读完；单次最多256000字符、128000估算Token，同轮并行读取共享预算。仅需局部时指定length；长文件按返回nextOffset接续；同一上下文已有完整且未变的内容直接使用，仅补读缺失部分。',
         schema: z.object({
           path: z.string(),
-          resource: z.boolean(),
-          offset: z.number().int().min(0).nullable(),
-          length: z.number().int().min(1).max(maxReadCharacters).nullable(),
+          resource: z.boolean().default(false),
+          offset: z.number().int().min(0).nullish(),
+          length: z.number().int().min(1).max(maxReadCharacters).nullish(),
         }),
       },
     ),
@@ -471,7 +473,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       {
         name: 'edit_file',
         description:
-          '局部修改已读文本文件。先read_file取得完整文件sha256，oldText须精确且唯一匹配；使用expectedSha256防止覆盖并发变更。成功返回新的sha256，下次局部编辑使用新摘要。新文件用write_file；禁止借局部编辑改固定配置或证据。',
+          '局部修改已读文本文件。先read_file取得完整文件sha256，oldText须精确且唯一匹配；使用expectedSha256防止覆盖并发变更。同一文件的编辑必须串行，成功后下次编辑使用返回的新sha256，不能复用旧摘要；摘要冲突必须重读。新文件用write_file；禁止借局部编辑改固定配置或证据。',
         schema: z.object({
           path: z.string(),
           oldText: z.string().min(1),
@@ -504,9 +506,9 @@ export async function runAgent(input: AgentRunInput): Promise<{
       {
         name: 'prepare_slices',
         description:
-          '验证复用已有切图或执行正式前置切图。figmaUrl选择主题；baseUrl显式指定基线；names将原图层名或基线nodeId映射为英文语义文件名。未知中文在导出前返回needsNames，请补names后重试。同一slug不能跨设计根复用。',
+          '验证复用已有切图或执行正式前置切图。slug为1至64位小写英文、数字或连字符，首位必须是英文或数字；不能传目录或中文名称。figmaUrl选择主题；baseUrl显式指定基线；names将原图层名或基线nodeId映射为英文语义文件名。未知中文在导出前返回needsNames，请补names后重试。同一slug不能跨设计根复用。',
         schema: z.object({
-          slug: z.string(),
+          slug: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
           figmaUrl: z.string().nullable().optional(),
           baseUrl: z.string().nullable().optional(),
           names: z.record(z.string(), z.string()).nullable().optional(),
@@ -518,7 +520,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       description:
         input.specialist === 'ui'
           ? '仅检查授权的 blocks/<alias> 区块目录，mode只能为block；写后修复并重新检查通过才能完成，禁止merge及祖先、兄弟目录。'
-          : '执行固定版本规则检查；主Agent检查自己的区域及组合，最后一次机械merge不重复深入子区域语义校验。',
+          : '执行固定版本规则检查；path是页面或区块目录（如pages/page），不是源码文件或脚本参数；mode只用block或merge。主Agent检查自己的区域及组合，最后一次机械merge不重复深入子区域语义校验。',
       schema: z.object({
         path: z.string(),
         mode: input.specialist ? z.literal('block') : z.enum(['block', 'merge']),
@@ -569,7 +571,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
               ]),
           figmaUrl: input.specialist ? z.null().optional() : z.string().nullable().optional(),
           rootNodeId: input.specialist ? z.null().optional() : z.string().nullable().optional(),
-          nodeId: z.string().nullable(),
+          nodeId: z.string().nullish(),
           subtree: z
             .boolean()
             .nullable()
@@ -591,18 +593,18 @@ export async function runAgent(input: AgentRunInput): Promise<{
             .optional()
             .describe('仅inspect-node且subtree=true时使用；默认40，其他情况省略或null。'),
           depth: input.specialist
-            ? z.union([z.literal(1), z.literal(2)]).nullable()
-            : z.number().int().min(1).max(30).nullable(),
+            ? z.union([z.literal(1), z.literal(2)]).nullish()
+            : z.number().int().min(1).max(30).nullish(),
           filename: input.specialist
-            ? z.null()
+            ? z.null().optional()
             : z
                 .string()
-                .nullable()
+                .nullish()
                 .describe(
                   'export-image 图片目录相对路径；basename须为英文名。已知中文词会翻译，未知词返回adjust要求英文filename；不得覆盖其他节点同名图片。',
                 ),
-          format: input.specialist ? z.null() : z.enum(['png', 'jpg', 'svg']).nullable(),
-          scale: input.specialist ? z.null() : z.number().int().min(1).max(4).nullable(),
+          format: input.specialist ? z.null().optional() : z.enum(['png', 'jpg', 'svg']).nullish(),
+          scale: input.specialist ? z.null().optional() : z.number().int().min(1).max(4).nullish(),
         }),
       },
     ),
@@ -930,6 +932,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           | 'delivery'
           | 'ruleCheck'
           | 'diagnosticFailure'
+          | 'failureDetails'
         > = {},
       ) {
         await guard();
@@ -1356,13 +1359,20 @@ export async function runAgent(input: AgentRunInput): Promise<{
         return result;
       } catch (error) {
         /** 最近一次纠错可能已经修复，不能拿旧工具反馈解释当前未知异常。 */
-        if (!signal.aborted)
+        if (!signal.aborted) {
+          const failure = diagnoseRunFailure(
+            error instanceof ToolInvocationError ? error.toolError : error,
+            'SUBAGENT_FAILED',
+            { stage: 'tool', tool: 'delegate_agent' },
+          );
           await publish('failed', undefined, {
-            diagnosticFailure: diagnoseRunFailure(error, 'SUBAGENT_FAILED', {
-              stage: 'tool',
-              tool: 'delegate_agent',
-            }).failure,
+            diagnosticFailure: failure.failure,
+            failureDetails: readFailureDetails({
+              ...failure.diagnostics,
+              subagentPhase: failure.diagnostics.subagentPhase ?? 'execute',
+            }),
           });
+        }
         /** 子任务局部限额返回未完成及真实已存文件；共享预算、存储和租约失败继续向上抛出。 */
         let cause = error;
         const seen = new Set<unknown>();
@@ -1563,7 +1573,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
                 '仅在确实缺少用户业务决策时提出一个问题并等待回答；提供推荐答案 recommendedAnswer，可提供其他选项，也允许自由回答。必须单独调用，不与其他工具同批。已知默认参数和普通执行不需要提问。',
               schema: z.object({
                 question: z.string().trim().min(1).max(2000),
-                options: z.array(z.string().trim().min(1).max(200)).max(6).nullable(),
+                options: z.array(z.string().trim().min(1).max(200)).max(6).nullish(),
                 recommendedAnswer: z
                   .string()
                   .trim()
@@ -1584,12 +1594,12 @@ export async function runAgent(input: AgentRunInput): Promise<{
           tool(({ entryPath }) => track(input.tools.preview!.build(entryPath ?? undefined)), {
             name: 'build_preview',
             description: '编译当前会话页面，返回真实状态和错误，不要求暂存版本。',
-            schema: z.object({ entryPath: z.string().max(512).nullable() }),
+            schema: z.object({ entryPath: z.string().max(512).nullish() }),
           }),
           tool(({ entryPath }) => track(input.tools.preview!.inspect(entryPath ?? undefined)), {
             name: 'inspect_preview',
             description: '运行当前预览并取得真实截图及运行诊断，按结果修复，不代表规则通过。',
-            schema: z.object({ entryPath: z.string().max(512).nullable() }),
+            schema: z.object({ entryPath: z.string().max(512).nullish() }),
           }),
         ]
       : [];
@@ -2020,14 +2030,30 @@ export async function runAgent(input: AgentRunInput): Promise<{
                     request.toolCall.args.path.length <= 1024
                     ? {
                         path: request.toolCall.args.path,
+                        detail: toolArgumentDetail(
+                          controlledTools.find((tool) => tool.name === name)?.schema,
+                          request.toolCall.args,
+                        ),
                         resource:
                           typeof request.toolCall.args.resource === 'boolean'
                             ? request.toolCall.args.resource
                             : undefined,
                       }
                     : name === 'edit_file'
-                      ? { detail: editArgumentDetail(request.toolCall.args) }
-                      : {},
+                      ? {
+                          detail:
+                            editArgumentDetail(request.toolCall.args) ??
+                            toolArgumentDetail(
+                              controlledTools.find((tool) => tool.name === name)?.schema,
+                              request.toolCall.args,
+                            ),
+                        }
+                      : {
+                          detail: toolArgumentDetail(
+                            controlledTools.find((tool) => tool.name === name)?.schema,
+                            request.toolCall.args,
+                          ),
+                        },
                 ),
                 new RunExecutionError('TOOL_FAILED', {
                   stage: 'tool',
