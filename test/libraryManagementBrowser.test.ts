@@ -39,7 +39,7 @@ test(
       window.mount=(kind='versions',resourceId='',paths)=>app.render(<App><TeamProvider>{kind==='preview'
         ? <PreviewPanel key="preview" versionId="owned" target="h5" files={(paths||['pages/page/blocks/card/index.tsx','pages/page/index.tsx']).map(path=>({fileId:path,path,kind:'source',revision:1,size:10}))}/>
         : kind==='saved' ? <CommunityPanel key="saved" kind="my-works" resourceId={resourceId} onSelect={id=>window.selected=id}/>
-        : <WorksPanel key="versions" versionId={resourceId} onSelect={id=>window.selected=id}/>
+        : <WorksPanel key="versions" versionId={resourceId} onSelect={id=>window.selected=id} onOpenSession={(workspaceId,sessionId)=>window.sourceSelection=[workspaceId,sessionId]}/>
       }</TeamProvider></App>);window.mount();`,
         resolveDir: root,
         loader: 'tsx',
@@ -103,6 +103,10 @@ test(
         createdAt: '2026-11-23T01:00:00Z',
         sourceFileRevision: 1,
         validationSummary: { status: 'passed' },
+        sourceSession:
+          row.versionId === 'owned'
+            ? { workspaceId: 'source-workspace', sessionId: 'source-session' }
+            : null,
         files: [],
       });
       const work = () => ({
@@ -152,6 +156,8 @@ test(
       }
       if (url.pathname === '/api/d2c/versions/owned')
         return send(version({ versionId: 'owned', name: '本人版本', canDelete: true }));
+      if (url.pathname === '/api/d2c/versions/foreign')
+        return send(version({ versionId: 'foreign', name: '他人版本', canDelete: false }));
       if (url.pathname === '/api/d2c/my-works') {
         const page = Number(url.searchParams.get('page') || 1);
         const items = [
@@ -215,6 +221,23 @@ test(
     const errors: string[] = [];
     page.on('pageerror', (error: Error) => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${(server.address() as { port: number }).port}`);
+    await page.evaluate(() => (window as any).mount('versions', 'foreign'));
+    await page.getByText('来源会话已删除或无权访问', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('link', { name: '查看来源会话', exact: true }).count(), 0);
+    await page.evaluate(() => (window as any).mount('versions', 'owned'));
+    const source = page.getByRole('link', { name: '查看来源会话', exact: true });
+    await source.waitFor();
+    assert.equal(
+      await source.getAttribute('href'),
+      '/workbench/source-workspace/sessions/source-session',
+    );
+    await source.click();
+    assert.deepEqual(await page.evaluate(() => (window as any).sourceSelection), [
+      'source-workspace',
+      'source-session',
+    ]);
+    assert.equal(mutations.length, 0);
+    await page.evaluate(() => (window as any).mount('versions'));
     const owned = page.getByRole('button', { name: '删除会话版本：本人版本', exact: true });
     await owned.waitFor();
     assert.equal(await page.getByRole('button', { name: '删除会话版本：他人版本' }).count(), 0);

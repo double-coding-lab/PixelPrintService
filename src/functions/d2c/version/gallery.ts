@@ -8,7 +8,8 @@ import type { D2cVersionFile } from '@/models/D2cVersionFile';
 import type { D2cPreview } from '@/models/D2cPreview';
 import type { D2cWorkspace } from '@/models/D2cWorkspace';
 import type { StorageFileClient } from '@/hooks/tools/storage';
-import { requireIdentifier, SessionError } from '../session/access';
+import { ownedWorkspace, requireIdentifier, SessionError } from '../session/access';
+import type { D2cSession } from '@/models/D2cSession';
 import { assertArtifactPath } from '../utils/paths';
 import { assetUrl } from '../utils/assetUrls';
 import { requireTeamMember, sameUser, TeamError } from '../team/access';
@@ -52,6 +53,25 @@ export function createGalleryService(
     if (!row || !row.archiveObject)
       throw new SessionError(404, 'VERSION_NOT_FOUND', '暂存版本不存在');
     return row;
+  }
+
+  /** 来源跳转复用工作区读权限，只查询存活会话的定位，不影响孤立版本读取。 */
+  async function sourceSession(row: D2cVersion, userId: string) {
+    if (!row.sessionId || !row.workspaceId) return null;
+    try {
+      requireIdentifier(row.sessionId);
+      requireIdentifier(row.workspaceId);
+      const session = await (mysql.models.D2cSession as typeof D2cSession).findOne({
+        where: { sessionId: row.sessionId, workspaceId: row.workspaceId },
+        attributes: ['sessionId', 'workspaceId'],
+      });
+      if (!session) return null;
+      await ownedWorkspace(mysql, userId, row.workspaceId, undefined, 'read');
+      return { sessionId: row.sessionId, workspaceId: row.workspaceId };
+    } catch (error) {
+      if (error instanceof SessionError && [404, 422].includes(error.statusCode)) return null;
+      throw error;
+    }
   }
 
   /** 检查冻结文件路径和摘要键，不允许内部文件混入共享资源。 */
@@ -157,7 +177,7 @@ export function createGalleryService(
         pageSize,
       };
     },
-    /** 版本详情与冻结文件清单不读取源会话，也不公开原始模型上下文。 */
+    /** 冻结文件保持独立，只为有源会话权限的用户提供来源跳转定位。 */
     async get(userId: string, versionId: string) {
       const row = await ready(userId, versionId);
       const rows = await findOrderedRows(files, 'pathHash', {
@@ -166,6 +186,7 @@ export function createGalleryService(
       });
       return {
         ...metadata(row, userId),
+        sourceSession: await sourceSession(row, userId),
         files: rows.filter((file) => file.kind !== 'internal').map(fileMetadata),
       };
     },

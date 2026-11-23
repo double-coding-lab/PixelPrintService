@@ -218,7 +218,11 @@ function App() {
                   <p>在工作台会话中点击“暂存版本”，已保存的页面版本会出现在这里。</p>
                 </div>
               )}
-              <WorksPanel versionId={works.versionId} onSelect={(value) => void openWorks(value)} />
+              <WorksPanel
+                versionId={works.versionId}
+                onSelect={(value) => void openWorks(value)}
+                onOpenSession={(workspaceId, sessionId) => void select(workspaceId, sessionId)}
+              />
             </div>
           )
         ) : selection.workspaceId ? (

@@ -160,7 +160,7 @@ test(
                 <button onClick={()=>onDeleted?.()}>删除成功返回</button>
               </section>}`
                     : path === 'WorksPanel'
-                      ? `import React from 'react';export default function Works(){return <section data-testid="versions">会话版本列表</section>}`
+                      ? `import React from 'react';export default function Works({onOpenSession}){return <section data-testid="versions">会话版本列表<button onClick={()=>onOpenSession('source-workspace','source-session')}>查看来源会话</button></section>}`
                       : `export default function Empty(){return null}`,
             }));
           },
@@ -216,6 +216,10 @@ test(
     await mainNav.getByRole('button', { name: '作品库', exact: true }).click();
     await page.locator('[data-testid="versions"]').waitFor();
     assert.equal(new URL(page.url()).pathname, '/works');
+    await page.getByRole('button', { name: '查看来源会话', exact: true }).click();
+    await page.waitForURL(origin + '/workbench/source-workspace/sessions/source-session');
+    await page.goBack();
+    await page.waitForURL(origin + '/works');
     assert.equal(await page.getByRole('button', { name: '已保存作品', exact: true }).count(), 0);
     await mainNav.getByRole('button', { name: '广场', exact: true }).click();
     await page.waitForURL(origin + '/plaza');

@@ -1,3 +1,4 @@
+import { appPath } from './appRoutes';
 import DeleteSavedItem from './DeleteSavedItem';
 import WorkCover from './WorkCover';
 import FileTypeIcon from '../components/FileTypeIcon';
@@ -32,7 +33,10 @@ type Work = VersionMetadata & {
   canDelete?: boolean;
 };
 type WorkPage = { rows: Work[]; total: number; page: number; pageSize: number };
-type WorkDetail = Work & { files: FileInfo[] };
+type WorkDetail = Work & {
+  files: FileInfo[];
+  sourceSession?: { workspaceId: string; sessionId: string } | null;
+};
 
 /** 作品筛选沿用版本接口；详情、源码与下载仍使用原有版本定位协议。 */
 export function worksListPath(scope: 'mine' | 'all' | 'team', teamId: string, page: number) {
@@ -107,9 +111,11 @@ function WorkFile({ versionId, file }: { versionId: string; file: FileInfo }) {
 export default function WorksPanel({
   versionId,
   onSelect,
+  onOpenSession,
 }: {
   versionId: string;
   onSelect: (value: string) => void;
+  onOpenSession?: (workspaceId: string, sessionId: string) => void;
 }) {
   const [scope, setScope] = useState<'mine' | 'all' | 'team'>('mine');
   const [teamId, setTeamId] = useState('');
@@ -273,6 +279,32 @@ export default function WorksPanel({
                   </div>
                 </div>
                 <div className="work-summary-actions">
+                  {detail.sourceSession ? (
+                    <Button
+                      icon={<Icon name="chat" />}
+                      href={appPath({ view: 'workbench', ...detail.sourceSession })}
+                      onClick={(event) => {
+                        if (
+                          onOpenSession &&
+                          !event.metaKey &&
+                          !event.ctrlKey &&
+                          !event.shiftKey &&
+                          !event.altKey &&
+                          event.button === 0
+                        ) {
+                          event.preventDefault();
+                          onOpenSession(
+                            detail.sourceSession!.workspaceId,
+                            detail.sourceSession!.sessionId,
+                          );
+                        }
+                      }}
+                    >
+                      查看来源会话
+                    </Button>
+                  ) : (
+                    <span className="muted">来源会话已删除或无权访问</span>
+                  )}
                   {detail.canDelete && (
                     <DeleteSavedItem
                       kind="version"
