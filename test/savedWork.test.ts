@@ -1,7 +1,8 @@
+import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
-import { Sequelize, UniqueConstraintError, type ModelStatic, type Model } from 'sequelize';
+import { Op, Sequelize, UniqueConstraintError, type ModelStatic, type Model } from 'sequelize';
 import { unzipSync, strFromU8 } from 'fflate';
 import { initD2cSavedWork } from '../src/models/D2cSavedWork';
 import { initD2cSavedWorkFile } from '../src/models/D2cSavedWorkFile';
@@ -21,8 +22,19 @@ function fixture() {
   const downloads: unknown[] = [];
   let failFiles = false;
   let uniqueRace = false;
-  const matches = (row: Row, where: Row) =>
-    Object.entries(where).every(([key, value]) => row[key] === value);
+  const matches = (row: Row, where: Row): boolean =>
+    Reflect.ownKeys(where).every((key) => {
+      if (key === Op.or) return Reflect.get(where, key).some((part: Row) => matches(row, part));
+      if (key === Op.and) return Reflect.get(where, key).every((part: Row) => matches(row, part));
+      assert.equal(typeof key, 'string');
+      const value = where[key as string];
+      if (value && typeof value === 'object') {
+        if (Op.in in value) return value[Op.in].includes(row[key as string]);
+        if (Op.regexp in value) return new RegExp(value[Op.regexp]).test(row[key as string]);
+        assert.fail('unsupported fixture operator');
+      }
+      return row[key as string] === value;
+    });
   /** Queries never rely on client-side filtering alone. */
   function query(kind: string, options: Row, rows: Row[]) {
     assert.ok(options.where.ownerEid, `${kind} missing SQL owner filter`);

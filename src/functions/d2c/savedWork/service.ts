@@ -1,6 +1,7 @@
+import { workCoverAttributes, workCoverPattern, workCoverUrl } from '../utils/workCover';
 import { findOrderedRows } from '../utils/orderedRead';
 import { createHash, randomUUID } from 'node:crypto';
-import { UniqueConstraintError, type Sequelize, type Transaction } from 'sequelize';
+import { Op, UniqueConstraintError, type Sequelize, type Transaction } from 'sequelize';
 import type { D2cSavedWork } from '../../../models/D2cSavedWork';
 import type { D2cSavedWorkFile } from '../../../models/D2cSavedWorkFile';
 import type { PreviewSnapshotFile } from '../preview/session';
@@ -367,7 +368,33 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
         limit: pageSize,
         offset: (page - 1) * pageSize,
       });
-      return { items: rows.map(metadata), total: await works.count({ where }), page, pageSize };
+      const coverFiles = rows.length
+        ? await files.findAll({
+            where: {
+              ownerEid: eid,
+              [Op.or]: rows.map((row) => ({ workId: row.workId, workRevision: row.revision })),
+              kind: { [Op.in]: ['asset', 'attachment'] },
+              path: { [Op.regexp]: workCoverPattern },
+            },
+            attributes: ['ownerEid', 'workId', 'workRevision', ...workCoverAttributes],
+          })
+        : [];
+      return {
+        items: rows.map((row) => ({
+          ...metadata(row),
+          coverUrl: workCoverUrl(
+            coverFiles.filter(
+              (file) =>
+                file.ownerEid === eid &&
+                file.workId === row.workId &&
+                file.workRevision === row.revision,
+            ),
+          ),
+        })),
+        total: await works.count({ where }),
+        page,
+        pageSize,
+      };
     },
     /** Public detail DTO; private preview configuration is only available via source(). */
     async get(eid: string, workId: string) {

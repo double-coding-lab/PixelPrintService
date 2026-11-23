@@ -1,3 +1,4 @@
+import { workCoverAttributes, workCoverPattern, workCoverUrl } from '../utils/workCover';
 import { contentModel, resolveTextContent } from '../content/runtime';
 import { findOrderedRows } from '../utils/orderedRead';
 import { createHash } from 'node:crypto';
@@ -117,6 +118,16 @@ export function createGalleryService(
       };
       const rows = await findOrderedRows(versions, 'versionId', {
         where,
+        attributes: [
+          'versionId',
+          'name',
+          'target',
+          'createdUserId',
+          'creatorName',
+          'createdAt',
+          'sourceFileRevision',
+          'validationSummary',
+        ],
         order: [
           ['createdAt', 'DESC'],
           ['versionId', 'DESC'],
@@ -124,7 +135,25 @@ export function createGalleryService(
         limit: pageSize,
         offset: (page - 1) * pageSize,
       });
-      return { rows: rows.map(metadata), total: await versions.count({ where }), page, pageSize };
+      const coverFiles = rows.length
+        ? await files.findAll({
+            where: {
+              versionId: { [Op.in]: rows.map((row) => row.versionId!) },
+              kind: { [Op.in]: ['asset', 'attachment'] },
+              path: { [Op.regexp]: workCoverPattern },
+            },
+            attributes: ['versionId', ...workCoverAttributes],
+          })
+        : [];
+      return {
+        rows: rows.map((row) => ({
+          ...metadata(row),
+          coverUrl: workCoverUrl(coverFiles.filter((file) => file.versionId === row.versionId)),
+        })),
+        total: await versions.count({ where }),
+        page,
+        pageSize,
+      };
     },
     /** 版本详情与冻结文件清单不读取源会话，也不公开原始模型上下文。 */
     async get(userId: string, versionId: string) {
