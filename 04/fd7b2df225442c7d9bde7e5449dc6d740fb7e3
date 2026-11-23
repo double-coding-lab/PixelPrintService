@@ -1,0 +1,32 @@
+web/src/workspace/appRoutes.ts
+  s_e16f52fd1de115::t_3dd7802c715759 14,28-30
+web/src/workspace/EditWorkspace.tsx
+  s_e16f52fd1de115::t_3dd7802c715759 397
+web/src/main.tsx
+  s_e16f52fd1de115::t_3dd7802c715759 141-142,149-153,178-213,216,218,221
+web/src/workspace/appNavigation.css
+  s_e16f52fd1de115::t_3dd7802c715759 1,42-43,50-51,54-55,60,64,71,84-85,133-134
+test/sharingFrontendBrowser.test.ts
+  s_e16f52fd1de115::t_3dd7802c715759 182-189,261,266,303-305,322-346,350-353,360,362-366,371
+test/appRoutes.test.ts
+  s_e16f52fd1de115::t_3dd7802c715759 26-31,47-62
+test/appRoutesBrowser.test.ts
+  s_e16f52fd1de115::t_3dd7802c715759 94-140,142-269
+  s_e16f52fd1de115::t_176a7238157bb0 141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "04fd7b2df225442c7d9bde7e5449dc6d740fb7e3",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
