@@ -1,3 +1,9 @@
+import {
+  createIncrementalVerificationMiddleware,
+  incrementalVerification,
+  incrementalVerificationStateSchema,
+} from './incrementalVerification';
+import { previewInspectionOptionsSchema } from '../../preview/interaction';
 import { uiPrerequisites } from './uiPrerequisites';
 import {
   createVisualInspectionMiddleware,
@@ -1713,11 +1719,18 @@ export async function runAgent(input: AgentRunInput): Promise<{
             description: '编译当前会话页面，返回真实状态和错误，不要求暂存版本。',
             schema: z.object({ entryPath: z.string().max(512).nullish() }),
           }),
-          tool(({ entryPath }) => track(input.tools.preview!.inspect(entryPath ?? undefined)), {
-            name: 'inspect_preview',
-            description: '运行当前预览并取得真实截图及运行诊断，按结果修复，不代表规则通过。',
-            schema: z.object({ entryPath: z.string().max(512).nullish() }),
-          }),
+          tool(
+            ({ entryPath, ...inspection }) =>
+              track(input.tools.preview!.inspect(entryPath ?? undefined, inspection)),
+            {
+              name: 'inspect_preview',
+              description:
+                '在当前源码预览执行受控click/swipe/scroll及expect断言并截图。交互修改用actions覆盖真实操作和预期结果，循环覆盖双向及重复边界；focusSelector定位页面下方目标。禁止用改默认值代替点击。截图和动作结果不等于整页规则或视觉通过。',
+              schema: previewInspectionOptionsSchema.extend({
+                entryPath: z.string().max(512).nullish(),
+              }),
+            },
+          ),
         ]
       : [];
   let visionRejected = false;
@@ -1747,6 +1760,14 @@ export async function runAgent(input: AgentRunInput): Promise<{
     request: ModelRequest<TState>,
   ): Promise<ModelRequest<TState>> {
     await guard();
+    if (incrementalVerification(request.state)) {
+      request = {
+        ...request,
+        systemMessage: request.systemMessage.concat(
+          '\n本轮是已有页面的交互增量修改：先读相关源码，保留既有布局、素材和未涉及功能。复用已读Skill与报告，不默认派扫描子任务、重切图片或整页merge；只核对受影响结构。一次完成相关修改后用inspect_preview(actions,focusSelector)先expect记录选中项/scrollLeft基线，再执行当前修订的真实点击、滑动并断言同一状态确实变化；可见性本身不算交互证据。循环从首/末项跨边界并核对回环，覆盖双向重复。不要改默认选中值来模拟点击；不反复解读旧修订截图。验证通过立即交付；最多一轮验收加两轮修复复验，仍未通过明确报告剩余问题及已保存进度。',
+        ),
+      };
+    }
     if (resources) {
       const metadata = (request.state as Record<string, unknown>).skillsMetadata;
       if (
@@ -1788,7 +1809,10 @@ export async function runAgent(input: AgentRunInput): Promise<{
   ): Promise<AIMessage> {
     await flushBackgroundObservations();
     const inspection =
-      !input.specialist && input.tools.preview && pendingVisualInspection(request.state);
+      !input.specialist &&
+      !incrementalVerification(request.state) &&
+      input.tools.preview &&
+      pendingVisualInspection(request.state);
     if (inspection && !backgroundDelegations.hasUnobserved()) {
       const check = new AIMessage({
         content: '',
@@ -2098,6 +2122,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
     if (
       !input.specialist &&
       input.tools.preview &&
+      !incrementalVerification(request.state) &&
       !completed.tool_calls?.length &&
       (pendingVisualInspection(request.state, true) ||
         (await input.tools.preview?.needsInspection()))
@@ -2353,7 +2378,9 @@ export async function runAgent(input: AgentRunInput): Promise<{
       createMiddleware({
         name: 'PixelPrintModelCall',
         stateSchema: (input.reasoningModels ? reasoningStateSchema : z.object({})).extend(
-          !input.specialist && input.tools.preview ? visualInspectionStateSchema.shape : {},
+          !input.specialist && input.tools.preview
+            ? { ...visualInspectionStateSchema.shape, ...incrementalVerificationStateSchema.shape }
+            : {},
         ),
         wrapModelCall: guardModelCall,
       }),
@@ -2363,6 +2390,22 @@ export async function runAgent(input: AgentRunInput): Promise<{
               admissionId: input.deliveryAdmissionId,
               reset: input.resetRuleRepair,
               observe: (value, stalled) => input.onRuleRepair?.(value, stalled),
+            }),
+          ]
+        : []),
+      ...(!input.specialist && input.tools.preview
+        ? [
+            createIncrementalVerificationMiddleware({
+              admissionId: input.reasoningAdmissionId,
+              userText:
+                input.reasoningUserText ??
+                input.messages.filter((message) => HumanMessage.isInstance(message)).at(-1)?.text ??
+                '',
+              hasSourceFiles: input.reasoningContext?.hasSourceFiles === true,
+              finish: async (message) => {
+                output = message.text;
+                await input.onMessage?.(message);
+              },
             }),
           ]
         : []),

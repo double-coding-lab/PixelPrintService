@@ -1,3 +1,4 @@
+import type { PreviewInspectionOptions } from '../preview/interaction';
 import type { NativeRuleScanResult } from './ruleScan/index';
 
 /** 持久图片只保存会话内身份；capture 由预览解析器处理，不接受外部 URL。 */
@@ -105,7 +106,7 @@ export interface GenerationTools {
     /** 已有自动编译的有界失败诊断；只读查询，不创建构建，同一失败只返回一次。 */
     feedback?(): Promise<string | undefined>;
     build(entryPath?: string): Promise<string>;
-    inspect(entryPath?: string): Promise<string>;
+    inspect(entryPath?: string, options?: PreviewInspectionOptions): Promise<string>;
     needsInspection(): Promise<boolean>;
   };
 }

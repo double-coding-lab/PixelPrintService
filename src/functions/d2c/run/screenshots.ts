@@ -54,7 +54,9 @@ export function createRunScreenshotWriter(input: {
     )
       throw new Error('运行截图元数据不一致');
     const attachmentId = createHash('sha256')
-      .update(`${input.lease.runId}:${value.previewId}:${capture.width}`)
+      .update(
+        `${input.lease.runId}:${value.previewId}:${capture.width}${value.inspectionKey ? `:${value.inspectionKey}` : ''}`,
+      )
       .digest('hex');
     const where = { attachmentId, sessionId: input.lease.sessionId, userId: input.userId };
     const existing = await commit(async (_session, transaction) =>
@@ -96,7 +98,7 @@ export function createRunScreenshotWriter(input: {
         messageId,
         displayPayload: {
           role: 'assistant',
-          text: `运行截图 · 文件修订 r${value.fileRevision}\n\n入口：${value.entryPath}${capture.truncated ? '\n\n截图已达到高度上限，仅展示页面部分内容。' : ''}`,
+          text: `运行截图 · 文件修订 r${value.fileRevision}\n\n入口：${value.entryPath}${capture.coverage?.mode === 'focused' ? '\n\n本图仅展示目标区域，不能代表整页检查。' : capture.truncated ? `\n\n${capture.coverage?.reason === 'nested_scroll' ? '页面含内部滚动区域，本图未覆盖其全部内容。' : capture.coverage?.reason === 'byte_limit' ? '截图达到图片大小限制，仅展示页面部分内容。' : capture.coverage?.reason === 'height_limit' ? '截图达到 12000 像素高度限制，仅展示页面部分内容。' : '本图仅展示页面部分内容，未覆盖区域尚未检查。'}` : ''}`,
           attachments: [attachmentSummary(row)],
         },
       });

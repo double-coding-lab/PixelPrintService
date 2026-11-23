@@ -1,3 +1,4 @@
+import { previewInspectionOptionsSchema, type PreviewInspectionOptions } from './interaction';
 import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { PreviewService } from './service';
@@ -20,6 +21,7 @@ export function createPreviewInspection(input: {
     fileRevision: number;
     entryPath: string;
     capture: PreviewCaptureResult;
+    inspectionKey?: string;
   }) => Promise<{ imageRef: string; image: AgentImage }>;
 }) {
   let dirty = false;
@@ -110,13 +112,16 @@ export function createPreviewInspection(input: {
         return JSON.stringify(await ready(entryPath));
       },
       /** 同一不可变预览只截图一次；生产接线持久保存聊天附件，模型历史只保存短引用。 */
-      async inspect(entryPath?: string) {
+      async inspect(entryPath?: string, options: PreviewInspectionOptions = {}) {
+        const inspection = previewInspectionOptionsSchema.parse(options);
         dirty = false;
         const result = await ready(entryPath);
         if (!result.ok) return JSON.stringify(result);
         const preview = result.preview;
         if (preview.fileRevision === null) throw new Error('会话预览缺少源码修订');
-        const cached = checked.get(preview.previewId);
+        const inspectionKey = createHash('sha256').update(JSON.stringify(inspection)).digest('hex');
+        const captureKey = `${preview.previewId}:${inspectionKey}`;
+        const cached = checked.get(captureKey);
         if (cached) return cached;
         try {
           const files = await input.service.captureInputs(input.userId, preview.previewId);
@@ -125,16 +130,18 @@ export function createPreviewInspection(input: {
             target: files.target,
             signal: input.signal,
             width: 375,
+            inspection,
           });
           await input.assertLease();
           const id = createHash('sha256')
-            .update(`${input.sessionId}:${preview.previewId}:375`)
+            .update(`${input.sessionId}:${captureKey}:375`)
             .digest('hex');
           const saved = await input.saveCapture?.({
             previewId: preview.previewId,
             fileRevision: preview.fileRevision,
             entryPath: preview.entryPath,
             capture,
+            inspectionKey,
           });
           const imageRef = saved?.imageRef ?? `preview://${id}`;
           images.set(imageRef, saved?.image ?? { mimeType: capture.mimeType, data: capture.image });
@@ -149,12 +156,15 @@ export function createPreviewInspection(input: {
             width: capture.width,
             height: capture.height,
             ...(capture.truncated ? { truncated: true } : {}),
+            ...(capture.interaction ? { interaction: capture.interaction } : {}),
+            ...(capture.coverage ? { coverage: capture.coverage } : {}),
             errors: capture.errors,
             missingAssets: capture.missingAssets,
             message:
-              '已取得真实运行截图，请结合用户反馈检查并修改；截图不等于规则检查或视觉还原已通过。',
+              '已取得当前修订的运行截图及请求的动作断言结果。仅有截图不能证明点击或滑动通过；coverage标明截取范围，未覆盖区域不能当作已验收。按本次需求检查，已通过后停止重复自检。',
           });
-          checked.set(preview.previewId, output);
+          checked.set(captureKey, output);
+          while (checked.size > 32) checked.delete(checked.keys().next().value!);
           return output;
         } catch (error) {
           input.signal.throwIfAborted();
@@ -168,7 +178,8 @@ export function createPreviewInspection(input: {
             message:
               '页面已编译，但本地浏览器截图不可用。请如实报告，不能声称完成视觉检查；不要为环境问题修改页面源码。',
           });
-          checked.set(preview.previewId, output);
+          checked.set(captureKey, output);
+          while (checked.size > 32) checked.delete(checked.keys().next().value!);
           return output;
         }
       },
