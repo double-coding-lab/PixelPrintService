@@ -1,0 +1,22 @@
+.Knowledge/topics/d2c-preview-editing.md
+  s_f084de538b079d::t_e14bca4571596f 84
+  s_f084de538b079d::t_55e876b6a13251 3,86
+web/src/workspace/DesignReferencePanel.tsx
+  s_f084de538b079d::t_55e876b6a13251 138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "61be80dc58e51662466fd4062f9f88170fa4b947",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
