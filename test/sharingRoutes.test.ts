@@ -110,7 +110,7 @@ test('公开读取仍需登录；写入要求同源标记且保留服务权限�
   const f = await fixture();
   t.after(() => f.app.close());
   assert.equal((await f.app.inject('/api/d2c/plaza/sessions')).statusCode, 200);
-  assert.deepEqual(f.calls[0], ['list', 'viewer', 1, 12]);
+  assert.deepEqual(f.calls[0], ['list', 'viewer', 1, 12, 'all']);
   const denied = await f.app.inject({
     method: 'PUT',
     url: '/api/d2c/sessions/source/sharing',
@@ -195,4 +195,33 @@ test('分页与子 Agent 游标有界，响应不缓存', async (t) => {
   assert.equal(page.statusCode, 200);
   assert.equal(page.headers['cache-control'], 'private, no-store');
   assert.deepEqual(f.calls[0], ['timeline', 'viewer', 'source', 0, 500, 0]);
+});
+
+test('广场 scope 传给服务且非法值返回422；撤回只沿既有PUT并保留403', async (t) => {
+  const f = await fixture();
+  t.after(() => f.app.close());
+  for (const scope of ['mine', 'all']) {
+    const result = await f.app.inject(`/api/d2c/plaza/sessions?page=2&pageSize=3&scope=${scope}`);
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.headers['cache-control'], 'private, no-store');
+  }
+  assert.deepEqual(f.calls, [
+    ['list', 'viewer', 2, 3, 'mine'],
+    ['list', 'viewer', 2, 3, 'all'],
+  ]);
+  for (const scope of ['', 'other', 'MINE', 'mine&scope=all'])
+    assert.equal((await f.app.inject(`/api/d2c/plaza/sessions?scope=${scope}`)).statusCode, 422);
+  assert.equal(f.calls.length, 2);
+  const result = await f.app.inject({
+    method: 'PUT',
+    url: '/api/d2c/sessions/source/sharing',
+    headers,
+    payload: { public: false },
+  });
+  assert.equal(result.statusCode, 403);
+  assert.equal(result.json().data.reason, 'SHARE_CREATOR_REQUIRED');
+  assert.equal(
+    (await f.app.inject({ method: 'DELETE', url: '/api/d2c/plaza/sessions/source' })).statusCode,
+    404,
+  );
 });

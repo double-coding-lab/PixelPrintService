@@ -49,6 +49,7 @@ function App() {
   const [works, setWorks] = useState(() => workSelection(initialRoute));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [plazaScope, setPlazaScope] = useState<'all' | 'mine'>('all');
   useEffect(() => {
     /** 浏览器刷新或关闭时保护未保存源码，任务生命周期与此提醒无关。 */
     function beforeUnload(event: BeforeUnloadEvent) {
@@ -177,33 +178,18 @@ function App() {
         {works.active ? (
           works.view === 'plaza' || works.view === 'my-works' ? (
             <div className="plaza-layout">
-              <div className="plaza-navigation">
-                <nav aria-label="广场分类">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    aria-current={works.view === 'plaza' ? 'page' : undefined}
-                    onClick={() => void openWorks('', 'plaza')}
-                  >
-                    广场作品
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    aria-current={works.view === 'my-works' ? 'page' : undefined}
-                    onClick={() => void openWorks('', 'my-works')}
-                  >
-                    已保存作品
-                  </button>
-                </nav>
-              </div>
               <CommunityPanel
                 key={works.view}
                 kind={works.view}
+                plazaScope={plazaScope}
+                onScopeChange={setPlazaScope}
+                onKindChange={(kind) => void openWorks('', kind)}
+                navigationDisabled={busy}
                 resourceId={works.resourceId}
                 onDirty={setDirty}
                 onBusy={setBusy}
                 onSelect={(value) => void openWorks('', works.view, value)}
+                onOpenSession={(workspaceId, sessionId) => void select(workspaceId, sessionId)}
                 onDeleted={
                   works.view === 'my-works'
                     ? () => void navigation.current?.navigate({ view: 'my-works' }, true, true)
@@ -213,11 +199,6 @@ function App() {
             </div>
           ) : (
             <div className="library-layout">
-              {!works.versionId && (
-                <div className="library-navigation">
-                  <p>在工作台会话中点击“暂存版本”，已保存的页面版本会出现在这里。</p>
-                </div>
-              )}
               <WorksPanel
                 versionId={works.versionId}
                 onSelect={(value) => void openWorks(value)}

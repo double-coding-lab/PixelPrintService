@@ -5,6 +5,7 @@ import FileTypeIcon from '../components/FileTypeIcon';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   Alert,
+  App,
   Button,
   Image,
   Input,
@@ -40,11 +41,7 @@ type WorkDetail = Work & {
 
 /** 作品筛选沿用版本接口；详情、源码与下载仍使用原有版本定位协议。 */
 export function worksListPath(scope: 'mine' | 'all' | 'team', teamId: string, page: number) {
-  const query = new URLSearchParams({
-    scope,
-    page: String(page),
-    pageSize: '12',
-  });
+  const query = new URLSearchParams({ scope, page: String(page), pageSize: '12' });
   if (scope === 'team') query.set('teamId', teamId);
   return `/versions?${query}`;
 }
@@ -107,7 +104,7 @@ function WorkFile({ versionId, file }: { versionId: string; file: FileInfo }) {
   );
 }
 
-/** 全用户只读作品列表和可直接访问的版本页，与源会话导航解耦。 */
+/** 全员工只读作品列表和可直接访问的版本页，与源会话导航解耦。 */
 export default function WorksPanel({
   versionId,
   onSelect,
@@ -139,7 +136,8 @@ export default function WorksPanel({
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [copyMessage, setCopyMessage] = useState('');
+  const { message } = App.useApp();
+  const [previewLink, setPreviewLink] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -147,7 +145,7 @@ export default function WorksPanel({
     setDetail(null);
     setList(null);
     setFileId('');
-    setCopyMessage('');
+    setPreviewLink(null);
     setSearch('');
     const path = versionId
       ? `/versions/${id(versionId)}`
@@ -234,10 +232,7 @@ export default function WorksPanel({
               aria-label="作品团队"
               value={teamId}
               disabled={directory.loading}
-              options={directory.teams.map((team) => ({
-                value: team.teamId,
-                label: team.name,
-              }))}
+              options={directory.teams.map((team) => ({ value: team.teamId, label: team.name }))}
               onChange={(value) => {
                 setTeamId(value);
                 setPage(1);
@@ -305,6 +300,33 @@ export default function WorksPanel({
                   ) : (
                     <span className="muted">来源会话已删除或无权访问</span>
                   )}
+                  <Button
+                    icon={<Icon name="download" />}
+                    href={`/api/d2c/versions/${id(versionId)}/archive`}
+                  >
+                    下载 ZIP
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<Icon name="external" />}
+                    disabled={!previewLink}
+                    title={
+                      previewLink ? '复制当前页面入口的固定在线预览地址' : '在线预览链接尚未就绪'
+                    }
+                    onClick={async () => {
+                      if (!previewLink) return;
+                      try {
+                        await navigator.clipboard.writeText(
+                          new URL(previewLink, window.location.origin).href,
+                        );
+                        void message.success('预览链接已复制');
+                      } catch {
+                        void message.error('复制失败，请重试或检查浏览器剪贴板权限');
+                      }
+                    }}
+                  >
+                    复制预览链接
+                  </Button>
                   {detail.canDelete && (
                     <DeleteSavedItem
                       kind="version"
@@ -314,30 +336,8 @@ export default function WorksPanel({
                       onRefresh={() => setReload((value) => value + 1)}
                     />
                   )}
-
-                  <Button
-                    type="primary"
-                    icon={<Icon name="file" />}
-                    href={`/api/d2c/versions/${id(versionId)}/archive`}
-                  >
-                    下载 ZIP
-                  </Button>
-                  <Button
-                    icon={<Icon name="external" />}
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(window.location.href);
-                        setCopyMessage('版本链接已复制');
-                      } catch {
-                        setCopyMessage('复制失败，请复制地址栏链接');
-                      }
-                    }}
-                  >
-                    复制链接
-                  </Button>
                 </div>
               </div>
-              {copyMessage && <p role="status">{copyMessage}</p>}
               <Tabs
                 className="work-detail-tabs"
                 defaultActiveKey="preview"
@@ -356,6 +356,7 @@ export default function WorksPanel({
                         versionId={versionId}
                         files={detail.files}
                         target={detail.target}
+                        onPreviewLinkChange={setPreviewLink}
                       />
                     ),
                   },
@@ -389,11 +390,8 @@ export default function WorksPanel({
                             icon={(node) => (
                               <FileTypeIcon
                                 path={
-                                  (
-                                    node as {
-                                      data?: { file?: { path: string } };
-                                    }
-                                  ).data?.file?.path ?? ''
+                                  (node as { data?: { file?: { path: string } } }).data?.file
+                                    ?.path ?? ''
                                 }
                                 directory={!node.isLeaf}
                                 expanded={node.expanded}
@@ -468,11 +466,11 @@ export default function WorksPanel({
                       </Button>
                       <Button
                         className="work-action-download"
+                        aria-label="下载 ZIP"
+                        title="下载 ZIP"
                         icon={<Icon name="download" />}
                         href={`/api/d2c/versions/${id(work.versionId)}/archive`}
-                      >
-                        下载 ZIP
-                      </Button>
+                      />
                       {work.canDelete && (
                         <DeleteSavedItem
                           kind="version"

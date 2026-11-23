@@ -123,7 +123,7 @@
 .work-card-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: auto;
@@ -143,6 +143,12 @@
 .work-card-actions .ant-btn .icon {
   width: 14px;
   height: 14px;
+}
+.work-card-actions .work-action-download.ant-btn,
+.work-card-actions .work-action-session.ant-btn {
+  width: 30px;
+  padding-inline: 0;
+  flex-shrink: 0;
 }
 .work-action-view.ant-btn {
   font-weight: 500;
@@ -168,6 +174,36 @@
   background: transparent;
   box-shadow: none;
 }
+.work-card-actions > .work-action-delete,
+.work-summary-actions > .work-action-delete {
+  margin-inline-start: auto;
+}
+.work-card-actions > .work-action-unpublish {
+  margin-inline-start: auto;
+}
+.works-panel .work-action-unpublish.ant-btn {
+  height: 32px;
+  padding-inline: 8px;
+  border: 1px solid #e4dadd;
+  border-radius: 6px;
+  background: #fff;
+  color: #816b73;
+  box-shadow: none;
+}
+.works-panel .work-action-unpublish.ant-btn:not(:disabled):hover {
+  border-color: #e7acb8;
+  background: #fff2f4;
+  color: #b33d58;
+}
+.works-panel .work-action-unpublish.ant-btn:focus-visible {
+  outline: 2px solid #d695a7;
+  outline-offset: 2px;
+}
+.works-panel .work-action-unpublish.ant-btn:disabled {
+  border-color: #eae5e7;
+  background: #faf8f9;
+  color: #aaa1a6;
+}
 .works-panel .work-action-delete.ant-btn:not(:disabled):hover {
   color: #ba4754;
   background: #fff1f2;
@@ -178,13 +214,19 @@
 }
 .work-summary {
   display: flex;
-  align-items: center;
-  gap: 18px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
   margin-bottom: 16px;
   padding: 16px;
   border: 1px solid #e3e7ee;
   border-radius: 6px;
   background: #fff;
+}
+.work-summary-actions {
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f5;
 }
 .work-summary-info {
   flex: 1;

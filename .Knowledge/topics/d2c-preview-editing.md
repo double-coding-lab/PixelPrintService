@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 10
+revision: 11
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -96,3 +96,8 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 - 依赖补齐后自动继续真实编译；旧文件改变、删除，新增二进制或路径大小写冲突时保守交回编译器。显式重试可绕过等待去重；缺包、非法路径、语法错误、较新的真实失败或成功不能被旧缺依赖记录覆盖。
 - 仅有活动run时把真实缺文件状态投影为`waiting_files`；run结束仍显示实际失败。冻结版本及临时编辑构建不套用生成期等待，不用占位源码或伪造成功；原失败输入快照保持不变，不将新修订声称为已编译。
 - 实现见`preview/session.ts`的`unchangedMissingPreviewFile`及`preview/service.ts`；`previewDependencyWaiting.test.ts`覆盖连续无关修订、依赖分阶段补齐、作用域隔离、队列竞态、显式重试和重启恢复。本次无需新增DDL或配置。
+
+## 预览与下拉控件
+
+- 冻结版本预览就绪后持续显示，保留刷新、元素审查、调试及全屏操作；取消单独的关闭/重开预览状态。刷新仍只重取票据，不重新构建。
+- 主站原生单选select统一使用受信SVG箭头，右侧12px、尾部36px留白；RTL箭头换侧，高对比模式沿用系统控件。原生多选/列表框和Ant Design Select保持各自行为，生成预览iframe内控件沿原页面源码。

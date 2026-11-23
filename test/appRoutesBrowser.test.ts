@@ -152,7 +152,8 @@ test(
                 path === 'TeamSettings'
                   ? `export const TeamProvider=({children})=>children;export default function Settings(){return null}`
                   : path === 'CommunityPanel'
-                    ? `import React from 'react'; export default function Panel({kind,resourceId,onSelect,onDirty,onBusy,onDeleted}){return <section data-testid="community" data-kind={kind} data-resource={resourceId}>
+                    ? `import React from 'react'; export default function Panel({kind,resourceId,onSelect,onDirty,onBusy,onDeleted,plazaScope='all',onScopeChange,onKindChange,navigationDisabled}){return <section data-testid="community" data-kind={kind} data-resource={resourceId} data-scope={plazaScope}>
+                {!resourceId && <nav aria-label="广场分类">{[['all','全部作品'],['mine','我发布的作品'],['saved','已保存作品']].map(([value,label])=><button key={value} disabled={navigationDisabled} aria-current={(value==='saved'?kind==='my-works':kind==='plaza'&&plazaScope===value)?'page':undefined} onClick={()=>{if(value==='saved'){if(kind!=='my-works')onKindChange?.('my-works');}else{onScopeChange?.(value);if(kind!=='plaza')onKindChange?.('plaza');}}}>{label}</button>)}</nav>}
                 <button onClick={()=>onSelect('item-a')}>打开详情</button>
                 <button onClick={()=>onDirty?.(true)}>修改未保存</button>
                 <button onClick={()=>onBusy?.(true)}>开始保存</button>
@@ -207,12 +208,7 @@ test(
         .getAttribute('aria-current'),
       null,
     );
-    assert.equal(
-      await plazaNav
-        .getByRole('button', { name: '已保存作品', exact: true })
-        .getAttribute('aria-current'),
-      'page',
-    );
+    assert.equal(await plazaNav.count(), 0, '详情不显示分类导航');
     await mainNav.getByRole('button', { name: '作品库', exact: true }).click();
     await page.locator('[data-testid="versions"]').waitFor();
     assert.equal(new URL(page.url()).pathname, '/works');
@@ -225,10 +221,31 @@ test(
     await page.waitForURL(origin + '/plaza');
     await plazaNav.getByRole('button', { name: '已保存作品', exact: true }).click();
     await page.waitForURL(origin + '/plaza/saved');
+    assert.equal(await plazaNav.count(), 1);
+    assert.equal(await page.locator('.plaza-navigation').count(), 0);
+    await plazaNav.getByRole('button', { name: '我发布的作品', exact: true }).click();
+    await page.waitForURL(origin + '/plaza');
+    await plazaNav.getByRole('button', { name: '已保存作品', exact: true }).click();
+    await page.waitForURL(origin + '/plaza/saved');
+    assert.equal(
+      await page.locator('[data-testid="community"]').getAttribute('data-scope'),
+      'mine',
+    );
+    await mainNav.getByRole('button', { name: '广场', exact: true }).click();
+    await page.waitForURL(origin + '/plaza');
+    assert.equal(
+      await plazaNav
+        .getByRole('button', { name: '我发布的作品', exact: true })
+        .getAttribute('aria-current'),
+      'page',
+      '跨分类重新进入广场保留 mine',
+    );
+    await plazaNav.getByRole('button', { name: '已保存作品', exact: true }).click();
+    await page.waitForURL(origin + '/plaza/saved');
     await page.getByRole('button', { name: '打开详情', exact: true }).click();
     await page.waitForURL(origin + '/plaza/saved/item-a');
     await page.getByRole('button', { name: '修改未保存', exact: true }).click();
-    await plazaNav.getByRole('button', { name: '广场作品', exact: true }).click();
+    await mainNav.getByRole('button', { name: '广场', exact: true }).click();
     await page
       .getByRole('dialog')
       .getByRole('button', { name: /取\s*消/ })
@@ -243,10 +260,7 @@ test(
     await page.getByRole('dialog').waitFor({ state: 'hidden' });
     await page.waitForURL(origin + '/plaza/saved/item-a');
     await page.getByRole('button', { name: '开始保存', exact: true }).click();
-    assert.equal(
-      await plazaNav.getByRole('button', { name: '广场作品', exact: true }).isDisabled(),
-      true,
-    );
+    assert.equal(await plazaNav.count(), 0, '忙碌详情仍无分类导航');
     assert.equal(
       await mainNav.getByRole('button', { name: '作品库', exact: true }).isDisabled(),
       true,
@@ -261,7 +275,22 @@ test(
       historyLength,
       '删除后替换失效详情，不新增历史条目',
     );
-    await plazaNav.getByRole('button', { name: '广场作品', exact: true }).click();
+    await page.getByRole('button', { name: '开始保存', exact: true }).click();
+    assert.equal(
+      await plazaNav.getByRole('button', { name: '全部作品', exact: true }).isDisabled(),
+      true,
+    );
+    await page.getByRole('button', { name: '结束保存', exact: true }).click();
+    await page.getByRole('button', { name: '修改未保存', exact: true }).click();
+    await plazaNav.getByRole('button', { name: '全部作品', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /取\s*消/ })
+      .click();
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
+    assert.equal(new URL(page.url()).pathname, '/plaza/saved');
+    await plazaNav.getByRole('button', { name: '全部作品', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '放弃并进入', exact: true }).click();
     await page.waitForURL(origin + '/plaza');
     await page.goBack();
     await page.waitForURL(origin + '/plaza/saved');

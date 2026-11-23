@@ -11,8 +11,14 @@ import type { D2cRun } from '../../../models/D2cRun';
 import type { D2cFile } from '../../../models/D2cFile';
 import type { D2cTimeline } from '../../../models/D2cTimeline';
 import type { D2cMessageAttachment } from '../../../models/D2cMessageAttachment';
-import { ownedSession, requireIdentifier, requireRevision, SessionError } from '../session/access';
-import { sameUser } from '../team/access';
+import {
+  ownedSession,
+  ownedWorkspace,
+  requireIdentifier,
+  requireRevision,
+  SessionError,
+} from '../session/access';
+import { normalizeUserId, sameUser } from '../team/access';
 import { displayPayload } from '../session/service';
 import { attachmentMaxBytes, inspectAttachmentImage } from '../session/attachments';
 import { assertArtifactPath } from '../utils/paths';
@@ -28,7 +34,12 @@ function usageTime(value: unknown): number | null {
 export type SharingBinary = { downloadFile(locator: Record<string, unknown>): Promise<Buffer> };
 
 /** DTO 始终只含显示字段，不含配置、凭据或对象定位。 */
-function summary(session: D2cSession, shareId: string, coverAttachmentId?: string) {
+function summary(
+  session: D2cSession,
+  shareId: string,
+  coverAttachmentId: string | undefined,
+  access: { canManage: boolean; sourceSession: { workspaceId: string; sessionId: string } | null },
+) {
   return {
     shareId,
     coverUrl: coverAttachmentId
@@ -42,6 +53,7 @@ function summary(session: D2cSession, shareId: string, coverAttachmentId?: strin
     fileRevision: session.fileRevision,
     timelineSeq: session.timelineSeq,
     createdAt: session.createdAt,
+    ...access,
   };
 }
 
@@ -173,6 +185,41 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
     }
   }
 
+  /** 私有读取沿用当前工作区权限，只吞掉预期的失权；数据库故障保持真实错误。 */
+  async function privateWorkspace(eid: string, session: D2cSession) {
+    if (!session.workspaceId) return null;
+    try {
+      return await ownedWorkspace(mysql, eid, session.workspaceId, undefined, 'read');
+    } catch (error) {
+      if (error instanceof SessionError && [403, 404].includes(error.statusCode)) return null;
+      throw error;
+    }
+  }
+
+  /** 异步鉴权后关联或工作区归属发生变化时，保守隐藏私有定位与管理入口。 */
+  function accessSummary(
+    eid: string,
+    session: D2cSession,
+    workspace: D2cWorkspace | undefined | null,
+    authorized: D2cWorkspace | null,
+  ) {
+    const readable = !!(
+      authorized &&
+      workspace &&
+      !workspace.deletedAt &&
+      session.workspaceId === authorized.workspaceId &&
+      workspace.workspaceId === authorized.workspaceId &&
+      workspace.createdUserId === authorized.createdUserId &&
+      workspace.teamId === authorized.teamId
+    );
+    return {
+      canManage: readable && canManageSharing(eid, session, workspace!),
+      sourceSession: readable
+        ? { workspaceId: session.workspaceId!, sessionId: session.sessionId! }
+        : null,
+    };
+  }
+
   return {
     /** 状态沿用私有访问权限，历史个人会话与发布写入使用同一授权规则。 */
     async status(eid: string, sessionId: string) {
@@ -191,7 +238,17 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
       if (typeof enabled !== 'boolean')
         throw new SessionError(422, 'INVALID_SHARING', '发布状态无效');
       return mysql.transaction(async (transaction) => {
-        const { session, workspace } = await ownedSession(mysql, eid, sessionId, transaction);
+        const { session, workspace } = await ownedSession(mysql, eid, sessionId, transaction).catch(
+          (error: unknown) => {
+            if (error instanceof SessionError && [403, 404].includes(error.statusCode))
+              throw new SessionError(
+                403,
+                'SESSION_CREATOR_REQUIRED',
+                '仅当前有权的会话创建者可发布或撤销',
+              );
+            throw error;
+          },
+        );
         if (!canManageSharing(eid, session, workspace))
           throw new SessionError(403, 'SESSION_CREATOR_REQUIRED', '仅会话创建者可发布或撤销');
         const existing = await shares.findOne({
@@ -216,8 +273,10 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
       });
     },
     /** 数据库过滤存活关联后分页并计数，仅批量读取当前页元数据。 */
-    async list(eid: string, page = 1, pageSize = 12) {
+    async list(eid: string, page = 1, pageSize = 12, scope: 'all' | 'mine' = 'all') {
       requireSharingIdentity(eid);
+      if (scope !== 'all' && scope !== 'mine')
+        throw new SessionError(422, 'INVALID_SCOPE', '广场范围无效');
       if (
         !Number.isSafeInteger(page) ||
         page < 1 ||
@@ -227,12 +286,22 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
         pageSize > 100
       )
         throw new SessionError(422, 'INVALID_PAGE', '分页参数无效');
-      /** 固定 SQL 不插入身份或请求参数；count 与 page 使用同一存活条件。 */
+      /** 身份只经 replacements 传入；归属与存活条件同时作用于 count 和分页。 */
+      const ownership =
+        scope === 'mine'
+          ? ` AND (LOWER(\`plaza_session\`.\`createdUserId\`) REGEXP CONCAT('^[[:space:]]*', :plazaUser, '[[:space:]]*$')
+            OR (COALESCE(\`plaza_session\`.\`createdUserId\`, '') REGEXP '^[[:space:]]*$'
+              AND (\`plaza_workspace\`.\`teamId\` IS NULL OR \`plaza_workspace\`.\`teamId\` = '')
+              AND LOWER(\`plaza_workspace\`.\`createdUserId\`) REGEXP CONCAT('^[[:space:]]*', :plazaUser, '[[:space:]]*$')))`
+          : '';
       const result = await shares.findAndCountAll({
+        ...(scope === 'mine' ? { replacements: { plazaUser: normalizeUserId(eid) } } : {}),
         where: {
           enabled: true,
           [Op.and]: literal(
-            'EXISTS (SELECT 1 FROM `d2c_session` AS `plaza_session` INNER JOIN `d2c_workspace` AS `plaza_workspace` ON `plaza_workspace`.`workspaceId` = `plaza_session`.`workspaceId` AND `plaza_workspace`.`deletedAt` IS NULL WHERE `plaza_session`.`sessionId` = `D2cSessionShare`.`sessionId` AND `plaza_session`.`deletedAt` IS NULL)',
+            'EXISTS (SELECT 1 FROM `d2c_session` AS `plaza_session` INNER JOIN `d2c_workspace` AS `plaza_workspace` ON `plaza_workspace`.`workspaceId` = `plaza_session`.`workspaceId` AND `plaza_workspace`.`deletedAt` IS NULL WHERE `plaza_session`.`sessionId` = `D2cSessionShare`.`sessionId` AND `plaza_session`.`deletedAt` IS NULL' +
+              ownership +
+              ')',
           ),
         },
         attributes: ['sessionId', 'shareId'],
@@ -248,28 +317,45 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
         mysql,
         result.rows.map((row) => row.sessionId),
       );
-      const sessions = await (mysql.models.D2cSession as typeof D2cSession).findAll({
-        where: { sessionId: { [Op.in]: result.rows.map((row) => row.sessionId) } },
-        attributes: [
-          'sessionId',
-          'workspaceId',
-          'name',
-          'target',
-          'creatorName',
-          'createdUserId',
-          'fileRevision',
-          'timelineSeq',
-          'createdAt',
-          'deletedAt',
-        ],
-      });
+      const readSessions = () =>
+        (mysql.models.D2cSession as typeof D2cSession).findAll({
+          where: { sessionId: { [Op.in]: result.rows.map((row) => row.sessionId) } },
+          attributes: [
+            'sessionId',
+            'workspaceId',
+            'name',
+            'target',
+            'creatorName',
+            'createdUserId',
+            'fileRevision',
+            'timelineSeq',
+            'createdAt',
+            'deletedAt',
+          ],
+        });
+      const initialSessions = await readSessions();
+      // 同页共享工作区只检查一次；缓存严格限于当前请求，不复用成员资格。
+      const workspaceChecks = new Map<string | null, Promise<D2cWorkspace | null>>();
+      const authorized = new Map(
+        await Promise.all(
+          initialSessions.map(async (session) => {
+            let check = workspaceChecks.get(session.workspaceId);
+            if (!check) {
+              check = privateWorkspace(eid, session);
+              workspaceChecks.set(session.workspaceId, check);
+            }
+            return [session.sessionId, await check] as const;
+          }),
+        ),
+      );
+      const sessions = await readSessions();
       const workspaces = await (mysql.models.D2cWorkspace as typeof D2cWorkspace).findAll({
         where: {
           workspaceId: {
             [Op.in]: sessions.map((row) => row.workspaceId).filter((id): id is string => !!id),
           },
         },
-        attributes: ['workspaceId', 'deletedAt'],
+        attributes: ['workspaceId', 'deletedAt', 'createdUserId', 'teamId'],
       });
       /** 批量复查本页发布，避免查询期间撤销或轮换的链接继续出现在列表。 */
       const current = await shares.findAll({
@@ -293,7 +379,19 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
               active.sessionId === row.sessionId &&
               active.enabled,
           )
-          ? [summary(session, row.shareId, coverIds.get(session.sessionId!))]
+          ? [
+              summary(
+                session,
+                row.shareId,
+                coverIds.get(session.sessionId!),
+                accessSummary(
+                  eid,
+                  session,
+                  workspaces.find((workspace) => workspace.workspaceId === session.workspaceId),
+                  authorized.get(session.sessionId) ?? null,
+                ),
+              ),
+            ]
           : [];
       });
       const total = result.count;
@@ -303,8 +401,22 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
     async get(eid: string, shareId: string) {
       const { session } = await publishedSession(mysql, eid, shareId);
       const coverIds = await runtimeCoverIds(mysql, [session.sessionId!]);
-      await publishedSession(mysql, eid, shareId);
-      return summary(session, shareId, coverIds.get(session.sessionId!));
+      const authorized = await privateWorkspace(eid, session);
+      const workspace = authorized
+        ? await (mysql.models.D2cWorkspace as typeof D2cWorkspace).findOne({
+            where: { workspaceId: authorized.workspaceId },
+            attributes: ['workspaceId', 'deletedAt', 'createdUserId', 'teamId'],
+          })
+        : null;
+      const current = await publishedSession(mysql, eid, shareId);
+      return summary(
+        current.session,
+        shareId,
+        current.session.sessionId === session.sessionId
+          ? coverIds.get(session.sessionId!)
+          : undefined,
+        accessSummary(eid, current.session, workspace, authorized),
+      );
     },
     /** 汇总已去重持久化的主/子模型用量；不重放模型事件、不读取私有诊断。 */
     async usage(eid: string, shareId: string) {

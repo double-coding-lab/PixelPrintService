@@ -85,11 +85,13 @@ export default function PreviewPanel({
   files,
   target,
   active = true,
+  onPreviewLinkChange,
 }: {
   versionId: string;
   files: FileInfo[];
   target: Target;
   active?: boolean;
+  onPreviewLinkChange?: (url: string | null) => void;
 }) {
   const entries = previewEntries(files);
   const [entryPath, setEntryPath] = useState(entries[0]?.path ?? '');
@@ -104,7 +106,6 @@ export default function PreviewPanel({
   const request = useRef<AbortController | null>(null);
   const pending = useRef(false);
   const [checking, setChecking] = useState(false);
-  const [closed, setClosed] = useState(false);
   const [ticketRevision, setTicketRevision] = useState(0);
   const lookup = useRef<AbortController | null>(null);
   const selectedEntry = entries.some((file) => file.path === entryPath)
@@ -116,12 +117,18 @@ export default function PreviewPanel({
       : null;
   const ticket =
     preview && ticketState?.url.split('/')[2] === id(preview.previewId) ? ticketState : null;
-  const phone = usePhonePreview(active && !!ticket && !expired && !closed);
+  const phone = usePhonePreview(active && !!ticket && !expired);
   const inspector = usePreviewInspector(
     `${versionId}:${selectedEntry}:${ticket?.url ?? ''}:${width}`,
-    active && !!ticket && !expired && !closed,
+    active && !!ticket && !expired,
   );
   const building = !!preview && preview.status !== 'ready' && preview.status !== 'failed';
+
+  /** 固定链接仅来自当前入口已校验的长期票据，切换或失效时清除旧地址。 */
+  useEffect(() => {
+    onPreviewLinkChange?.(ticket?.expiresAt === null && !expired ? ticket.url : null);
+    return () => onPreviewLinkChange?.(null);
+  }, [ticket?.url, ticket?.expiresAt, expired, onPreviewLinkChange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -131,7 +138,6 @@ export default function PreviewPanel({
     setBusy(null);
     setPreview(null);
     setTicket(null);
-    setClosed(false);
     setExpired(false);
     setError('');
     setPollError('');
@@ -159,9 +165,9 @@ export default function PreviewPanel({
     };
   }, [versionId, selectedEntry]);
 
-  /** 已有或刚构建就绪的预览自动申请票据；关闭、切入口、切版本时中止旧请求。 */
+  /** 已有或刚构建就绪的预览自动申请票据；切入口、切版本时中止旧请求。 */
   useEffect(() => {
-    if (!preview || preview.status !== 'ready' || closed) return;
+    if (!preview || preview.status !== 'ready') return;
     const controller = new AbortController();
     setBusy('ticket');
     setTicket(null);
@@ -185,7 +191,7 @@ export default function PreviewPanel({
         if (!controller.signal.aborted) setBusy(null);
       });
     return () => controller.abort();
-  }, [preview?.previewId, preview?.status, closed, ticketRevision]);
+  }, [preview?.previewId, preview?.status, ticketRevision]);
 
   useEffect(() => () => request.current?.abort(), []);
 
@@ -235,7 +241,6 @@ export default function PreviewPanel({
     request.current = controller;
     pending.current = true;
     setChecking(false);
-    setClosed(false);
     setBusy('generate');
     setError('');
     setPollError('');
@@ -261,20 +266,11 @@ export default function PreviewPanel({
     }
   }
 
-  /** 手动刷新或重开只重取票据，不重新构建。 */
+  /** 手动刷新只重取票据，不重新构建。 */
   function openPreview() {
-    setClosed(false);
     setExpired(false);
     setTicket(null);
     setTicketRevision((value) => value + 1);
-  }
-
-  /** 关闭仅停止展示和票据申请，不取消后台构建。 */
-  function closePreview() {
-    setClosed(true);
-    setTicket(null);
-    setExpired(false);
-    setBusy(null);
   }
 
   return (
@@ -341,11 +337,10 @@ export default function PreviewPanel({
       {preview?.status === 'ready' && (
         <div className="version-preview-controls">
           <Button loading={busy === 'ticket'} disabled={!!busy} onClick={openPreview}>
-            {closed ? '显示预览' : '刷新预览'}
+            刷新预览
           </Button>
           <PreviewInspectorButton inspector={inspector} />
           <PhonePreviewButton preview={phone} />
-          {(ticket || busy === 'ticket') && <Button onClick={closePreview}>关闭预览</Button>}
         </div>
       )}
       <PreviewInspector inspector={inspector} />

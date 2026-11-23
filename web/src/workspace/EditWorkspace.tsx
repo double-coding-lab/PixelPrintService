@@ -10,7 +10,7 @@ import React, {
   Suspense,
   type Ref,
 } from 'react';
-import { Alert, Button, Modal, Select } from 'antd';
+import { Alert, Button, Input, Modal, Select } from 'antd';
 import PreviewInspector, {
   PreviewInspectorButton,
   usePreviewInspector,
@@ -22,6 +22,8 @@ import {
   editDirty,
   editNeedsExitConfirmation,
   editPreviewUrl,
+  defaultWorkName,
+  WORK_NAME_MAX_LENGTH,
   type EditWorkspaceOptions,
 } from './editWorkspaceState';
 import EditableFileTree from './EditableFileTree';
@@ -44,12 +46,14 @@ export default function EditWorkspace({
   onApplied,
   onSaved,
   sourceSearch,
+  sourceName,
   options,
   label = '在线编辑',
 }: {
   label?: string;
   options?: EditWorkspaceOptions;
   sourceSearch?: SourceSearchRequest;
+  sourceName?: string;
   sessionId: string;
   disabled?: boolean;
   onApplied: () => void;
@@ -73,6 +77,7 @@ export default function EditWorkspace({
           options={options}
           sessionId={sessionId}
           sourceSearch={sourceSearch}
+          sourceName={sourceName}
           onClose={() => setOpen(false)}
           onSaved={onSaved}
           onApplied={() => {
@@ -165,6 +170,7 @@ export function EditWorkspacePreviewFrames({
 export function EditWorkspaceSurface({
   sessionId,
   sourceSearch,
+  sourceName,
   onClose,
   onApplied,
   onSaved,
@@ -182,6 +188,7 @@ export function EditWorkspaceSurface({
   onApplied: () => void;
   onSaved?: () => void;
   sourceSearch?: SourceSearchRequest;
+  sourceName?: string;
 }) {
   const [controller] = useState(() => new EditWorkspaceController(sessionId, undefined, options));
   const detached = !!options?.detached;
@@ -189,6 +196,10 @@ export function EditWorkspaceSurface({
   const { copy, files, entryPath, pending, error } = state;
   const [selectedPath, setSelectedPath] = useState('');
   const [confirmClose, setConfirmClose] = useState(false);
+  const [naming, setNaming] = useState(false);
+  const [workName, setWorkName] = useState('');
+  const [nameError, setNameError] = useState('');
+  const submittingName = useRef(false);
   const [searchOpen, setSearchOpen] = useState(!!sourceSearch);
   const [searchQuery, setSearchQuery] = useState(sourceSearch?.query ?? '');
   const [searchProperty, setSearchProperty] = useState(sourceSearch?.property);
@@ -237,13 +248,13 @@ export function EditWorkspaceSurface({
   const readOnly = pending === 'applying' || pending === 'library' || !!state.resumePending;
   /** 关闭按钮、Esc 和退出共用未应用改动保护。 */
   const requestClose = () => {
-    if (pending === 'applying' || pending === 'library') return;
+    if (pending === 'applying' || pending === 'library' || naming) return;
     if (needsExitConfirmation) setConfirmClose(true);
     else onClose();
   };
   useEffect(() => {
-    onDirty?.(needsExitConfirmation);
-  }, [needsExitConfirmation, onDirty]);
+    onDirty?.(needsExitConfirmation || naming);
+  }, [needsExitConfirmation, naming, onDirty]);
   useEffect(() => {
     onBusy?.(pending === 'library');
   }, [pending, onBusy]);
@@ -263,6 +274,28 @@ export function EditWorkspaceSurface({
     () => copy?.entries.map((path) => ({ label: path, value: path })) ?? [],
     [copy?.entries],
   );
+
+  /** 命名确认后才保存；请求失败保留弹窗和输入，提交期间保持单写入。 */
+  const saveNamedWork = async () => {
+    if (submittingName.current || pending || state.resumePending) return;
+    const name = workName.trim();
+    if (!name || name.length > WORK_NAME_MAX_LENGTH) {
+      setNameError(`请输入 1–${WORK_NAME_MAX_LENGTH} 字符的作品名称`);
+      return;
+    }
+    submittingName.current = true;
+    setNameError('');
+    try {
+      if (await controller.saveToLibrary(name)) {
+        setNaming(false);
+        onSaved?.();
+      } else {
+        setNameError(controller.getSnapshot().error || '保存失败，请重试');
+      }
+    } finally {
+      submittingName.current = false;
+    }
+  };
 
   useEffect(() => {
     void controller.open();
@@ -289,7 +322,7 @@ export function EditWorkspaceSurface({
       width="calc(100vw - 40px)"
       style={{ top: 20 }}
       closable={pending !== 'applying' && pending !== 'library'}
-      keyboard={pending !== 'applying' && pending !== 'library' && !confirmClose}
+      keyboard={pending !== 'applying' && pending !== 'library' && !confirmClose && !naming}
       mask={{ closable: false }}
       onCancel={requestClose}
       footer={
@@ -366,10 +399,17 @@ export function EditWorkspaceSurface({
               </Button>
               <Button
                 type="primary"
-                disabled={!copy || !!pending}
+                disabled={!copy || !!pending || !!state.resumePending || naming}
                 loading={pending === 'library'}
-                onClick={async () => {
-                  if (await controller.saveToLibrary()) onSaved?.();
+                onClick={() => {
+                  setWorkName(
+                    defaultWorkName(
+                      state.savedWork?.name ?? sourceName,
+                      !!state.savedWork || !!options?.root?.startsWith('/my-works/'),
+                    ),
+                  );
+                  setNameError('');
+                  setNaming(true);
                 }}
               >
                 保存为作品
@@ -525,6 +565,47 @@ export function EditWorkspaceSurface({
           </section>
         </div>
       )}
+      <Modal
+        open={naming}
+        title="保存为作品"
+        okText="保存作品"
+        cancelText="取消"
+        confirmLoading={!!pending}
+        okButtonProps={{ disabled: !!pending || !!state.resumePending }}
+        cancelButtonProps={{ disabled: !!pending }}
+        closable={!pending}
+        keyboard={!pending}
+        mask={{ closable: false }}
+        onCancel={() => {
+          if (!pending && !submittingName.current) setNaming(false);
+        }}
+        onOk={() => void saveNamedWork()}
+      >
+        <label htmlFor="edit-work-name">作品名称</label>
+        <Input
+          id="edit-work-name"
+          autoFocus
+          value={workName}
+          maxLength={WORK_NAME_MAX_LENGTH}
+          disabled={!!pending}
+          status={nameError ? 'error' : undefined}
+          aria-invalid={!!nameError}
+          aria-describedby={nameError ? 'edit-work-name-error' : undefined}
+          onChange={(event) => {
+            setWorkName(event.target.value);
+            setNameError('');
+          }}
+          onPressEnter={(event) => {
+            if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+            void saveNamedWork();
+          }}
+        />
+        {nameError && (
+          <p id="edit-work-name-error" role="alert">
+            {nameError}
+          </p>
+        )}
+      </Modal>
       <Modal
         open={confirmClose}
         title={

@@ -96,6 +96,23 @@ export function editPreviewUrl(copy: EditCopy) {
 
 export type EditWorkspaceOptions = { root?: string; detached?: boolean };
 
+/** 与保存作品接口的 trim().min(1).max(200) 契约保持一致。 */
+export const WORK_NAME_MAX_LENGTH = 200;
+
+/** 广场首次保存加本地短日期；已有作品和本次已保存的作品沿用当前名称。 */
+export function defaultWorkName(sourceName?: string, existing = false, now = new Date()) {
+  const name = sourceName?.trim() || '未命名作品';
+  const suffix = existing
+    ? ''
+    : ` · ${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  return (
+    name
+      .slice(0, WORK_NAME_MAX_LENGTH - suffix.length)
+      .replace(/[\uD800-\uDBFF]$/, '')
+      .trimEnd() + suffix
+  );
+}
+
 /** 每个弹窗独立管理 CAS、请求互斥和轮询；退出后晚到的新副本也会删除。 */
 export class EditWorkspaceController {
   private state: EditState = { copy: null, files: [], entryPath: null, pending: null, error: '' };
@@ -280,6 +297,11 @@ export class EditWorkspaceController {
   async saveToLibrary(name?: string) {
     if (!this.options.detached || !this.active || !this.state.copy || this.state.pending)
       return false;
+    const workName = name?.trim();
+    if (name !== undefined && (!workName || workName.length > WORK_NAME_MAX_LENGTH)) {
+      this.update({ error: `请输入 1–${WORK_NAME_MAX_LENGTH} 字符的作品名称` });
+      return false;
+    }
     if (editDirty(this.state) && !(await this.save())) return false;
     if (!this.active || !this.state.copy || this.state.pending) return false;
     if (editDirty(this.state)) {
@@ -295,7 +317,10 @@ export class EditWorkspaceController {
     try {
       const work = await this.request<PersonalWork>(`${this.root}/${id(copy.editId)}/save`, {
         method: 'POST',
-        body: JSON.stringify({ baseRevision: copy.revision, ...(name ? { name } : {}) }),
+        body: JSON.stringify({
+          baseRevision: copy.revision,
+          ...(workName === undefined ? {} : { name: workName }),
+        }),
         signal: controller.signal,
       });
       if (!this.active || generation !== this.generation || controller.signal.aborted) return false;
