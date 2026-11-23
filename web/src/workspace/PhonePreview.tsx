@@ -148,14 +148,16 @@ export default function PhonePreview({
       observer?.disconnect();
       window.removeEventListener('resize', resize);
     };
-  }, [preview.fullscreen, width, height]);
+  }, [preview.fullscreen, preview.available, width, height]);
   useEffect(() => {
     if (preview.fullscreen) exit.current?.focus();
   }, [preview.fullscreen]);
   return (
     <div
       ref={preview.root}
-      className={`phone-preview-shell${preview.fullscreen ? ' is-fullscreen' : ''}`}
+      className={`phone-preview-shell${preview.fullscreen ? ' is-fullscreen' : ''}${!preview.available ? ' is-pending' : ''}`}
+      aria-hidden={!preview.available}
+      inert={!preview.available}
       role={preview.fullscreen ? 'dialog' : undefined}
       aria-modal={preview.fullscreen ? true : undefined}
       aria-label={preview.fullscreen ? '全屏手机预览' : undefined}

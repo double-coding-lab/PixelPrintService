@@ -1,6 +1,6 @@
 import PhonePreview, { PhonePreviewButton, usePhonePreview } from './PhonePreview';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Skeleton, Spin } from 'antd';
+import { Alert, Button, Spin } from 'antd';
 import { data, errorMessage, id } from './api';
 import { PreviewErrorDetails, validPreviewTicket } from './PreviewPanel';
 import {
@@ -161,7 +161,6 @@ export default function SessionPreviewPanel({
     <section className="session-preview" aria-label="当前会话运行预览" hidden={!active}>
       <div className="session-preview-toolbar">
         <span role="status" className="session-preview-status">
-          {loading && <Spin size="small" />}
           {waiting
             ? '等待文件保存'
             : building
@@ -224,6 +223,9 @@ export default function SessionPreviewPanel({
           />
         )}
         {!shown &&
+          !error &&
+          !waiting &&
+          state?.current?.status !== 'failed' &&
           (loading ? (
             <div className="session-preview-loading" role="status" aria-live="polite">
               <div className="session-preview-loading-heading">
@@ -232,7 +234,6 @@ export default function SessionPreviewPanel({
                   {waiting ? '等待文件保存…' : building ? '正在构建预览…' : '正在加载预览…'}
                 </span>
               </div>
-              <Skeleton active title paragraph={{ rows: 5 }} />
             </div>
           ) : (
             <div className="session-preview-empty" role="status">

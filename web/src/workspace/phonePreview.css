@@ -20,6 +20,16 @@
 .phone-preview-toolbar[hidden] {
   display: none;
 }
+.phone-preview-shell.is-pending {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 .phone-preview-shell.is-fullscreen {
   position: fixed;
   inset: 0;
