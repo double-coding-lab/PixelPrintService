@@ -14,6 +14,8 @@ export type SharedSession = {
   createdAt: string;
   fileRevision: number;
   timelineSeq: number;
+  canManage?: boolean;
+  sourceSession?: { workspaceId: string; sessionId: string } | null;
 };
 export type PersonalWork = {
   coverUrl?: string | null;

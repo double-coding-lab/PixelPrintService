@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { Op, Sequelize } from 'sequelize';
+import { DatabaseSync } from 'node:sqlite';
+import Fastify, { type FastifyRequest } from 'fastify';
+import sharingRoutes from '../src/functions/d2c/sharing/routes';
 import { createSharingService } from '../src/functions/d2c/sharing/service';
 import { publishedSession } from '../src/functions/d2c/sharing/access';
 import { ownedSession, SessionError } from '../src/functions/d2c/session/access';
@@ -144,6 +147,64 @@ function fixture() {
         },
         async findAndCountAll(options: Row) {
           queries.push({ table, options, operation: 'findAndCountAll' });
+          if (options.replacements) {
+            // 执行真实相关子查询，验证 SQL 过滤先于 count/limit；仅适配 MySQL 的正则函数。
+            const db = new DatabaseSync(':memory:');
+            try {
+              db.function('regexp', (pattern, value) =>
+                Number(
+                  value !== null &&
+                    new RegExp(String(pattern).replaceAll('[[:space:]]', '\\s')).test(
+                      String(value),
+                    ),
+                ),
+              );
+              db.function('CONCAT', { varargs: true }, (...values) => values.join(''));
+              db.exec(`CREATE TABLE d2c_session (sessionId TEXT, workspaceId TEXT, createdUserId TEXT, deletedAt TEXT);
+                CREATE TABLE d2c_workspace (workspaceId TEXT, createdUserId TEXT, teamId TEXT, deletedAt TEXT);
+                CREATE TABLE d2c_session_share (sessionId TEXT, shareId TEXT, enabled INTEGER, createdAt INTEGER);`);
+              for (const row of tables.D2cSession)
+                db.prepare('INSERT INTO d2c_session VALUES (?, ?, ?, ?)').run(
+                  row.sessionId,
+                  row.workspaceId,
+                  row.createdUserId ?? null,
+                  row.deletedAt ? 'deleted' : null,
+                );
+              for (const row of tables.D2cWorkspace)
+                db.prepare('INSERT INTO d2c_workspace VALUES (?, ?, ?, ?)').run(
+                  row.workspaceId,
+                  row.createdUserId ?? null,
+                  row.teamId ?? null,
+                  row.deletedAt ? 'deleted' : null,
+                );
+              for (const row of tables.D2cSessionShare)
+                db.prepare('INSERT INTO d2c_session_share VALUES (?, ?, ?, ?)').run(
+                  row.sessionId,
+                  row.shareId,
+                  Number(row.enabled),
+                  Number(row.createdAt),
+                );
+              const where = `enabled = 1 AND ${options.where[Op.and].val}`;
+              const count = db
+                .prepare(
+                  `SELECT COUNT(*) AS total FROM d2c_session_share AS D2cSessionShare WHERE ${where}`,
+                )
+                .get(options.replacements)!.total;
+              const selected = db
+                .prepare(
+                  `SELECT shareId FROM d2c_session_share AS D2cSessionShare WHERE ${where} ORDER BY createdAt DESC, shareId DESC LIMIT ${options.limit} OFFSET ${options.offset}`,
+                )
+                .all(options.replacements);
+              return {
+                count: Number(count),
+                rows: selected.map((item) =>
+                  project(tables[table].find((row) => row.shareId === item.shareId)!, options),
+                ),
+              };
+            } finally {
+              db.close();
+            }
+          }
           const all = rows(table, options);
           return {
             count: all.length,
@@ -290,7 +351,7 @@ test('creator alone toggles; current team member reads status but cannot publish
   await f.service.set('owner', 'session-a', true);
   await assert.rejects(
     f.service.set('stranger', 'session-a', false),
-    reason('WORKSPACE_NOT_FOUND'),
+    reason('SESSION_CREATOR_REQUIRED'),
   );
   f.tables.D2cSession[0].createdUserId = null;
   await assert.rejects(
@@ -359,6 +420,8 @@ test('metadata returns only explicit latest display fields', async () => {
     [
       'shareId',
       'coverUrl',
+      'canManage',
+      'sourceSession',
       'sessionId',
       'name',
       'target',
@@ -403,7 +466,7 @@ test('list paginates and counts alive rows in DB, queries bounded page metadata 
   assert.equal(result.page, 2);
   assert.equal(result.pageSize, 12);
   assert.equal(result.items[0].sessionId, 'session-27');
-  assert.equal(f.queries.length, 5);
+  assert.equal(f.queries.length, 9); // 同页12个会话共用一次工作区权限检查。
   assert.ok(result.items.every((item) => item.coverUrl === null));
   const query = f.queries[0];
   assert.equal(query.operation, 'findAndCountAll');
@@ -411,8 +474,8 @@ test('list paginates and counts alive rows in DB, queries bounded page metadata 
   assert.equal(query.options.offset, 12);
   for (const q of f.queries)
     assert.ok(
-      !q.options.attributes.includes('contextSummary') &&
-        !q.options.attributes.includes('configJson'),
+      !(q.options.attributes ?? []).includes('contextSummary') &&
+        !(q.options.attributes ?? []).includes('configJson'),
     );
   f.tables.D2cWorkspace[0].deletedAt = new Date();
   assert.equal((await f.service.list('reader')).total, 0);
@@ -722,5 +785,223 @@ test('empty legacy fields remain compatible; moving to a team rechecks write per
   await assert.rejects(
     f.service.set('owner', 'session-a', false),
     reason('SESSION_CREATOR_REQUIRED'),
+  );
+});
+
+test('mine executes ownership SQL before pagination/count, normalizes creators and limits legacy fallback to personal workspaces', async () => {
+  const f = fixture();
+  const add = (
+    id: string,
+    creator: string | null,
+    teamId: string | null,
+    owner = 'owner',
+    enabled = true,
+  ) => {
+    const workspaceId = `workspace-${id}`;
+    const sessionId = `session-${id}`;
+    f.tables.D2cWorkspace.push({ workspaceId, createdUserId: owner, teamId });
+    f.tables.D2cSession.push({ sessionId, workspaceId, createdUserId: creator, name: id });
+    f.tables.D2cSessionShare.push({
+      sessionId,
+      shareId: randomUUID(),
+      enabled,
+      createdAt: new Date(f.tables.D2cSessionShare.length + 1),
+    });
+  };
+  add('explicit', ' \tOwNeR\r\n', 'team-a');
+  add('legacy-null', null, null, ' OWNER ');
+  add('legacy-empty', ' \t\n ', '', 'owner');
+  add('team-no-fallback', null, 'team-a');
+  add('other-creator', 'member', null);
+  add('other-owner', null, '', 'member');
+  add('disabled', 'owner', null, 'owner', false);
+  add('deleted-session', 'owner', null);
+  f.tables.D2cSession.at(-1)!.deletedAt = new Date();
+  add('deleted-workspace', 'owner', null);
+  f.tables.D2cWorkspace.at(-1)!.deletedAt = new Date();
+  const first = await f.service.list('OWNER', 1, 2, 'mine');
+  const second = await f.service.list('owner', 2, 2, 'mine');
+  assert.equal(first.total, 3);
+  assert.equal(second.total, 3);
+  assert.deepEqual(
+    [...first.items, ...second.items].map((item) => item.name),
+    ['legacy-empty', 'legacy-null', 'explicit'],
+  );
+  assert.ok(
+    [...first.items, ...second.items].every((item) => item.canManage && item.sourceSession),
+  );
+  const query = f.queries.find((q) => q.operation === 'findAndCountAll')!.options;
+  assert.deepEqual(query.replacements, { plazaUser: 'owner' });
+  assert.doesNotMatch(query.where[Op.and].val, /OWNER|'owner'/);
+  const mysql = new Sequelize('test', 'test', 'test', { dialect: 'mysql', logging: false });
+  try {
+    initD2cSessionShare(mysql);
+    const generated: Array<{ sql: string; options: Row }> = [];
+    // 保留真实 Sequelize findAndCountAll/query generator，仅截断数据库传输。
+    mysql.query = (async (sql: string, options: Row) => {
+      generated.push({ sql, options });
+      return options.plain ? { count: 3 } : [];
+    }) as typeof mysql.query;
+    await D2cSessionShare.findAndCountAll(query);
+    assert.equal(generated.length, 2);
+    for (const entry of generated) {
+      assert.match(entry.sql, /EXISTS .*REGEXP CONCAT.*:plazaUser/s);
+      assert.deepEqual(entry.options.replacements, { plazaUser: 'owner' });
+    }
+    const count = generated.find((entry) => /count\(/i.test(entry.sql))!;
+    const page = generated.find((entry) => !/count\(/i.test(entry.sql))!;
+    assert.doesNotMatch(count.sql, /LIMIT/);
+    assert.match(page.sql, /LIMIT 0, 2/);
+  } finally {
+    await mysql.close();
+  }
+  assert.equal((await f.service.list('owner')).total, 6);
+  await assert.rejects(
+    f.service.list('owner', 1, 12, 'invalid' as 'mine'),
+    reason('INVALID_SCOPE'),
+  );
+});
+
+test('sourceSession requires current private read permission; former creator remains in mine without management rights', async () => {
+  const f = fixture();
+  f.tables.D2cSession[0].createdUserId = 'member';
+  const { shareId } = await f.service.set('member', 'session-a', true);
+  assert.deepEqual((await f.service.get('member', shareId!)).sourceSession, {
+    workspaceId: 'workspace-a',
+    sessionId: 'session-a',
+  });
+  assert.equal((await f.service.get('member', shareId!)).canManage, true);
+  const owner = await f.service.get('owner', shareId!);
+  assert.equal(owner.canManage, false);
+  assert.ok(owner.sourceSession);
+  const stranger = await f.service.get('reader', shareId!);
+  assert.equal(stranger.canManage, false);
+  assert.equal(stranger.sourceSession, null);
+  f.tables.D2cTeamMember.length = 0;
+  const mine = await f.service.list('member', 1, 12, 'mine');
+  assert.equal(mine.total, 1);
+  assert.equal(mine.items.length, 1);
+  assert.equal(mine.items[0].canManage, false);
+  assert.equal(mine.items[0].sourceSession, null);
+  const detail = await f.service.get('member', shareId!);
+  assert.equal(detail.canManage, false);
+  assert.equal(detail.sourceSession, null);
+  assert.doesNotMatch(
+    JSON.stringify(detail),
+    /workspace-a|configJson|credentialId|private-summary/,
+  );
+  await assert.rejects(
+    f.service.set('member', 'session-a', false),
+    (error: unknown) => error instanceof SessionError && error.statusCode === 403,
+  );
+  assert.equal(f.tables.D2cSessionShare[0].enabled, true);
+});
+
+test('get rereads current metadata after async permissions and hides stale source when association changes', async () => {
+  const f = fixture();
+  const { shareId } = await f.service.set('owner', 'session-a', true);
+  const workspaces = f.mysql.models.D2cWorkspace;
+  const original = workspaces.findOne.bind(workspaces);
+  workspaces.findOne = (async (options: Row) => {
+    const row = await original(options);
+    if (options.attributes?.includes('createdUserId')) {
+      f.tables.D2cSession[0].workspaceId = 'new-workspace';
+      f.tables.D2cSession[0].name = 'Moved';
+    }
+    return row;
+  }) as typeof workspaces.findOne;
+  f.tables.D2cWorkspace.push({
+    workspaceId: 'new-workspace',
+    createdUserId: 'other',
+    teamId: null,
+  });
+  const result = await f.service.get('owner', shareId!);
+  assert.equal(result.name, 'Moved');
+  assert.equal(result.sourceSession, null);
+  assert.equal(result.canManage, false);
+});
+
+test('list/get recheck revocation, rotation and deletion after asynchronous private permission checks', async () => {
+  for (const mutation of ['revoke', 'rotate', 'session-delete', 'workspace-delete']) {
+    for (const operation of ['list', 'get']) {
+      const f = fixture();
+      const { shareId } = await f.service.set('owner', 'session-a', true);
+      const model = f.mysql.models.D2cWorkspace;
+      const original = model.findOne.bind(model);
+      model.findOne = (async (options: Row) => {
+        const row = await original(options);
+        if (options.attributes?.includes('createdUserId')) {
+          if (mutation === 'revoke') f.tables.D2cSessionShare[0].enabled = false;
+          if (mutation === 'rotate') f.tables.D2cSessionShare[0].shareId = randomUUID();
+          if (mutation === 'session-delete') f.tables.D2cSession[0].deletedAt = new Date();
+          if (mutation === 'workspace-delete') f.tables.D2cWorkspace[0].deletedAt = new Date();
+        }
+        return row;
+      }) as typeof model.findOne;
+      if (operation === 'list')
+        assert.deepEqual((await f.service.list('owner', 1, 12, 'mine')).items, [], mutation);
+      else
+        await assert.rejects(f.service.get('owner', shareId!), reason('SHARE_NOT_FOUND'), mutation);
+    }
+  }
+});
+
+test('private permission database errors propagate instead of disguising them as no access', async () => {
+  const f = fixture();
+  const { shareId } = await f.service.set('owner', 'session-a', true);
+  const model = f.mysql.models.D2cWorkspace;
+  const original = model.findOne.bind(model);
+  model.findOne = (async (options: Row) => {
+    if (options.attributes?.includes('createdUserId')) throw new Error('database unavailable');
+    return original(options);
+  }) as typeof model.findOne;
+  await assert.rejects(f.service.get('owner', shareId!), /database unavailable/);
+  await assert.rejects(f.service.list('owner', 1, 12, 'mine'), /database unavailable/);
+});
+
+test('HTTP real service returns mine permissions/source safely and denies lost creator revocation with403', async (t) => {
+  const f = fixture();
+  f.tables.D2cSession[0].createdUserId = 'member';
+  const { shareId } = await f.service.set('member', 'session-a', true);
+  let userId = 'member';
+  const app = Fastify();
+  t.after(() => app.close());
+  app.decorateRequest(
+    'getUser',
+    async () => ({ userId, name: userId }) as Awaited<ReturnType<FastifyRequest['getUser']>>,
+  );
+  app.register(sharingRoutes, { prefix: '/api/d2c', sharing: async () => f.service });
+  await app.ready();
+  const url = '/api/d2c/plaza/sessions?scope=mine&pageSize=1';
+  const available = await app.inject(url);
+  assert.equal(available.statusCode, 200, available.body);
+  assert.equal(available.json().data.items[0].canManage, true);
+  assert.deepEqual(available.json().data.items[0].sourceSession, {
+    workspaceId: 'workspace-a',
+    sessionId: 'session-a',
+  });
+  f.tables.D2cTeamMember.length = 0;
+  const lost = await app.inject(url);
+  assert.equal(lost.statusCode, 200, lost.body);
+  assert.equal(lost.json().data.total, 1);
+  assert.equal(lost.json().data.items[0].canManage, false);
+  assert.equal(lost.json().data.items[0].sourceSession, null);
+  const detail = await app.inject(`/api/d2c/plaza/sessions/${shareId}`);
+  assert.equal(detail.statusCode, 200, detail.body);
+  assert.equal(detail.json().data.sourceSession, null);
+  const denied = await app.inject({
+    method: 'PUT',
+    url: '/api/d2c/sessions/session-a/sharing',
+    headers: { 'x-requested-with': 'PixelPrint' },
+    payload: { public: false },
+  });
+  assert.equal(denied.statusCode, 403, denied.body);
+  assert.equal(f.tables.D2cSessionShare[0].enabled, true);
+  userId = 'owner';
+  const other = await app.inject(url);
+  assert.equal(other.json().data.total, 0);
+  assert.equal(
+    (await app.inject(`/api/d2c/plaza/sessions/${shareId}`)).json().data.canManage,
+    false,
   );
 });

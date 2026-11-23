@@ -87,9 +87,13 @@ export default async function sharingRoutes(app: FastifyInstance, options: Parti
     });
   });
   app.get('/plaza/sessions', async (request) => {
-    const { page, pageSize } = paging.parse(request.query);
+    const { page, pageSize, scope } = paging
+      .extend({ scope: z.enum(['all', 'mine']).default('all') })
+      .parse(request.query);
     return responseData.success({
-      data: await (await services.sharing()).list((await request.getUser()).userId, page, pageSize),
+      data: await (
+        await services.sharing()
+      ).list((await request.getUser()).userId, page, pageSize, scope),
     });
   });
   app.get('/plaza/sessions/:id', async (request) => {
