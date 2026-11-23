@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { planSlices, requiredSliceNames, type FigmaSliceNode } from './slicePlan';
 import { resolveWorkspacePath, assertArtifactPath } from '../utils/paths';
-import { ToolIssue, toolIssue } from './toolFeedback';
+import { ToolIssue, toolIssue, sliceNamesRequiredFeedback } from './toolFeedback';
 import type { SliceProgress } from './sliceProgress';
 import { designTarget, sliceDesignSchema } from './sliceCache';
 import { validateSliceNames } from './sliceNames';
@@ -160,13 +160,8 @@ export async function prepareSlices(options: {
   };
   const needsNames = requiredSliceNames(current.root, baseline, options.names);
   if (needsNames.length) {
-    const issue = toolIssue('INVALID_ARGUMENT', 'VALIDATION_FAILED', context);
-    const feedback = {
-      ...issue.feedback,
-      hint: '以下中文图层需要英文语义名称；请根据needsNames提供names映射后重试，尚未导出或保存图片。键使用基线nodeId或原图层名，值使用简短英文文件名。',
-      needsNames,
-    };
-    throw new ToolIssue(feedback, issue.failure);
+    const issue = toolIssue('SLICE_NAMES_REQUIRED', 'TOOL_FAILED', context);
+    throw new ToolIssue(sliceNamesRequiredFeedback(needsNames), issue.failure);
   }
   const plan = planSlices(current.root, baseline, options.names);
   total = plan.items.length + plan.missing.length;

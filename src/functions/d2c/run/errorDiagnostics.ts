@@ -326,6 +326,8 @@ function collect(rows: D2cTimeline[], runs: D2cRun[], cutoff: string | null) {
       continue;
     const feedback = object(data.feedback);
     const hasFeedback = feedback.type === 'tool_feedback' && feedback.ok === false;
+    // 正常命名补全保留在时间线，不进入错误面板的计数或明细。
+    if (hasFeedback && feedback.code === 'SLICE_NAMES_REQUIRED') continue;
     const failed = data.status === 'failed' || data.status === 'tool_failed' || terminalFailure;
     if (!(failed || hasFeedback || (subagent && data.status === 'tool_feedback'))) continue;
     if (subagent && !['failed', 'tool_failed', 'tool_feedback'].includes(String(data.status)))

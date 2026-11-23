@@ -56,6 +56,10 @@ const definitions = {
     '根节点缓存不完整，请先 figma fetch-node 获取会话绑定的完整根节点（不要传 depth），再 inspect-node 或检查规则；不能把被截断节点当作空节点。',
   ],
   FIGMA_ARGUMENT_CONFLICT: ['adjust', 'Figma 参数组合无效，本次未执行。请按具体字段提示调整。'],
+  SLICE_NAMES_REQUIRED: [
+    'adjust',
+    '切图需要补全英文语义名称；请按 needsNames 提供 names 映射后继续，键使用基线 nodeId 或原图层名，值使用简短英文文件名。本次尚未导出或保存图片，无需重导出已有图片。清单分批返回时累计 names 映射后继续。',
+  ],
   INVALID_ARGUMENT: ['adjust', '工具参数无效，请按工具约定调整参数后再调用。'],
   RULES_FAILED: ['adjust', '规则检查未通过，请读取检查报告并修复源码后重查。'],
   NETWORK_RETRY: ['retry', '目标服务暂时不可用，可有限重试；写入结果未知时先核对已有文件。'],
@@ -70,19 +74,41 @@ const definitions = {
 } as const;
 export type ToolFeedbackCode = keyof typeof definitions;
 
+const sliceNameSchema = z.object({
+  nodeId: z.string().max(256),
+  name: z.string().max(200),
+  parentName: z.string().max(200).nullable(),
+});
+const sliceNamesLimit = 50;
+
 /** 对外只投影固定分类和提示，不读取上游错误正文来决定分类。 */
 export const toolFeedbackSchema = z
-  .object({
-    type: z.literal('tool_feedback'),
-    ok: z.literal(false),
-    code: z.enum(Object.keys(definitions) as [ToolFeedbackCode, ...ToolFeedbackCode[]]),
-    retryAfterMs: z.number().int().min(0).max(300000).optional(),
-    path: z.string().max(1024).optional(),
-    resource: z.boolean().optional(),
-    detail: z.string().max(2000).optional(),
-  })
-  .transform((value) => ({
+  .preprocess(
+    (input) => {
+      // 旧反馈中的同名附加字段原本不属于合同；继续忽略，不能使历史反馈失效或改类。
+      if (input && typeof input === 'object' && !Array.isArray(input)) {
+        const { needsNames, needsNamesTotal, ...value } = input as Record<string, unknown>;
+        if (value.code !== 'SLICE_NAMES_REQUIRED') return value;
+      }
+      return input;
+    },
+    z.object({
+      type: z.literal('tool_feedback'),
+      ok: z.literal(false),
+      code: z.enum(Object.keys(definitions) as [ToolFeedbackCode, ...ToolFeedbackCode[]]),
+      retryAfterMs: z.number().int().min(0).max(300000).optional(),
+      path: z.string().max(1024).optional(),
+      resource: z.boolean().optional(),
+      detail: z.string().max(2000).optional(),
+      needsNames: z.array(sliceNameSchema).max(sliceNamesLimit).optional(),
+      needsNamesTotal: z.number().int().positive().optional(),
+    }),
+  )
+  .transform(({ needsNames, needsNamesTotal, ...value }) => ({
     ...value,
+    ...(value.code === 'SLICE_NAMES_REQUIRED'
+      ? { needsNames, needsNamesTotal, hint: definitions.SLICE_NAMES_REQUIRED[1] }
+      : {}),
     action: definitions[value.code][0],
     message: definitions[value.code][1] + (value.detail ? ` ${value.detail}` : ''),
     retryable: definitions[value.code][0] === 'retry',
@@ -95,6 +121,21 @@ export function toolFeedback(
   extra: { path?: string; resource?: boolean; retryAfterMs?: number; detail?: string } = {},
 ) {
   return toolFeedbackSchema.parse({ type: 'tool_feedback', ok: false, code, ...extra });
+}
+
+/** 命名预检只保留有界的真实节点字段；总数用于分批补齐，不混入原始节点或SDK数据。 */
+export function sliceNamesRequiredFeedback(needsNames: readonly z.infer<typeof sliceNameSchema>[]) {
+  return toolFeedbackSchema.parse({
+    type: 'tool_feedback',
+    ok: false,
+    code: 'SLICE_NAMES_REQUIRED',
+    needsNames: needsNames.slice(0, sliceNamesLimit).map(({ nodeId, name, parentName }) => ({
+      nodeId: nodeId.slice(0, 256),
+      name: name.slice(0, 200),
+      parentName: parentName === null ? null : parentName.slice(0, 200),
+    })),
+    needsNamesTotal: needsNames.length,
+  });
 }
 
 /** 只解析可信工具返回的结构化反馈，普通正文和任意错误字符串不参与分类。 */

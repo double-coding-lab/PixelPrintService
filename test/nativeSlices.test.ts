@@ -349,7 +349,10 @@ test('未知中文在导出前要求语义英文映射，补齐后保存英文�
   };
   await assert.rejects(prepareSlices(options), (error: unknown) => {
     assert.ok(error instanceof ToolIssue);
+    assert.equal(error.feedback.code, 'SLICE_NAMES_REQUIRED');
     assert.equal(error.feedback.action, 'adjust');
+    assert.match(error.feedback.hint!, /names 映射/);
+    assert.equal(error.feedback.needsNamesTotal, 1);
     assert.deepEqual(Reflect.get(error.feedback, 'needsNames'), [
       { nodeId: '2:1', name: 'img-鹦鹉', parentName: 'Page' },
     ]);

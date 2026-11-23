@@ -7,7 +7,7 @@ import { readSessionErrors } from '../src/functions/d2c/run/errorDiagnostics';
 import { createRunPersistence } from '../src/functions/d2c/run/persistence';
 import { createRunLeases } from '../src/functions/d2c/run/leases';
 import { runFailureSchema } from '../src/functions/d2c/run/errors';
-import { toolFeedback } from '../src/functions/d2c/run/toolFeedback';
+import { sliceNamesRequiredFeedback, toolFeedback } from '../src/functions/d2c/run/toolFeedback';
 import { observeModelRequest } from '../src/functions/d2c/run/agent/modelActivity';
 
 /** 正式保存器与租约配合离线事务替身，验证真实投影，不访问数据库或模型。 */
@@ -997,4 +997,108 @@ test('命令和规则模式精确匹配，不能以未通过规则的completed�
     );
     assert.equal(result.items.find((item) => item.tool === 'check_rules')?.recovery, 'unknown');
   }
+});
+
+test('命名补全经主子保存器保留提示，错误面板总数及三类计数均不增加', async () => {
+  const f = await fixture();
+  const naming = sliceNamesRequiredFeedback([
+    { nodeId: 'I92:1951;87:1724', name: 'img-PRIVATE_LAYER鹦鹉', parentName: 'PRIVATE_PARENT' },
+  ]);
+  await f.persistence.record({
+    kind: 'tool_result',
+    name: 'prepare_slices',
+    callId: 'naming-main',
+    sdkItem: {
+      type: 'function_call_result',
+      callId: 'naming-main',
+      output: JSON.stringify({ ...naming, sdk: 'PRIVATE_SDK', credentials: 'PRIVATE_CREDENTIALS' }),
+    },
+  });
+  await f.persistence.recordSubagent({
+    stage: 'subagent',
+    agentId: randomUUID(),
+    role: 'ui',
+    status: 'tool_feedback',
+    // 子Agent没有prepare_slices权限；以合法工具验证共享反馈schema。
+    tool: 'figma',
+    callId: 'naming-child',
+    feedback: naming,
+  });
+  const saved = f.tables.D2cTimeline.map(
+    (row) => row.displayPayload as Record<string, unknown>,
+  ).filter((data) => (data.feedback as { code?: string })?.code === 'SLICE_NAMES_REQUIRED');
+  assert.equal(saved.length, 2);
+  for (const data of saved) {
+    const feedback = data.feedback as typeof naming;
+    assert.deepEqual(feedback.needsNames, naming.needsNames);
+    assert.equal(feedback.hint, naming.hint);
+    assert.doesNotMatch(JSON.stringify(feedback), /PRIVATE_SDK|PRIVATE_CREDENTIALS/);
+  }
+  const before = JSON.stringify(f.tables);
+  const result = await f.read();
+  assert.equal(result.executionErrors, 0);
+  assert.equal(result.ruleFailures, 0);
+  assert.equal(result.toolCorrections, 0);
+  assert.equal(result.total, 0);
+  assert.equal(result.filteredTotal, 0);
+  assert.deepEqual(result.items, []);
+  assert.equal(JSON.stringify(f.tables), before);
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE|"needsNames"|I92:1951/);
+});
+
+test('历史INVALID_ARGUMENT带needsNames或补全成功证据仍保留原分类，真实规则失败继续单列', async () => {
+  const f = await fixture();
+  const old = toolPair(f, {
+    tool: 'prepare_slices',
+    detail: '准备切图：page',
+    result: {
+      feedback: {
+        ...toolFeedback('INVALID_ARGUMENT'),
+        hint: '补 names 后立即成功',
+        needsNames: [{ nodeId: '38:3793', name: 'img-鹦鹉', parentName: null }],
+      },
+    },
+  });
+  toolPair(f, { tool: 'prepare_slices', detail: '准备切图：page' });
+  toolPair(f, {
+    tool: 'prepare_slices',
+    detail: '准备切图：page',
+    result: {
+      feedback: sliceNamesRequiredFeedback([
+        { nodeId: '38:3793', name: 'img-鹦鹉', parentName: null },
+      ]),
+    },
+  });
+  f.event('tool_result', {
+    name: 'prepare_slices',
+    status: 'failed',
+    failure: failure('VALIDATION_FAILED', { stage: 'tool', tool: 'prepare_slices' }),
+  });
+  const before = JSON.stringify(f.tables);
+  const result = await f.read();
+  assert.equal(result.total, 1);
+  assert.equal(result.toolCorrections, 1);
+  assert.equal(result.ruleFailures, 1);
+  assert.equal(result.executionErrors, 0);
+  assert.equal(result.items.find((item) => item.seq === old.end)?.code, 'INVALID_ARGUMENT');
+  assert.equal(result.items.find((item) => item.seq === old.end)?.recovery, 'subsequent_success');
+  assert.ok(result.items.every((item) => item.code !== 'SLICE_NAMES_REQUIRED'));
+  assert.equal(JSON.stringify(f.tables), before);
+});
+
+test('仅可信type、ok和code一致的命名反馈可以排除，缺失或错误标记仍计真实失败', async () => {
+  const f = await fixture();
+  for (const feedback of [
+    { ok: false, code: 'SLICE_NAMES_REQUIRED' },
+    { type: 'text', ok: false, code: 'SLICE_NAMES_REQUIRED' },
+    { type: 'tool_feedback', ok: true, code: 'SLICE_NAMES_REQUIRED' },
+  ]) {
+    f.event('tool_result', { name: 'prepare_slices', status: 'failed', feedback });
+  }
+  const result = await f.read();
+  assert.equal(result.total, 3);
+  assert.equal(result.executionErrors, 3);
+  assert.equal(result.toolCorrections, 0);
+  assert.equal(result.ruleFailures, 0);
+  assert.equal(result.items.length, 3);
 });
