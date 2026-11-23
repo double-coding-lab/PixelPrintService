@@ -1,0 +1,25 @@
+.Knowledge/topics/d2c-session-plaza.md
+  s_e16f52fd1de115::t_837440ee489e5d 3,62-68
+.Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md
+  s_e16f52fd1de115::t_837440ee489e5d 40-43
+.Knowledge/index.md
+  s_e16f52fd1de115::t_837440ee489e5d 90
+.Knowledge/matchers/m-d2c-session-plaza.json
+  s_e16f52fd1de115::t_837440ee489e5d 23-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "59dc3c57099c599bdb2a630601562c3433c4776c",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
