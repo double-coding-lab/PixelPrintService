@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 13
+revision: 14
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -135,3 +135,13 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - 安全目录尾斜杠在调度锁及子任务授权前统一规范化；路径穿越、兄弟或越权目录仍拒绝。主Agent写平台维护的`.d2c-cache/last-page.json`返回`skipped/PLATFORM_MANAGED_CACHE`，明确未写入且无需重试；其他受保护写入不放开，执行进度写页面目录`.d2c-tasks.md`。
 - 切图命名未齐使用`SLICE_NAMES_REQUIRED`及有界`needsNames`提示补齐，保留时间线但不计入执行错误、工具纠正、规则失败或错误总数；真正无效参数与历史`INVALID_ARGUMENT`仍保留原错误计量。历史记录不会因新版本自动改写。
 - 实现见`agent/agent.ts`、`agent/fileVersions.ts`、`agent/delegationScheduler.ts`、`agent/subagentTools.ts`、`run/slices.ts`与`run/errorDiagnostics.ts`。回归覆盖副作用前拒绝、局部限额的完整/部分交付、版本回执隔离及真实冲突、目录授权和命名统计；无需新增数据库表或运行配置。预览去重见[生成期缺依赖等待](d2c-preview-editing.md#生成期缺依赖等待)。
+
+## 上下文复用与资料读取
+
+- 主、子Agent和原生摘要共用`modelContextView`。同一请求中，对工具配对完整、调用身份明确且结果逐字一致的`read_file`与`figma inspect-node`，保留最近一份完整回执，旧回执改为含工具调用号、原路径和结果摘要的短引用。不同文件、资源作用域、分页或版本，以及失败、未知、多媒体和歧义配对均保留原结果；用户输入及规则检查结果不按此折叠。
+- 视图按当前有效消息每次重算，摘要后原文不在上下文时可正常重读；没有跨请求“已经看过”的缓存。消息数量、ID和工具调用配对保持原顺序，图检查点与时间线仍保存真实调用及原始结果。触发摘要时先存完整JSON快照，再让摘要消费精简视图。
+- 已成功保存的大段`write_file`内容和`edit_file`片段仅在后续模型视图压缩，结构化规则报告也适用；阈值按预算10%取值，最低128、最高2048估算Token。失败、未知和缺回执的写入保留原参数；partial/merge标记、真实用量及响应元数据继续保留，压缩不表示任务完成。
+- 重建模型消息显式复制公共消息字段，保留ID、正文、工具身份及必要元数据，避免把消息实例内部的`lc_kwargs`反复嵌套进序列化视图。原始历史及业务文件不因此改写。
+- UI固定资源视图将H5/RN生成Skill的`bin/`实现脚本、依赖脚本和源码映射替换为普通阅读引导，发现/搜索接口仅展示可消费资料，直接读取或下载也不提供实现原文。先读本区块报告的hits/constraints/deferredChecks、命中规则文档与实际违规证据；检查器实现争议交由父Agent排查。规则Markdown、配置、模板和授权业务源码正常读取；主Agent、review和rule_scan继续具备原有只读范围，执行检查器及规则验收不变。
+- 图片只在当前模型请求边界物化，重复引用保留定位与来源说明；设计稿/素材与运行截图分别解释，未载入和视觉拒绝仍如实标记。后续请求按当前历史重新准备视觉输入，不能用跨请求标记代替模型真实看图。
+- 实现入口为`agent/context.ts`、`agent/summary.ts`、`agent/images.ts`、`agent/readPolicy.ts`及`agent/resources.ts`。离线回归覆盖真实Agent工具循环、原生摘要原文归档、不同版本与分页、未知写入、角色边界和图片去重；模型请求次数与Token的实际收益须由发布后的真实会话确认，无新增DDL或运行配置。
