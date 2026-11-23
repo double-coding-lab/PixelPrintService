@@ -16,6 +16,7 @@ export type SharedSession = {
   timelineSeq: number;
 };
 export type PersonalWork = {
+  coverUrl?: string | null;
   workId: string;
   name: string;
   target: 'h5' | 'rn';

@@ -1,3 +1,4 @@
+import WorkCover from './WorkCover';
 import FileTypeIcon from '../components/FileTypeIcon';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import {
@@ -23,7 +24,11 @@ import DesignReferencePanel from './DesignReferencePanel';
 import { useTeams } from './TeamSettings';
 
 const CodePreview = lazy(() => import('./CodePreview'));
-type Work = VersionMetadata & { createdUserId: string | null; creatorName: string | null };
+type Work = VersionMetadata & {
+  createdUserId: string | null;
+  creatorName: string | null;
+  coverUrl?: string | null;
+};
 type WorkPage = { rows: Work[]; total: number; page: number; pageSize: number };
 type WorkDetail = Work & { files: FileInfo[] };
 
@@ -359,43 +364,53 @@ export default function WorksPanel({
           )
         ) : (
           <>
-            <div className="works-grid">
+            <div className="works-grid library-works-grid">
               {list?.rows.map((work) => (
-                <article key={work.versionId} className="work-card">
-                  <div className="work-card-top">
-                    <Tag className={`work-target ${work.target}`}>{work.target.toUpperCase()}</Tag>
+                <article key={work.versionId} className="work-card library-work-card">
+                  <div className="work-card-body">
+                    <div className="work-card-top">
+                      <Tag className={`work-target ${work.target}`}>
+                        {work.target.toUpperCase()}
+                      </Tag>
+                    </div>
+                    <h2 title={work.name}>
+                      <a
+                        href={`/works/versions/${id(work.versionId)}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          onSelect(work.versionId);
+                        }}
+                      >
+                        {work.name}
+                      </a>
+                    </h2>
+                    <div className="work-card-author">
+                      <span>{work.creatorName || work.createdUserId || '未知创建人'}</span>
+                    </div>
+                    <time dateTime={work.createdAt} title={work.createdAt}>
+                      {createdTime(work.createdAt)}
+                    </time>
+                    <div className="work-card-validation">
+                      <ValidationTag summary={work.validationSummary} />
+                    </div>
+                    <div className="work-card-actions">
+                      <Button type="text" onClick={() => onSelect(work.versionId)}>
+                        查看版本
+                      </Button>
+                      <Button
+                        icon={<Icon name="file" />}
+                        href={`/api/d2c/versions/${id(work.versionId)}/archive`}
+                      >
+                        下载 ZIP
+                      </Button>
+                    </div>
                   </div>
-                  <h2 title={work.name}>
-                    <a
-                      href={`/works/versions/${id(work.versionId)}`}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        onSelect(work.versionId);
-                      }}
-                    >
-                      {work.name}
-                    </a>
-                  </h2>
-                  <div className="work-card-author">
-                    <span>{work.creatorName || work.createdUserId || '未知创建人'}</span>
-                  </div>
-                  <time dateTime={work.createdAt} title={work.createdAt}>
-                    {createdTime(work.createdAt)}
-                  </time>
-                  <div className="work-card-validation">
-                    <ValidationTag summary={work.validationSummary} />
-                  </div>
-                  <div className="work-card-actions">
-                    <Button type="text" onClick={() => onSelect(work.versionId)}>
-                      查看版本
-                    </Button>
-                    <Button
-                      icon={<Icon name="file" />}
-                      href={`/api/d2c/versions/${id(work.versionId)}/archive`}
-                    >
-                      下载 ZIP
-                    </Button>
-                  </div>
+                  <WorkCover
+                    url={work.coverUrl}
+                    name={work.name}
+                    kind="work"
+                    onOpen={() => onSelect(work.versionId)}
+                  />
                 </article>
               ))}
             </div>
