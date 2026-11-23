@@ -1,0 +1,33 @@
+web/src/workspace/WorksPanel.tsx
+  s_e16f52fd1de115::t_3dd7802c715759 428-443
+test/libraryCoverBrowser.test.ts
+  s_e16f52fd1de115::t_3dd7802c715759 104,182-205
+web/src/workspace/CommunityPanel.tsx
+  s_e16f52fd1de115::t_3dd7802c715759 6,25,27-28,88-90,285-286,291-292,295-310,326-336,338-356,358-374,376,378-397,408,416,459-464,468,470,484,486-487,516-518,520-537
+test/communityExperienceBrowser.test.ts
+  s_e16f52fd1de115::t_3dd7802c715759 197-200
+web/src/components/Icon.tsx
+  s_e16f52fd1de115::t_3dd7802c715759 8
+web/src/workspace/DeleteSavedItem.tsx
+  s_e16f52fd1de115::t_3dd7802c715759 5,15-16,24-25,34,37,61-63,65,68
+web/src/workspace/community.css
+  s_e16f52fd1de115::t_3dd7802c715759 45-49
+web/src/workspace/works.css
+  s_e16f52fd1de115::t_3dd7802c715759 126,128,134-140,143-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "bf89d2a83661638d715a5d2d646570ef2915505d",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
