@@ -506,7 +506,11 @@ test('恢复时核对完整历史，已发出的编辑不会因继续消息遮�
       );
     else {
       assert.equal(result._pixelprintIncrementalVerification.pendingInspection, undefined);
-      if (!known) assert.match(result.messages[0].text, /结果未确认/);
+      if (!known) {
+        assert.equal(result._pixelprintIncrementalVerification.sourceChanged, true);
+        assert.equal(result._pixelprintIncrementalVerification.passed, false);
+        assert.match(result.messages[0].text, /结果未确认/);
+      }
     }
   }
 });

@@ -362,7 +362,13 @@ export function createIncrementalVerificationMiddleware(input: {
             current.pendingEditInspection = undefined;
             if (!known)
               return {
-                _pixelprintIncrementalVerification: { ...current, verificationOnly: false },
+                _pixelprintIncrementalVerification: {
+                  ...current,
+                  sourceChanged: true,
+                  passed: false,
+                  visualCandidate: undefined,
+                  verificationOnly: false,
+                },
                 messages: [
                   new HumanMessage({
                     id: createHash('sha256')
