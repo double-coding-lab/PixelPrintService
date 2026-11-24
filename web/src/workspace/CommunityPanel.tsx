@@ -1,6 +1,7 @@
 import DeleteSavedItem from './DeleteSavedItem';
 import WorkCover from './WorkCover';
 import PublishedSessionActions from './PublishedSessionActions';
+import ForkSession from './ForkSession';
 import './community.css';
 import './editWorkspace.css';
 import './conversationRound.css';
@@ -37,18 +38,45 @@ export function PublicSession({
   onDirty,
   onBusy,
   onOpenSession,
+  navigationDisabled = false,
 }: {
   shareId: string;
   onBack: () => void;
   onDirty?: (value: boolean) => void;
   onBusy?: (value: boolean) => void;
   onOpenSession?: (workspaceId: string, sessionId: string) => void;
+  navigationDisabled?: boolean;
 }) {
   const root = `/plaza/sessions/${id(shareId)}`;
   const [detail, setDetail] = useState<SharedSession | null>(null);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
   const [panel, setPanel] = useState<'chat' | 'usage' | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [editorBusy, setEditorBusy] = useState(false);
+  const busySources = useRef({ editor: false, fork: false });
+  const dirtyChanged = useCallback(
+    (value: boolean) => {
+      setDirty(value);
+      onDirty?.(value);
+    },
+    [onDirty],
+  );
+  const editorBusyChanged = useCallback(
+    (value: boolean) => {
+      busySources.current.editor = value;
+      setEditorBusy(value);
+      onBusy?.(value || busySources.current.fork);
+    },
+    [onBusy],
+  );
+  const forkBusyChanged = useCallback(
+    (value: boolean) => {
+      busySources.current.fork = value;
+      onBusy?.(value || busySources.current.editor);
+    },
+    [onBusy],
+  );
   useEffect(() => {
     const controller = new AbortController();
     data<SharedSession>(root, { signal: controller.signal }).then(
@@ -95,6 +123,18 @@ export function PublicSession({
         </div>
         <div className="community-actions">
           <PublishedSessionActions session={detail} onOpenSession={onOpenSession} />
+          {onOpenSession && (
+            <span title={dirty ? '请先保存或放弃当前未保存的编辑，再创建分支' : undefined}>
+              <ForkSession
+                shareId={shareId}
+                sourceName={detail.name}
+                requireModelCredential
+                disabled={navigationDisabled || dirty || editorBusy}
+                onBusy={forkBusyChanged}
+                onOpenSession={onOpenSession}
+              />
+            </span>
+          )}
           <Button onClick={() => setPanel('usage')}>用量</Button>
           <Button onClick={() => setPanel('chat')}>查看对话</Button>
         </div>
@@ -104,8 +144,8 @@ export function PublicSession({
         sourceName={detail.name}
         options={detachedEditOptions('plaza', shareId)}
         embedded
-        onDirty={onDirty}
-        onBusy={onBusy}
+        onDirty={dirtyChanged}
+        onBusy={editorBusyChanged}
         onClose={onBack}
         onApplied={() => {}}
       />
@@ -534,6 +574,7 @@ export default function CommunityPanel({
             onDirty={onDirty}
             onBusy={onBusy}
             onOpenSession={onOpenSession}
+            navigationDisabled={navigationDisabled}
           />
         ) : (
           <PersonalWorkDetail

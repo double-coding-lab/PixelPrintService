@@ -258,7 +258,14 @@ test(
     await page.locator('.community-detail-drawer .ant-drawer-close').click();
     await page.waitForFunction('window.aborts === 1');
     await page.evaluate('window.mount("my-works")');
-    await page.getByRole('heading', { name: '已保存作品', exact: true }).waitFor();
+    const categories = page.getByRole('navigation', { name: '广场分类', exact: true });
+    await categories.getByRole('button', { name: '已保存作品', exact: true }).waitFor();
+    assert.equal(
+      await categories
+        .getByRole('button', { name: '已保存作品', exact: true })
+        .getAttribute('aria-current'),
+      'page',
+    );
     assert.equal(
       await page.getByRole('link', { name: '广场', exact: true }).getAttribute('href'),
       '/plaza',
