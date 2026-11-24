@@ -1,0 +1,40 @@
+docs/reference/确定性规则扫描.md
+  s_a4e26e740c8ebc::t_dd2558163db8f2 1-38
+docs/deployment/configuration.md
+  s_a4e26e740c8ebc::t_2ceb9d40b3cbe3 61-64
+docs/系统能力清单.md
+  s_a4e26e740c8ebc::t_2ceb9d40b3cbe3 23,30,46,56,69,93
+  s_a4e26e740c8ebc::t_dd2558163db8f2 1-22,24-29,31-45,47-55,57-68,70-92,94-158
+docs/README.md
+  s_a4e26e740c8ebc::t_2ceb9d40b3cbe3 5,7-9,13-22,24
+docs/deployment/部署与配置.md
+  s_a4e26e740c8ebc::t_2ceb9d40b3cbe3 31,37
+docs/reference/D2C工具参考.md
+  s_a4e26e740c8ebc::t_2ceb9d40b3cbe3 41-88
+docs/预览执行逻辑.md
+  s_a4e26e740c8ebc::t_2ceb9d40b3cbe3 153
+  s_a4e26e740c8ebc::t_dd2558163db8f2 1-152,154-183
+docs/reference/D2C执行链路与文件关系.md
+  s_a4e26e740c8ebc::t_dd2558163db8f2 1-128
+README.md
+  s_a4e26e740c8ebc::t_2ceb9d40b3cbe3 101-102
+docs/架构与流程图.md
+  s_a4e26e740c8ebc::t_dd2558163db8f2 3,5-6,11-16,19-23,25,28-42,45-55,58-60,85,87,89,91-98,126,128,130-144,146-152,154,157-165,168-186,188-201,203-210,212,214,216,218,220,222-225,227,229-266,268-272,274,276,278,280-301,303,306-325,329-343,345,347
+  s_a4e26e740c8ebc::t_2ceb9d40b3cbe3 10,56,187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "f9d5a85d88a8eb8f1561e989e1a3b70e82eeceea",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
