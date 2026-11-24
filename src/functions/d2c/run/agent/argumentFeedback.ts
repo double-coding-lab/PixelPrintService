@@ -45,7 +45,16 @@ export function toolArgumentDetail(schema: unknown, args: unknown): string | und
       const field = issue.path[0];
       const name = typeof field === 'string' && fields.has(field) ? field : '参数对象';
       const expected = expectedInput(name === '参数对象' ? schema : schema.shape[name]);
-      return `${name}（${issue.code}${expected ? `；${expected}` : ''}）`;
+      const alias = name === 'oldText' ? 'old_text' : name === 'newText' ? 'new_text' : undefined;
+      const aliasHint =
+        alias &&
+        args !== null &&
+        typeof args === 'object' &&
+        Object.hasOwn(args, alias) &&
+        !fields.has(alias)
+          ? `；字段名使用 ${name}，不支持 ${alias}`
+          : '';
+      return `${name}（${issue.code}${expected ? `；${expected}` : ''}${aliasHint}）`;
     }),
   );
   return `请检查字段：${[...issues].join('、')}。按注册工具契约修正类型、必填项或取值范围后重试；不要原样重试。`;
