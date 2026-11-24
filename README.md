@@ -8,9 +8,9 @@
 
 - [文档目录](docs/README.md)：按使用者与部署者需要阅读。
 - [使用指南](docs/使用指南.md)：创建会话、持续修改、交互验收和保存作品。
-- [功能说明](docs/功能说明.md)与[架构与流程图](docs/架构与流程图.md)。
+- [功能说明](docs/使用指南.md)与[架构与流程图](docs/架构与流程图.md)。
 - [D2C 生成与验收流程](docs/D2C生成与验收流程.md)：扫描、素材、规则、出码与验收证据。
-- [部署与配置](docs/部署与配置.md)及[完整配置字段](docs/configuration.md)。
+- [部署与配置](docs/deployment/部署与配置.md)及[完整配置字段](docs/deployment/configuration.md)。
 
 ## 快速部署
 
@@ -66,7 +66,7 @@ npm start
 
 ## 配置和数据
 
-完整字段见 [配置说明](docs/configuration.md)，系统关系见 [架构说明](docs/架构与流程图.md)。
+完整字段见 [配置说明](docs/deployment/configuration.md)，系统关系见 [架构说明](docs/架构与流程图.md)。
 
 | 能力 | 本发行版实现 |
 | --- | --- |
