@@ -127,6 +127,31 @@ flowchart TD
 
 UI 子任务只能写授权文件；规则扫描任务只交付授权规则报告。子任务完成后要核对实际文件与检查结果，`accepted` 仅表示已接单。局部失败可把已有文件、报告和缺口交回主任务，不能用空报告伪造扫描成功。
 
+### 委派、并行实现与收取结果
+
+```mermaid
+sequenceDiagram
+  participant M as 主 Agent
+  participant Q as 子任务调度器
+  participant C as 子 Agent
+  participant S as 会话存储
+  M->>Q: delegate_agent 指定区块和写入范围
+  Q-->>M: 返回 accepted 和 agentId
+  par 实现主 Agent 自有区域
+    M->>S: 保存页面主体和区块占位
+  and 实现授权区块
+    Q->>C: 调度 UI 子任务
+    C->>S: 读取区块的规则报告并保存源码
+    C->>C: check_rules 检查授权区块
+    C-->>Q: 交付检查结果或返回待处理项
+  end
+  M->>Q: wait_subagents 收齐整页组合所需结果
+  Q-->>M: 返回实际产物和缺口
+  M->>S: 整合区块并保存页面代码
+```
+
+主 Agent 在整合前可通过 `mode=any` 先收取已完成项。图中展示的是组合整页时收齐结果的情况。
+
 ## 6. 验收流程：几种检查分别回答什么
 
 ```mermaid
