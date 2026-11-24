@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import modelCredentialRoutes from './credential/modelRoutes';
 import responseData from '@/common/response';
 import { secretKeysSchema } from '@/config/d2c';
 import { createFigmaCredentialService } from './credential/service';
@@ -44,6 +45,7 @@ export default async function credentialRoutes(app: FastifyInstance) {
       }),
     );
   });
+  app.register(modelCredentialRoutes);
   /**
    * POST /credentials/figma：以当前用户 userId 保存 Figma Token，返回凭据元数据。
    * 请求体仅接受 token：去除首尾空白后 1～8192 字符，拒绝控制字符；

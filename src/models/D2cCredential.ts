@@ -18,7 +18,7 @@ export class D2cCredential extends Model<
   declare id: CreationOptional<string>;
   declare credentialId: string | null;
   declare ownerUserId: string | null;
-  declare kind: CreationOptional<'figma'>;
+  declare kind: CreationOptional<'figma' | 'model'>;
   declare ciphertext: string | null;
   declare iv: string | null;
   declare authTag: string | null;
@@ -45,7 +45,7 @@ export function initD2cCredential(sequelize: Sequelize) {
         allowNull: true,
         comment: '服务端 账号认证 用户 ID',
       },
-      kind: { type: DataTypes.ENUM('figma'), allowNull: false, defaultValue: 'figma' },
+      kind: { type: DataTypes.ENUM('figma', 'model'), allowNull: false, defaultValue: 'figma' },
       ciphertext: {
         type: DataTypes.TEXT,
         allowNull: true,

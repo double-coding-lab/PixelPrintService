@@ -35,6 +35,7 @@ export { replayHistory } from './history';
 
 const modelSchema = z
   .object({
+    modelCredentialId: z.string().min(1).max(64).optional(),
     MODEL_BASE_URL: z.string().url(),
     MODEL_NAME: z.string().min(1),
     contextBudgetTokens: z.number().int().positive(),
@@ -237,6 +238,9 @@ export function createRunPersistence(
             });
           })
           .map((file) => file.path!);
+        const model = modelSchema.parse(run.modelSnapshot);
+        if ((session.modelCredentialId ?? null) !== (model.modelCredentialId ?? null))
+          throw new Error('固定模型凭据绑定不一致');
         return {
           message: {
             id: incoming.messageId,
@@ -251,7 +255,7 @@ export function createRunPersistence(
           credentialId: run.credentialId,
           resourceRevisionId: run.resourceRevisionId!,
           configSnapshot: structuredClone(run.configSnapshot),
-          model: modelSchema.parse(run.modelSnapshot),
+          model,
           bundleHash: revision.bundleHash,
           bundleObject: structuredClone(revision.bundleObject),
           files: (await Promise.all(

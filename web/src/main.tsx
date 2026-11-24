@@ -13,6 +13,7 @@ import ActiveSessions from './workspace/ActiveSessions';
 import WorkspacePanel from './workspace/WorkspacePanel';
 import WorkspaceHome from './workspace/WorkspaceHome';
 import CredentialSettings from './workspace/CredentialSettings';
+import ModelCredentialSettings from './workspace/ModelCredentialSettings';
 import TeamSettings, { TeamProvider } from './workspace/TeamSettings';
 import Icon from './components/Icon';
 import WorksPanel from './workspace/WorksPanel';
@@ -179,6 +180,7 @@ function App() {
             onSelect={select}
           />
           <CredentialSettings />
+          <ModelCredentialSettings />
           <TeamSettings />
         </div>
       </header>

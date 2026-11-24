@@ -14,6 +14,7 @@ import type { D2cRuntimeConfig } from '@/config/d2c';
 import type { StorageFileClient } from '@/hooks/tools/storage';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { Sequelize } from 'sequelize';
+import { createModelCredentialService } from '../credential/model';
 import { createFigmaCredentialService } from '../credential/service';
 import { SessionError } from '../session/access';
 import type { ResourceBundleStore } from '../workspace/resources';
@@ -156,6 +157,17 @@ export async function executeGenerationRun(input: {
         model.MODEL_NAME === snapshot.model.MODEL_NAME,
     );
     if (!selected) throw new RunExecutionError('MODEL_UNAVAILABLE', { stage: 'prepare' });
+    // 个人绑定只使用本轮发起人的固定 Token 修订，任何失败都不能借用平台 Key。
+    const modelApiKey = snapshot.model.modelCredentialId
+      ? await boundary('CREDENTIAL_UNAVAILABLE', 'prepare', () =>
+          createModelCredentialService(
+            input.mysql,
+            () => config.d2c.secrets,
+            () => config.modelConfigs,
+          ).getToken(snapshot.ownerUserId, snapshot.model.modelCredentialId!, snapshot.model),
+        )
+      : selected.MODEL_API_KEY;
+    secrets.add(modelApiKey);
     const target = snapshot.configSnapshot.target;
     if (target !== 'h5' && target !== 'rn')
       throw new RunExecutionError('PREPARATION_FAILED', { stage: 'prepare' });
@@ -195,19 +207,21 @@ export async function executeGenerationRun(input: {
         signal,
       }),
     );
-    return { snapshot, selected, target: target as 'h5' | 'rn', token, restored };
+    return { snapshot, selected, modelApiKey, target: target as 'h5' | 'rn', token, restored };
   }
   schedule();
-  const { snapshot, selected, target, token, restored } = await prepare().catch(async (error) => {
-    const failure = executionError(
-      signal.aborted ? signal.reason : error,
-      signal.aborted ? 'WORKER_INTERRUPTED' : 'PREPARATION_FAILED',
-      { stage: signal.aborted ? 'worker' : 'prepare' },
-    );
-    controller.abort(failure);
-    await stopHeartbeat();
-    throw failure;
-  });
+  const { snapshot, selected, modelApiKey, target, token, restored } = await prepare().catch(
+    async (error) => {
+      const failure = executionError(
+        signal.aborted ? signal.reason : error,
+        signal.aborted ? 'WORKER_INTERRUPTED' : 'PREPARATION_FAILED',
+        { stage: signal.aborted ? 'worker' : 'prepare' },
+      );
+      controller.abort(failure);
+      await stopHeartbeat();
+      throw failure;
+    },
+  );
   const assetUrls: Record<string, string> = {};
   for (const file of snapshot.files) {
     if (file.kind !== 'asset' || !file.objectLocator) continue;
@@ -359,7 +373,7 @@ export async function executeGenerationRun(input: {
       model: {
         baseURL: selected.MODEL_BASE_URL,
         name: selected.MODEL_NAME,
-        apiKey: selected.MODEL_API_KEY,
+        apiKey: modelApiKey,
         contextBudgetTokens: snapshot.model.contextBudgetTokens,
         requestTimeoutMs: snapshot.model.requestTimeoutMs,
         ...(snapshot.model.reasoningPolicy !== undefined

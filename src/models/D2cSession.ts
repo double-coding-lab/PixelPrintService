@@ -24,6 +24,7 @@ export class D2cSession extends Model<
   declare target: D2cTarget | null;
   declare figmaUrl: string | null;
   declare credentialId: string | null;
+  declare modelCredentialId: string | null;
   declare fileRevision: CreationOptional<number>;
   declare timelineSeq: CreationOptional<number>;
   declare activeRunId: string | null;
@@ -62,6 +63,12 @@ export function initD2cSession(sequelize: Sequelize) {
       target: { type: DataTypes.ENUM('h5', 'rn'), allowNull: true, comment: '生成目标 H5 或 RN' },
       figmaUrl: { type: DataTypes.TEXT, allowNull: true, comment: '设计稿链接' },
       credentialId: { type: DataTypes.STRING(64), allowNull: true, comment: '关联凭据业务 ID' },
+      modelCredentialId: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+        defaultValue: null,
+        comment: '本人固定模型 Token 修订，NULL 沿用平台模型',
+      },
       fileRevision: {
         type: DataTypes.INTEGER.UNSIGNED,
         allowNull: false,

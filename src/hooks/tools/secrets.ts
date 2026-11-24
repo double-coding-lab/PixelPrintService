@@ -9,7 +9,7 @@ export type SecretKeyConfig = {
 export type SecretIdentity = {
   ownerUserId: string;
   credentialId: string;
-  kind: string;
+  kind: 'figma' | 'model';
 };
 
 export type EncryptedSecret = {
@@ -23,6 +23,7 @@ const unavailableMessage = '凭据不可用';
 
 /** 按固定字段顺序编码 AAD，保留元数据原值并避免分隔符歧义。 */
 function encodeIdentity(identity: SecretIdentity): Buffer {
+  if (!['figma', 'model'].includes(identity.kind)) throw new Error(unavailableMessage);
   const fields = [identity.ownerUserId, identity.credentialId, identity.kind];
   if (fields.some((value) => typeof value !== 'string' || value.trim().length === 0)) {
     throw new Error(unavailableMessage);

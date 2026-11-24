@@ -1,3 +1,4 @@
+import { createModelCredentialService } from '../credential/model';
 import { findOrderedOne } from '../utils/orderedRead';
 import { automaticRecoveryPlan } from '../run/automaticRecovery';
 import { readMessageQueue } from './queue';
@@ -302,6 +303,58 @@ export function createMessageService(
           throw new SessionError(503, 'RUNTIME_UNAVAILABLE', 'RuntimeConfig 执行参数尚未就绪');
         }
         const model = runtime.modelConfigs[0];
+        const modelCredentialId = session.modelCredentialId ?? null;
+        if (modelCredentialId) {
+          const credential = await credentials.findOne({
+            where: {
+              credentialId: modelCredentialId,
+              ownerUserId: userId,
+              kind: 'model',
+              status: 'active',
+            },
+            attributes: ['credentialId', 'ownerUserId', 'kind', 'status'],
+            transaction,
+            lock: transaction.LOCK.UPDATE,
+          });
+          if (
+            !credential ||
+            credential.ownerUserId !== userId ||
+            credential.kind !== 'model' ||
+            credential.status !== 'active' ||
+            credential.credentialId !== modelCredentialId
+          )
+            throw new SessionError(
+              422,
+              'MODEL_CREDENTIAL_UNAVAILABLE',
+              '请配置本人模型 Token 后创建分支',
+            );
+          let personalToken;
+          try {
+            personalToken = await createModelCredentialService(
+              mysql,
+              () => runtime.d2c.secrets,
+              () => runtime.modelConfigs,
+            ).getToken(userId, modelCredentialId, model, transaction);
+          } catch {
+            throw new SessionError(
+              422,
+              'MODEL_CREDENTIAL_UNAVAILABLE',
+              '本会话绑定的模型凭据不可用',
+            );
+          }
+          if (input.content.includes(personalToken))
+            throw new SessionError(422, 'INVALID_MESSAGE', '请勿在聊天中提交密钥');
+        }
+        if (
+          recovery &&
+          ((recovery.modelSnapshot as Record<string, unknown>).modelCredentialId ?? null) !==
+            modelCredentialId
+        )
+          throw new SessionError(
+            422,
+            'MODEL_CREDENTIAL_UNAVAILABLE',
+            '恢复轮次的模型凭据绑定不一致',
+          );
         if (runtime.modelConfigs.some((entry) => input.content.includes(entry.MODEL_API_KEY)))
           throw new SessionError(
             422,
@@ -322,6 +375,7 @@ export function createMessageService(
             configRevision: workspace.configRevision,
             configSnapshot,
             modelSnapshot: recovery?.modelSnapshot ?? {
+              ...(modelCredentialId ? { modelCredentialId } : {}),
               MODEL_BASE_URL: model.MODEL_BASE_URL,
               MODEL_NAME: model.MODEL_NAME,
               contextBudgetTokens: model.contextBudgetTokens,
@@ -471,6 +525,29 @@ export function createMessageService(
             '等待期间资源或文件已改变，请结束本轮后重新发送消息',
           );
         const runtime = parseD2cRuntimeConfig(options.readConfig());
+        if (run.modelSnapshot?.modelCredentialId) {
+          let token;
+          try {
+            if (
+              run.requestedUserId !== userId ||
+              run.modelSnapshot.modelCredentialId !== session.modelCredentialId
+            )
+              throw new Error();
+            token = await createModelCredentialService(
+              mysql,
+              () => runtime.d2c.secrets,
+              () => runtime.modelConfigs,
+            ).getToken(userId, String(run.modelSnapshot.modelCredentialId), undefined, transaction);
+          } catch {
+            throw new SessionError(
+              422,
+              'MODEL_CREDENTIAL_UNAVAILABLE',
+              '本会话绑定的模型凭据不可用',
+            );
+          }
+          if (input.answer.includes(token))
+            throw new SessionError(422, 'INVALID_MESSAGE', '请勿在回答中提交密钥');
+        }
         if (runtime.modelConfigs.some((model) => input.answer.includes(model.MODEL_API_KEY)))
           throw new SessionError(422, 'INVALID_MESSAGE', '请勿在回答中提交密钥');
         await appendSessionEvent(mysql, session, transaction, {
