@@ -23,7 +23,7 @@
 | `runtime.d2c.network.allowedExternalHosts` | 主机名或明确通配后缀，不填写完整 URL、端口或路径 |
 | `runtime.d2c.limits` | 单文件文本上限示例为100MiB（104857600字节），会话文件数和二进制上传限额独立 |
 
-完整字段表见 [项目配置](../../doc/configuration.md)。
+完整字段表见 [项目配置](../../docs/configuration.md)。
 
 ## 预算、并行与租约
 

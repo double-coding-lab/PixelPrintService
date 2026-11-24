@@ -4,6 +4,14 @@
 
 保留工作区、会话、团队协作、Figma 切图、子 Agent、暂停与继续、实时进度、文件编辑、H5 / React Native Web 预览、截图对比和版本 ZIP 下载。运行配置直接读取 `project.config.json`，无需远程配置中心、企业 SDK 或外部 Sandbox 服务。
 
+## 使用与部署文档
+
+- [文档目录](docs/README.md)：按使用者与部署者需要阅读。
+- [使用指南](docs/使用指南.md)：创建会话、持续修改、交互验收和保存作品。
+- [功能说明](docs/功能说明.md)与[架构与流程图](docs/架构与流程图.md)。
+- [D2C 生成与验收流程](docs/D2C生成与验收流程.md)：扫描、素材、规则、出码与验收证据。
+- [部署与配置](docs/部署与配置.md)及[完整配置字段](docs/configuration.md)。
+
 ## 快速部署
 
 准备 Node.js 24 和 Docker Compose。在本目录执行：
@@ -58,7 +66,7 @@ npm start
 
 ## 配置和数据
 
-完整字段见 [配置说明](doc/configuration.md)，系统关系见 [架构说明](doc/architecture.md)。
+完整字段见 [配置说明](docs/configuration.md)，系统关系见 [架构说明](docs/架构与流程图.md)。
 
 | 能力 | 本发行版实现 |
 | --- | --- |
