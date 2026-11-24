@@ -201,6 +201,20 @@ test(
     );
     await wait('window.frameData.width===390&&window.frameData.height===844');
     assert.equal(
+      await evaluate(`document.querySelector('[aria-label="预览显示缩放"]').value`),
+      'fit',
+    );
+    await wait(
+      'document.querySelector(".phone-preview-device").getBoundingClientRect().height<=document.querySelector(".phone-preview-stage").clientHeight-31',
+    );
+    await evaluate(
+      `(()=>{const select=document.querySelector('[aria-label="预览显示缩放"]');select.value='1';select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+    );
+    await wait(
+      'document.querySelector(".phone-preview-device").getBoundingClientRect().width===390',
+    );
+
+    assert.equal(
       await evaluate(
         'document.querySelector(".phone-preview-device").getBoundingClientRect().width',
       ),

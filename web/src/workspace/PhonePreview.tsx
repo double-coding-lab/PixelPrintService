@@ -143,7 +143,7 @@ export default function PhonePreview({
   loading?: PreviewLoadingState;
 }) {
   const [preset, setPreset] = useState<string>('standard');
-  const [zoom, setZoom] = useState<number | 'fit'>(1);
+  const [zoom, setZoom] = useState<number | 'fit'>('fit');
   const [available, setAvailable] = useState({ width: 422, height: 876 });
   const stage = useRef<HTMLDivElement>(null);
   const exit = useRef<HTMLButtonElement>(null);
