@@ -24,7 +24,7 @@
 
 - 业务契约和实现边界见 [会话广场主题](../topics/d2c-session-plaza.md)。
 - 接口在 `src/functions/d2c/sharing/routes.ts`；公开读取服务在 `sharing/service.ts`，独立编辑接线在 `sharing/runtime.ts`，个人作品在 `savedWork/service.ts`。
-- 发布前审核执行 [新增三表 SQL](../req-docs/d2c-session-plaza_迁移.sql)。SQL 不更改原会话与工作区表，不自动公开历史数据。
+- 发布前审核执行 [新增三表 SQL](../../docs/sql/session-plaza-migration.sql)。SQL 不更改原会话与工作区表，不自动公开历史数据。
 - 未登录不允许访问；团队成员可共同开发，但不能替会话创建者公开；历史个人会话回退仅影响发布管理，不回填创建者身份。个人作品与原有暂存版本作品列表是不同的数据集合。
 - 撤回、归属和修订冲突均由服务端检查；前端没有应用回原工作区的入口，编辑服务也直接拒绝此操作。
 

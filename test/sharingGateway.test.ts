@@ -59,7 +59,7 @@ test('广场与个人作品模型已注册，字段带备注且大字段允许�
         assert.notEqual(attribute.defaultValue, undefined, `${name}.${field} 缺少默认值`);
     }
   }
-  const sql = readFileSync('.Knowledge/req-docs/d2c-session-plaza_迁移.sql', 'utf8');
+  const sql = readFileSync('docs/sql/session-plaza-migration.sql', 'utf8');
   assert.equal((sql.match(/CREATE TABLE IF NOT EXISTS/g) ?? []).length, 3);
   assert.doesNotMatch(
     sql,

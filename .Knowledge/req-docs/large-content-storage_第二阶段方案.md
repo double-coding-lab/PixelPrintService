@@ -46,7 +46,7 @@ inline保存原BLOB；shadow保留BLOB并记录已核验引用；external对合�
 
 ## 历史迁移与回滚
 
-先审核d2c-checkpoint-storage_迁移.sql、备份元数据/对象/正文密钥，再部署新代码、启用schemaReady并重启；先shadow观测，确认旧写入实例退出后才external。第一阶段三表的建列不能代替本阶段两表三列。
+先审核docs/sql/checkpoint-storage-migration.sql、备份元数据/对象/正文密钥，再部署新代码、启用schemaReady并重启；先shadow观测，确认旧写入实例退出后才external。第一阶段三表的建列不能代替本阶段两表三列。
 
 ```sh
 npm run checkpoint:migrate -- --help

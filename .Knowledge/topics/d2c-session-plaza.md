@@ -27,7 +27,7 @@ sourceDoc: ".Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md"
 
 `sharing/routes.ts` 提供 `/sessions/:id/sharing`、`/plaza/sessions`、`/my-works`；两种 detached edit 接口只有创建、读取、临时保存、删除、持久保存和下载。`sharing/runtime.ts` 延迟装配服务；`savedWork/service.ts` 管理永久快照。前端 `SessionSharing`、`CommunityPanel` 和 `EditWorkspace` 对应发布开关、广场/个人作品及独立编辑。
 
-发布前执行 `.Knowledge/req-docs/d2c-session-plaza_迁移.sql` 新建三张表；仅注册模型，不自动迁移数据库。内部与公共仓库分别沿用自身身份、运行配置和对象存储，不混入另一仓库的平台依赖。
+发布前执行 `docs/sql/session-plaza-migration.sql` 新建三张表；仅注册模型，不自动迁移数据库。内部与公共仓库分别沿用自身身份、运行配置和对象存储，不混入另一仓库的平台依赖。
 
 ## 边界
 
