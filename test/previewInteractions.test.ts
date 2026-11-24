@@ -380,3 +380,53 @@ test('真实跨首末项回环与选中态变化可通过主端交互验收', { 
     true,
   );
 });
+
+test(
+  'real Chromium: swipe asserts different selected values before mouse release',
+  { skip: !browser },
+  async () => {
+    const result = await runLocalPreviewCapture(
+      fixture(
+        `
+        document.body.innerHTML = '<div id="track" style="width:280px;height:70px">Track</div><output id="selected">A</output>';
+        const out = document.querySelector('#selected');
+        let start;
+        document.addEventListener('mousedown', (event) => { start = event.clientX; });
+        document.addEventListener('mousemove', (event) => {
+          if (start === undefined) return;
+          const distance = start - event.clientX;
+          out.textContent = distance >= 90 ? 'C' : distance >= 30 ? 'B' : 'A';
+        });
+        document.addEventListener('mouseup', () => { start = undefined; out.textContent = 'Released'; });
+      `,
+        {
+          actions: [
+            {
+              type: 'swipe',
+              selector: '#track',
+              deltaX: -144,
+              deltaY: 0,
+              pointer: 'mouse',
+              during: [
+                {
+                  atStep: 4,
+                  expect: { type: 'expect', selector: '#selected', state: 'text', text: 'B' },
+                },
+                {
+                  atStep: 9,
+                  expect: { type: 'expect', selector: '#selected', state: 'text', text: 'C' },
+                },
+              ],
+            },
+            { type: 'expect', selector: '#selected', state: 'text', text: 'Released' },
+          ],
+        },
+      ),
+    );
+    assert.equal(result.interaction?.passed, true, JSON.stringify(result.interaction));
+    assert.deepEqual(result.interaction?.steps[0].during, [
+      { atStep: 4, observed: 'B' },
+      { atStep: 9, observed: 'C' },
+    ]);
+  },
+);

@@ -65,9 +65,28 @@ export const previewInspectionOptionsSchema = z
               deltaX: z.number().finite().min(-1000).max(1000),
               deltaY: z.number().finite().min(-1000).max(1000),
               pointer: z.enum(['touch', 'mouse']).default('touch'),
+              during: z
+                .array(
+                  z
+                    .object({
+                      atStep: z.number().int().min(1).max(11),
+                      expect: z.union([expectations[1], expectations[2]]),
+                    })
+                    .strict(),
+                )
+                .min(1)
+                .max(3)
+                .optional(),
             })
             .strict()
-            .refine((value) => value.deltaX !== 0 || value.deltaY !== 0),
+            .refine((value) => value.deltaX !== 0 || value.deltaY !== 0)
+            .refine(
+              (value) =>
+                value.during?.every(
+                  (sample, index, previous) =>
+                    index === 0 || sample.atStep > previous[index - 1].atStep,
+                ) ?? true,
+            ),
           z
             .object({
               type: z.literal('scroll'),
@@ -125,6 +144,17 @@ export const previewInteractionResultSchema = z
               'gesture_out_of_bounds',
               'interaction_budget_exceeded',
             ]),
+            during: z
+              .array(
+                z
+                  .object({
+                    atStep: z.number().int().min(1).max(11),
+                    observed: z.union([z.boolean(), z.string().max(256)]),
+                  })
+                  .strict(),
+              )
+              .max(3)
+              .optional(),
             observed: z
               .union([z.boolean(), z.number().finite().min(-1e9).max(1e9), z.string().max(256)])
               .optional(),

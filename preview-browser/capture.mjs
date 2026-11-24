@@ -48,12 +48,28 @@ function validInspection(options) {
     if (action.type === 'click') {
       /* no extra parameters */
     } else if (action.type === 'swipe') {
-      allowed.push('deltaX', 'deltaY', 'pointer');
+      allowed.push('deltaX', 'deltaY', 'pointer', 'during');
       if (
         !number(action.deltaX, 1000) ||
         !number(action.deltaY, 1000) ||
         (!action.deltaX && !action.deltaY) ||
-        (action.pointer !== undefined && !['touch', 'mouse'].includes(action.pointer))
+        (action.pointer !== undefined && !['touch', 'mouse'].includes(action.pointer)) ||
+        (action.during !== undefined &&
+          (!Array.isArray(action.during) ||
+            action.during.length < 1 ||
+            action.during.length > 3 ||
+            !action.during.every(
+              (sample, index, all) =>
+                sample &&
+                Object.keys(sample).length === 2 &&
+                Number.isInteger(sample.atStep) &&
+                sample.atStep >= 1 &&
+                sample.atStep <= 11 &&
+                (index === 0 || sample.atStep > all[index - 1].atStep) &&
+                sample.expect?.type === 'expect' &&
+                ['text', 'attribute'].includes(sample.expect.state) &&
+                validInspection({ actions: [sample.expect] }),
+            )))
       )
         return false;
     } else if (action.type === 'scroll') {
@@ -334,6 +350,7 @@ try {
   async function perform(action, step) {
     let node;
     let container;
+    const during = [];
     try {
       if (Date.now() - interactionStarted >= 18000) throw new Error('interaction_budget_exceeded');
       if (action.selector) node = await element(action.selector);
@@ -430,6 +447,31 @@ try {
           throw new Error('gesture_out_of_bounds');
         const x = action.deltaX < 0 ? right : action.deltaX > 0 ? left : (left + right) / 2;
         const y = action.deltaY < 0 ? bottom : action.deltaY > 0 ? top : (top + bottom) / 2;
+        const sampleBeforeRelease = async (atStep) => {
+          const sample = action.during?.find((value) => value.atStep === atStep);
+          if (!sample) return;
+          const target = await element(sample.expect.selector);
+          try {
+            const observed = await target.evaluate(
+              (node, expectation) =>
+                expectation.state === 'text'
+                  ? (node.textContent ?? '').slice(0, 257)
+                  : (node.getAttribute(expectation.attribute)?.slice(0, 257) ?? false),
+              sample.expect,
+            );
+            during.push({
+              atStep,
+              observed: typeof observed === 'string' ? observed.slice(0, 256) : observed,
+            });
+            if (
+              observed !==
+              (sample.expect.state === 'text' ? sample.expect.text : sample.expect.value)
+            )
+              throw new Error('assertion_failed');
+          } finally {
+            await target.dispose();
+          }
+        };
         if ((action.pointer ?? 'touch') === 'mouse') {
           await page.mouse.move(x, y);
           await page.mouse.down();
@@ -437,6 +479,7 @@ try {
             for (let n = 1; n <= 12; n++) {
               await page.mouse.move(x + (action.deltaX * n) / 12, y + (action.deltaY * n) / 12);
               await page.waitForTimeout(16);
+              await sampleBeforeRelease(n);
             }
           } finally {
             await page.mouse.up();
@@ -462,6 +505,7 @@ try {
                 ],
               });
               await page.waitForTimeout(16);
+              await sampleBeforeRelease(n);
             }
           } finally {
             await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -469,7 +513,13 @@ try {
         }
       }
       await page.waitForTimeout(250);
-      steps.push({ step, type: action.type, passed: true, reason: 'completed' });
+      steps.push({
+        step,
+        type: action.type,
+        passed: true,
+        reason: 'completed',
+        ...(during.length ? { during } : {}),
+      });
     } catch (error) {
       const reasons = [
         'not_found',
@@ -477,6 +527,7 @@ try {
         'invalid_selector',
         'not_visible',
         'gesture_out_of_bounds',
+        'assertion_failed',
         'interaction_budget_exceeded',
       ];
       const reason =
