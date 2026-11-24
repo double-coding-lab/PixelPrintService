@@ -202,3 +202,51 @@ flowchart TD
 | 执行诊断 | 模型与工具耗时、用量、错误次数、排查编号与 runId |
 
 这些资料由工具维护，不能通过手改内部证据把失败变成通过。对普通使用者，更实用的反馈是“哪一个元素、预期怎样、实际怎样、对应截图与会话”，而不是自行编辑缓存文件。
+
+## 9. 工具调用图
+
+### 设计读取到代码验收
+
+图中是首次生成的主要调用关系。缓存可用时可直接读取，补切和业务提问按需发生。
+
+```mermaid
+flowchart TD
+  A["figma / verify-token<br/>验证设计访问凭据"] --> B["figma / cache-check<br/>核对设计版本与缓存"]
+  B -->|需要补齐缓存| C["figma / fetch-node<br/>保存完整节点数据"]
+  B -->|缓存有效| D["figma / inspect-node<br/>从缓存读取结构和属性"]
+  C --> D
+  D --> E["figma / screenshot<br/>保存设计基准图"]
+  D --> F["prepare_slices<br/>切图、去重、压缩、上传"]
+  F -->|按需补切| G["figma / export-image<br/>导出单节点图片"]
+  F --> H["读取规则扫描报告<br/>rule-hits.json"]
+  G --> H
+  H --> I["write_file / edit_file<br/>生成或更新源码"]
+  I --> J["check_rules<br/>区块检查及整页合并检查"]
+  J --> K["build_preview<br/>编译当前修订"]
+  K --> L["inspect_preview<br/>查看运行结果、执行交互并截图"]
+  E --> M["对照设计基准，结合规则和交互证据交付"]
+  L --> M
+```
+
+### 主 Agent 和子任务怎样用工具
+
+```mermaid
+flowchart TD
+  A["主 Agent"] --> B["list_files → read_file<br/>发现并读取源码、Skill 或报告"]
+  A --> C["delegate_agent<br/>授予子任务目标及写入范围"]
+  A --> D["ask_user<br/>业务信息不足时等待用户回答"]
+  A --> E["主 Agent 自有区块<br/>write_file / edit_file / delete_file"]
+  C --> H["rule_scan<br/>读取缓存，分批用 write_file 保存命中"]
+  C --> I["ui<br/>读缓存，写授权代码，运行 check_rules / block"]
+  C --> J["design / review<br/>列出并读取文件"]
+  H --> P["report_progress<br/>保存阶段进度和待处理项"]
+  I --> P
+  J --> P
+  H --> Q["wait_subagents<br/>主 Agent 收取子任务结果"]
+  I --> Q
+  J --> Q
+  E --> R["组合整页并验收"]
+  Q --> R
+```
+
+子任务调用 `figma` 时只能通过 `inspect-node` 读取会话绑定稿的已有缓存。主 Agent 负责切图和运行预览。完整命令说明和权限见 [D2C Agent 工具参考](reference/D2C工具参考.md)。
