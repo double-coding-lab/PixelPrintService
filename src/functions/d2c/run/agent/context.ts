@@ -1,4 +1,10 @@
-import { AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
+import {
+  AIMessage,
+  AIMessageChunk,
+  ToolMessage,
+  ToolMessageChunk,
+  type BaseMessage,
+} from '@langchain/core/messages';
 import { createHash } from 'node:crypto';
 import { readToolFeedback } from '../toolFeedback';
 import { estimateTokens } from './tokens';
@@ -38,8 +44,22 @@ export function confirmedWrite(result: ToolMessage, name: string, path: unknown)
 
 /** 只压缩后续请求中的已完成写入参数；实际工具输入和持久历史保持原文。 */
 export function completedWriteView(messages: BaseMessage[], budget: number) {
+  const callCounts = new Map<string, number>();
+  const resultCounts = new Map<string, number>();
+  for (const message of messages) {
+    if (AIMessage.isInstance(message))
+      for (const call of message.tool_calls ?? [])
+        if (call.id) callCounts.set(call.id, (callCounts.get(call.id) ?? 0) + 1);
+    if (ToolMessage.isInstance(message))
+      resultCounts.set(message.tool_call_id, (resultCounts.get(message.tool_call_id) ?? 0) + 1);
+  }
   return messages.map((message, index) => {
-    if (!AIMessage.isInstance(message) || !message.tool_calls?.length) return message;
+    if (
+      !AIMessage.isInstance(message) ||
+      AIMessageChunk.isInstance(message) ||
+      !message.tool_calls?.length
+    )
+      return message;
     const results = new Map<string, ToolMessage>();
     for (let i = index + 1; i < messages.length && ToolMessage.isInstance(messages[i]); i++) {
       const value = messages[i] as ToolMessage;
@@ -56,9 +76,16 @@ export function completedWriteView(messages: BaseMessage[], budget: number) {
             : call.args.content;
       if (
         !['write_file', 'edit_file'].includes(call.name) ||
+        !call.id ||
+        callCounts.get(call.id) !== 1 ||
+        resultCounts.get(call.id) !== 1 ||
         typeof content !== 'string' ||
+        content.startsWith('{"type":"historical_source_reference",') ||
+        content.startsWith('[仅模型视图') ||
         estimateTokens(content) <= Math.max(128, Math.min(2048, budget * 0.1)) ||
         !result ||
+        ToolMessageChunk.isInstance(result) ||
+        typeof result.content !== 'string' ||
         !confirmedWrite(result, call.name, call.args.path) ||
         readToolFeedback(result.content)
       )
@@ -70,11 +97,12 @@ export function completedWriteView(messages: BaseMessage[], budget: number) {
           ...call.args,
           ...(call.name === 'edit_file'
             ? {
-                oldText: '[本局部替换已保存；原片段省略，需要时重新read_file读取。]',
-                newText: `[替换正文 ${Buffer.byteLength(content)} 字节已保存；需要时read_file读取 ${String(call.args.path)}。]`,
+                oldText:
+                  '[仅模型视图省略已保存的原片段，真实文件及原始参数未改写；需要时read_file读取。]',
+                newText: `[仅模型视图省略已保存正文 ${Buffer.byteLength(content)} 字节，未将此说明写入真实文件；需要时read_file读取 ${String(call.args.path)}。]`,
               }
             : {
-                content: `[本工具已完成保存。正文 ${Buffer.byteLength(content)} 字节，SHA-256 ${createHash('sha256').update(content).digest('hex')}；后续需要时用 read_file 读取 ${String(call.args.path)}，不必重写。]`,
+                content: `[仅模型视图省略已保存正文，真实文件及原始参数未改写，未写入此占位说明。正文 ${Buffer.byteLength(content)} 字节，SHA-256 ${createHash('sha256').update(content).digest('hex')}；需要时read_file读取 ${String(call.args.path)}，不必重写。]`,
               }),
         },
       };

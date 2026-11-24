@@ -8,6 +8,8 @@ import type { HistoryArchive } from './archive';
 import { createHash } from 'node:crypto';
 import { LangChainTracer } from '@langchain/core/tracers/tracer_langchain';
 import { estimateTokens } from './tokens';
+import { createHistoricalSourceView } from './incrementalContext';
+import { incrementalVerificationStateSchema } from './incrementalVerification';
 
 /** 摘要由原生中间件直接 invoke，单独提供静默 tracer，阻止环境变量开启外部上报。 */
 function localTracingGuard() {
@@ -87,8 +89,11 @@ export function createContextSummary(input: {
   transformMessage?: (message: BaseMessage) => BaseMessage;
   overhead?: () => number;
   view?: (messages: BaseMessage[]) => BaseMessage[];
+  /** 仅明确增量交互提供当前授权输入ID；实时guidance优先，平台Human通知不能推进边界。 */
+  historicalSourceBoundaryId?: (state: unknown) => string | undefined;
 }) {
   let sourceArchive: { path: string; characters: number } | undefined;
+  const historicalSourceView = createHistoricalSourceView(input.archive, input.budget);
   const summaryModel = new SummaryModel(async (messages) => {
     input.archive.assertHealthy();
     const text = messages.map((message) => message.text).join('\n');
@@ -194,6 +199,7 @@ export function createContextSummary(input: {
   const wrap = native.wrapModelCall!;
   return createMiddleware({
     ...native,
+    stateSchema: native.stateSchema!.extend(incrementalVerificationStateSchema.shape),
     wrapModelCall: async (request, handler) => {
       input.signal.throwIfAborted();
       input.archive.assertHealthy();
@@ -202,7 +208,16 @@ export function createContextSummary(input: {
       const effective = event
         ? [event.summaryMessage, ...request.messages.slice(event.cutoffIndex)]
         : request.messages;
-      const view = input.view?.(effective) ?? effective;
+      const prepared = await historicalSourceView(
+        request.messages,
+        input.historicalSourceBoundaryId?.(request.state),
+        event?.cutoffIndex ?? 0,
+      );
+      input.signal.throwIfAborted();
+      const preparedEffective = event
+        ? [event.summaryMessage, ...prepared.slice(event.cutoffIndex)]
+        : prepared;
+      const view = input.view?.(preparedEffective) ?? preparedEffective;
       const tokens = estimateTokens(view.map((message) => message.toDict()));
       const available = input.budget - (input.overhead?.() ?? input.budget * 0.4);
       if (tokens < available * 0.7) return handler({ ...request, messages: view });
@@ -216,7 +231,7 @@ export function createContextSummary(input: {
       return wrap(
         {
           ...request,
-          messages: input.view?.(request.messages) ?? request.messages,
+          messages: input.view?.(prepared) ?? prepared,
           model: summaryModel,
         },
         (modified) => {

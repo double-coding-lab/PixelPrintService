@@ -18,6 +18,7 @@ const reasonSchema = z.enum([
   'explicit_question',
   'parameter_confirmation',
   'simple_replacement',
+  'local_interaction',
   'page_generation',
   'complex_change',
   'ambiguous_task',
@@ -32,6 +33,7 @@ const taskSchema = z.enum([
   'question',
   'confirmation',
   'simple_replacement',
+  'local_interaction',
   'page_generation',
   'complex_change',
   'unknown',
@@ -48,6 +50,10 @@ export type ReasoningInput = {
   userText: string;
   hasSourceFiles?: boolean;
   hasDesign?: boolean;
+  /** 调用方已确认是已有源码上的局部交互；不从历史摘要推断。 */
+  localInteraction?: boolean;
+  /** 实时guidance使用其自身正文重算范围，不能沿用最初输入的局部标记。 */
+  classifyLocalInteraction?: (text: string) => boolean;
 };
 
 const decisionSchema = z
@@ -75,7 +81,10 @@ const policySchema = z
 type ReasoningPolicyState = z.infer<typeof policySchema>;
 
 /** 选模包装器与策略节点共享状态投影，保持检查点中的决策可见。 */
-export const reasoningStateSchema = z.object({ _pixelprintReasoning: policySchema.optional() });
+export const reasoningStateSchema = z.object({
+  _pixelprintReasoning: policySchema.optional(),
+  guidanceApplied: z.array(z.string()).optional(),
+});
 
 /** 仅分类入口授权正文；规则只覆盖明确表达，无法确定的语义保持 high。 */
 export function initialReasoningDecision(input: ReasoningInput): ReasoningDecision {
@@ -148,6 +157,21 @@ export function initialReasoningDecision(input: ReasoningInput): ReasoningDecisi
         ),
     )
     .join(' ');
+  /** 限定已有源码上的明确交互，整页、布局及跨模块任务仍走保守档位。 */
+  if (
+    input.hasSourceFiles &&
+    (input.localInteraction ?? input.classifyLocalInteraction?.(input.userText)) === true &&
+    /(?:点击|滑动|拖拽|拖动|滚动|轮播|弹窗|页签|click|swipe|drag|scroll|carousel|tab)/u.test(
+      text,
+    ) &&
+    /(?:修复|修改|调整|实现|添加|增加|支持|改为|改成|fix|modify|update|implement|add|enable)/u.test(
+      text,
+    ) &&
+    !/(?:整页|全页|全量|整个|所有|全部|重新|重做|重建|布局|响应式|适配|架构|状态管理|接口|后端|数据库|登录|支付|权限|路由|跨|多个|whole|entire|all\b|layout|responsive|architecture|backend|database|auth|payment|routing|multi[- ]|cross[- ])/u.test(
+      replacementScope,
+    )
+  )
+    return decide('low', 'local_interaction', 'local_interaction');
   if (
     input.hasSourceFiles &&
     /(?:仅|只|only|just)/u.test(text) &&
@@ -211,6 +235,29 @@ export function updateReasoningState(input: ReasoningInput, state: unknown): Rea
   const messages = Array.isArray(value.messages) ? (value.messages as BaseMessage[]) : [];
   const parsed = policySchema.safeParse(value._pixelprintReasoning);
   const previous = parsed.success ? parsed.data : undefined;
+  /** 只信任guidance中间件已应用的ID；截图/验收等平台Human消息不构成新授权。 */
+  const guidance = Array.isArray(value.guidanceApplied) ? value.guidanceApplied : [];
+  const initialBoundary = input.admissionId
+    ? messages.findIndex(
+        (message) => HumanMessage.isInstance(message) && message.id === input.admissionId,
+      )
+    : -1;
+  if (!input.specialist && (input.admissionId === undefined || initialBoundary >= 0)) {
+    for (const id of [...guidance].reverse()) {
+      if (typeof id !== 'string') continue;
+      const matching = messages.filter(
+        (message) => HumanMessage.isInstance(message) && message.id === id,
+      );
+      if (matching.length !== 1 || messages.indexOf(matching[0]) <= initialBoundary) continue;
+      input = {
+        ...input,
+        admissionId: id,
+        userText: matching[0].text,
+        localInteraction: input.classifyLocalInteraction?.(matching[0].text) === true,
+      };
+      break;
+    }
+  }
   const scope = input.specialist ?? 'root';
   const sameScope = previous?.scope === scope;
   const newAdmission =

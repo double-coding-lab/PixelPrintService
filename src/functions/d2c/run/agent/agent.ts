@@ -2,6 +2,9 @@ import {
   createIncrementalVerificationMiddleware,
   incrementalVerification,
   incrementalVerificationStateSchema,
+  interactionChange,
+  interactionVerificationPrompt,
+  isInteractionSourceWrite,
 } from './incrementalVerification';
 import { previewInspectionOptionsSchema } from '../../preview/interaction';
 import { uiPrerequisites } from './uiPrerequisites';
@@ -11,7 +14,7 @@ import {
   visualInspectionStateSchema,
 } from './visualInspection';
 import { createFileVersions } from './fileVersions';
-import { editArgumentDetail } from '../editFile';
+import { editArgumentDetail, editFileSchema } from '../editFile';
 import { toolArgumentDetail } from './argumentFeedback';
 import { readFailureDetails } from '../../../../shared/failureDetails';
 import { createRuleRepairMiddleware, ruleRepairReport, type RuleRepairState } from './ruleRepair';
@@ -531,15 +534,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
         name: 'edit_file',
         description:
           '局部修改已读文本文件。先read_file取得完整文件sha256，oldText须精确且唯一匹配；expectedSha256可省略，平台使用本Agent最近成功读写的回执版本；显式传入时按原值校验，真实并发变化仍拒绝。同一文件的编辑必须串行，成功后下次编辑使用返回的新sha256，不能复用旧摘要；摘要冲突必须重读。新文件用write_file；禁止借局部编辑改固定配置或证据。',
-        schema: z.object({
-          path: z.string(),
-          oldText: z.string().min(1),
-          newText: z.string(),
-          expectedSha256: z
-            .string()
-            .regex(/^[a-f0-9]{64}$/)
-            .nullish(),
-        }),
+        schema: editFileSchema,
       },
     ),
     tool(
@@ -1764,7 +1759,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       request = {
         ...request,
         systemMessage: request.systemMessage.concat(
-          '\n本轮是已有页面的交互增量修改：先读相关源码，保留既有布局、素材和未涉及功能。复用已读Skill与报告，不默认派扫描子任务、重切图片或整页merge；只核对受影响结构。一次完成相关修改后用inspect_preview(actions,focusSelector)先expect记录选中项/scrollLeft基线，再执行当前修订的真实点击、滑动并断言同一状态确实变化；可见性本身不算交互证据。循环从首/末项跨边界并核对回环，覆盖双向重复。不要改默认选中值来模拟点击；不反复解读旧修订截图。验证通过立即交付；最多一轮验收加两轮修复复验，仍未通过明确报告剩余问题及已保存进度。',
+          '\n只改交互时，先用inspect_preview对当前运行预览保存受影响区域的改前截图；改后在同一入口、视口、聚焦区域和初始状态对比截图。保持原有间距、尺寸、颜色和布局，不为通过动作测试改掉样式，不重拉Figma做视觉基线。动作证据与视觉结论分开，缺少可比图时明确视觉未复核。\n本轮是已有页面的交互增量修改：先读相关源码，保留既有布局、素材和未涉及功能。历史工具参数里的省略说明或historical_source_reference是模型上下文视图，不是写入磁盘的占位内容，不能据此判断源码损坏或整文件恢复；按最新读写回执定位需要的源码，优先局部编辑。复用已读Skill与报告，不默认派扫描子任务、重切图片或整页merge；只核对受影响结构。一次完成相关修改后用inspect_preview(actions,focusSelector)先expect记录选中项/scrollLeft基线，再执行当前修订的真实点击、滑动并断言同一状态确实变化；可见性本身不算交互证据。点击居中追加centered断言；拖动途中切换用同一swipe的during在松手前断言选中项变化。循环从首/末项跨边界并核对回环，覆盖双向重复。不要改默认选中值来模拟点击；不反复解读旧修订截图。验证通过立即交付；最多一轮验收加两轮修复复验，仍未通过明确报告剩余问题及已保存进度。',
         ),
       };
     }
@@ -1808,6 +1803,85 @@ export async function runAgent(input: AgentRunInput): Promise<{
     requestAttempts = 0,
   ): Promise<AIMessage> {
     await flushBackgroundObservations();
+    const interaction = incrementalVerification(request.state);
+    if (interaction?.pendingEdits?.length && interaction.baselineAttempted) {
+      const edits = new AIMessage({
+        content: '改前截图已处理，继续执行此前生成并绑定文件版本的局部修改。',
+        tool_calls: interaction.pendingEdits.map((edit) => ({
+          ...edit,
+          type: 'tool_call' as const,
+        })),
+        response_metadata: interaction.pendingEditInspection
+          ? { platformDeferredInteraction: interaction.pendingEditInspection }
+          : {},
+      });
+      await input.onMessage?.(edits);
+      return edits;
+    }
+    if (interaction?.pendingInspection && !backgroundDelegations.hasUnobserved()) {
+      const check = new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            name: 'inspect_preview',
+            id: `interaction-preview-${randomUUID()}`,
+            args: interaction.pendingInspection,
+            type: 'tool_call',
+          },
+        ],
+        response_metadata: { platformInspection: true },
+      });
+      await input.onMessage?.(check);
+      return check;
+    }
+    const visualPair =
+      interaction?.passed && interaction.visualBaseline && interaction.visualCandidate
+        ? [interaction.visualBaseline, interaction.visualCandidate]
+        : undefined;
+    if (visualPair) {
+      // Put both trusted references last so normal image materialization prioritizes them.
+      const loaded = await Promise.all(
+        visualPair.map(async (snapshot) => {
+          const image = visionRejected ? null : await input.resolveImage?.(snapshot.imageRef);
+          return (
+            image &&
+            image.data.length > 0 &&
+            image.data.length <= 10 * 1024 * 1024 &&
+            /^(?:image\/png|image\/jpeg|image\/webp)$/.test(image.mimeType)
+          );
+        }),
+      );
+      if (!loaded.every(Boolean)) {
+        return new AIMessage('无法对比：前后截图没有同时载入。');
+      }
+      request = {
+        ...request,
+        tools: [],
+        toolChoice: undefined,
+        messages: [
+          ...request.messages,
+          new HumanMessage({
+            content: [
+              {
+                type: 'text',
+                text: '平台视觉复核：下方依次是同一入口、同一定位、交互前初始状态的改前和改后运行截图。只比较受影响区域的间距、尺寸、布局和颜色，忽略用户明确要求的外观变化。仅回复一行：视觉一致：依据；或发现视觉变化：具体变化；或无法对比：原因。不要执行工具。',
+              },
+              ...visualPair.map((snapshot) => ({
+                type: 'image_url' as const,
+                image_url: { url: snapshot.imageRef },
+              })),
+            ],
+          }),
+        ],
+      };
+    }
+    if (interaction?.verificationOnly && !visualPair) {
+      request = {
+        ...request,
+        tools: request.tools.filter((value) => 'name' in value && value.name === 'inspect_preview'),
+        systemMessage: request.systemMessage.concat(`\n${interactionVerificationPrompt}`),
+      };
+    }
     const inspection =
       !input.specialist &&
       !incrementalVerification(request.state) &&
@@ -1973,8 +2047,9 @@ export async function runAgent(input: AgentRunInput): Promise<{
           id: response.id,
         })
       : response;
-    let completed = input.transformMessage?.(normalized) ?? normalized;
-    if (!AIMessage.isInstance(completed)) throw new Error('DEEP_MESSAGE_TRANSFORM_INVALID');
+    const transformed = input.transformMessage?.(normalized) ?? normalized;
+    if (!AIMessage.isInstance(transformed)) throw new Error('DEEP_MESSAGE_TRANSFORM_INVALID');
+    let completed: AIMessage = transformed;
     try {
       /** 客户端可能容错解析不完整 JSON；执行前核对原始参数，不能把猜测值交给工具。 */
       messageToAgentRecords(completed);
@@ -2004,6 +2079,133 @@ export async function runAgent(input: AgentRunInput): Promise<{
         );
       }
       throw error;
+    }
+    if (visualPair) {
+      completed = new AIMessage({
+        id: completed.id,
+        content: visionRejected
+          ? '无法对比：模型网关未接受截图。'
+          : completed.text.trim() || '无法对比：模型没有给出视觉结论。',
+        usage_metadata: completed.usage_metadata,
+      });
+    } else if (interaction) {
+      const calls = completed.tool_calls ?? [];
+      const check = calls.find((call) => call.name === 'inspect_preview');
+      const verification = previewInspectionOptionsSchema
+        .extend({ entryPath: z.string().max(512).nullish() })
+        .safeParse(check?.args);
+      if (interaction.verificationOnly && !interaction.pendingInspection) {
+        completed = new AIMessage({
+          id: completed.id,
+          content:
+            verification.success && verification.data.actions?.length
+              ? ''
+              : '未能生成可执行的浏览器动作计划，本轮交互验收未完成。',
+          tool_calls:
+            verification.success && verification.data.actions?.length && check ? [check] : [],
+          usage_metadata: completed.usage_metadata,
+        });
+      } else if (
+        input.resolveImage &&
+        !interaction.baselineAttempted &&
+        !interaction.sourceChanged &&
+        calls.some(isInteractionSourceWrite)
+      ) {
+        // Only exact edits with a known receipt may survive the baseline boundary.
+        // The ordinary edit tool still validates that frozen version before saving.
+        let deferredEdits:
+          | Array<{
+              id: string;
+              name: 'edit_file';
+              args: { path: string; oldText: string; newText: string; expectedSha256: string };
+            }>
+          | undefined;
+        const proposed = calls.filter((call) => call.name !== 'inspect_preview');
+        if (
+          proposed.length &&
+          proposed.length <= 32 &&
+          proposed.every((call) => call.name === 'edit_file')
+        ) {
+          try {
+            deferredEdits = proposed.map((call) => {
+              const { path, oldText, newText, expectedSha256 } = call.args;
+              if (
+                !call.id ||
+                typeof path !== 'string' ||
+                typeof oldText !== 'string' ||
+                !oldText ||
+                typeof newText !== 'string' ||
+                (expectedSha256 != null && typeof expectedSha256 !== 'string')
+              )
+                throw new Error('DEFERRED_EDIT_INVALID');
+              const version = fileVersions.expected(
+                path,
+                expectedSha256 as string | null | undefined,
+              );
+              if (!/^[a-f0-9]{64}$/.test(version)) throw new Error('DEFERRED_EDIT_INVALID');
+              return {
+                id: call.id,
+                name: 'edit_file' as const,
+                args: { path, oldText, newText, expectedSha256: version },
+              };
+            });
+            if (new Set(deferredEdits.map((edit) => edit.args.path)).size !== deferredEdits.length)
+              deferredEdits = undefined;
+          } catch {
+            deferredEdits = undefined;
+          }
+        }
+        completed = new AIMessage({
+          id: completed.id,
+          content: deferredEdits
+            ? '先保存改动前的运行截图；已生成的局部修改已绑定文件版本，截图后继续执行。'
+            : '先保存改动前的运行截图作为视觉基线，本批拟议的源码修改尚未执行。',
+          tool_calls: [
+            {
+              name: 'inspect_preview',
+              id: `interaction-baseline-${randomUUID()}`,
+              args: verification.success
+                ? {
+                    entryPath: verification.data.entryPath,
+                    focusSelector: verification.data.focusSelector,
+                  }
+                : {},
+              type: 'tool_call',
+            },
+          ],
+          usage_metadata: completed.usage_metadata,
+          response_metadata: deferredEdits
+            ? {
+                platformDeferredEdits: deferredEdits,
+                ...(verification.success && verification.data.actions?.length
+                  ? { platformDeferredEditInspection: verification.data }
+                  : {}),
+              }
+            : {},
+        });
+      } else if (verification.success && calls.some(isInteractionSourceWrite)) {
+        // Save requested writes first. The validated plan is checkpointed with their tool batch.
+        completed = new AIMessage({
+          id: completed.id,
+          content: completed.content,
+          tool_calls: calls.filter((call) => call.name !== 'inspect_preview'),
+          usage_metadata: completed.usage_metadata,
+          response_metadata: {
+            ...completed.response_metadata,
+            ...(verification.data.actions?.length
+              ? { platformDeferredInteraction: verification.data }
+              : {}),
+          },
+        });
+      } else if (check && calls.filter((call) => call.name === 'inspect_preview').length > 1) {
+        completed = new AIMessage({
+          id: completed.id,
+          content: completed.content,
+          tool_calls: calls.filter((call) => call.name !== 'inspect_preview' || call === check),
+          usage_metadata: completed.usage_metadata,
+          response_metadata: completed.response_metadata,
+        });
+      }
     }
     if (
       completed.tool_calls?.some((call) => call.name === 'ask_user') &&
@@ -2324,6 +2526,11 @@ export async function runAgent(input: AgentRunInput): Promise<{
         transformMessage: input.transformMessage,
         overhead: () => promptOverhead,
         view: (messages) => modelContextView(messages, input.contextBudgetTokens),
+        historicalSourceBoundaryId: (state) => {
+          if (!state || typeof state !== 'object') return;
+          const current = incrementalVerification(state as Record<string, unknown>);
+          return current?.guidance.at(-1) ?? current?.admissionId;
+        },
       })
     : undefined;
   /** 同名中间件替换是 1.16.0 的公开定制机制，避免默认文件和通用子 Agent 越权。 */
@@ -2344,6 +2551,12 @@ export async function runAgent(input: AgentRunInput): Promise<{
               admissionId: input.reasoningAdmissionId,
               userText: input.reasoningUserText ?? '',
               ...input.reasoningContext,
+              localInteraction: interactionChange(
+                input.reasoningUserText ?? '',
+                input.reasoningContext?.hasSourceFiles === true,
+              ),
+              classifyLocalInteraction: (text) =>
+                interactionChange(text, input.reasoningContext?.hasSourceFiles === true),
             }),
           ]
         : []),
