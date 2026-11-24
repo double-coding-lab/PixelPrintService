@@ -1,0 +1,28 @@
+test/plazaFork.test.ts
+  s_e16f52fd1de115::t_bf19d59c38ae8d 1-4,6-8,10-13,19-292,349-392,479-824
+  s_e16f52fd1de115::t_f3831ee3fe6f6c 9,393-478
+  s_e16f52fd1de115::t_c64cfe262884e2 5,14-18,293-348
+src/functions/d2c/sharing/fork.ts
+  s_e16f52fd1de115::t_d7f587479e1658 39-133,139
+  s_e16f52fd1de115::t_fe4fc8c1fd8421 134-138
+test/sharingRoutes.test.ts
+  s_e16f52fd1de115::t_bf19d59c38ae8d 1,229-361
+src/functions/d2c/sharing/service.ts
+  s_e16f52fd1de115::t_fbaee6e7092aa3 228-230
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "878b52ead7f44943f721b57be3e8c32b2c4188c6",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
