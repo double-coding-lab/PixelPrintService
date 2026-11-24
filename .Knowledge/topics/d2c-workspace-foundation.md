@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 17
+revision: 18
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -113,3 +113,8 @@ confidence: inferred
 - `GET /api/d2c/sessions/active`沿用登录身份和当前工作区可见范围，在一致读内按会话的activeRunId与轮次sessionId共同匹配；仅投影导航元信息，排序不携带源码或JSON快照。默认每页20、最大50，按轮次更新时间和内部ID稳定分页，软删除及退出团队沿既有范围立即过滤。
 - 打开面板时读取，展开期间每15秒更新；页面隐藏时暂停读取，收起取消请求和轮询。支持刷新、分页、空态和明确失败提示，旧请求不能覆盖新页面。当前会话重复点击只收起面板。
 - 跳转复用主站path导航与未保存修改确认，忙碌时禁用跳转；点击不会发消息、取消或重试后台轮次，进入详情仍核验实时权限。实现见`session/active.ts`与`web/src/workspace/ActiveSessions.tsx`，回归覆盖权限、分页、草稿保护、刷新、前后退及窄屏。
+
+## 数据库底层异常与租约定位
+
+- 存储失败需要先核对底层数据库码与操作。databaseErrorType保留固定ORM类型，databaseCode保留固定驱动/连接码，errno和SQLSTATE独立校验；数据库上下文才能将通用网络码归为数据库故障。
+- 新诊断可标明工作区加锁、时钟读取、续租或写入等步骤，以及取连接/执行/提交阶段和实际尝试次数。字段随已有日志及失败记录保存、展示和复制，旧数据保持未知；SQL、绑定值、消息正文和凭据保持私有。具体阶段与重试约定见[执行专题](deep-agents-execution.md)。

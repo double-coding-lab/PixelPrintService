@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 22
+revision: 23
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -150,7 +150,9 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 
 - leases.commit先后核对原租约，在短事务成功提交时按数据库时间续租；长事务越过原期限仍整体回滚。通用回调默认不重放；已核对的检查点/中间写、消息、文件记录、截图附件、队列交接及领取/等待/结算事务，遇ER_LOCK_DEADLOCK仅在确认回滚后以新事务最多重试两次，短退避带抖动，每次重验owner、期限及适用的停止标记。执行信号已取消时不继续重试；心跳保留原死锁/锁超时重试，过期回收保留跳过冲突候选的策略，避免嵌套重试。
 - 主记录保持工作区→会话→轮次锁序；中间写同批按idx升序加锁，普通非负idx仍first-wins、特殊负idx仍last-wins。序列化与正文/图片上传在重试事务外完成，本地文件修订只在提交成功后推进；提交后通知异常、提交结果不确定、锁等待超时和其他存储故障不按普通写入死锁重放，模型/工具请求不随事务重试。
-- 失败诊断的databaseCode采用共享枚举，databaseErrno为正整数，databaseSqlState限五位大写字母或数字；这些安全字段随Run失败、时间线及错误列表保存并在前端展示/复制，不公开SQL、绑定值、异常正文或堆栈。历史记录缺字段保持未知，无新增表列。实现见src/common/deadlockTransaction.ts、run/leases.ts与shared/failureDetails.ts；回归覆盖回滚、次数上限、取消/过期、提交后失败和上传/模型不重复。
+- 数据库诊断以共享枚举保存databaseCode、databaseErrorType、databaseOperation、databaseTransactionPhase和databaseAttempt，并独立保留合法errno与SQLSTATE。databaseDiagnostics有界遍历cause/parent/original和聚合分支，保留ORM连接池/连接/查询类型；网络码须有数据库类型或操作上下文才归为数据库，避免把模型或Figma网络故障误标。日志、Run失败、时间线及错误列表共用白名单字段，不公开SQL、绑定值、异常正文或堆栈。
+- 租约定位区分候选读取、准入锁、工作区/会话/轮次加锁、数据库时钟、续租及写入；时钟包装继续携带cause。事务阶段begin/action/commit分别表示启动取连接、执行回调、提交及提交后回调，尝试次数为实际已观测的1–3次。Sequelize提交失败也执行afterCommit，故commit阶段不表示提交成功，诊断不把未知提交结果转为可重试成功。
+- 操作和阶段通过弱引用标记原始异常，保持错误身份及原重试资格；错误编号不推断死锁或新增重放。只有明确ER_LOCK_DEADLOCK且原策略确认回滚的纯数据库写入按既有次数重试，模型、上传和提交结果不确定的操作保持原保护。新诊断随服务发布生效，历史缺失字段保持未知，无新增表列或配置。回归覆盖嵌套原因、连接池超时、ORM真实提交路径、私有日志脱敏及租约操作定位。
 
 - 公共资源发行说明放在Skill的YAML frontmatter闭合分隔符之后，旧包前置说明会被规范化；保持首行---与声明字段，避免DEEP_SKILL_DISCOVERY_FAILED。sanitize-resources.mjs重复执行幂等，端到端回归使用公共仓库自身模板。
 
