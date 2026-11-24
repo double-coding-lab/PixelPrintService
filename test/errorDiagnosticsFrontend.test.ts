@@ -4,6 +4,7 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { DiagnosticError, ErrorDiagnostics } from '../shared/errorDiagnostics';
+import { databaseErrorTypes } from '../src/shared/failureDetails';
 import {
   ErrorDiagnosticsPanel,
   ErrorDiagnosticsResults,
@@ -315,4 +316,162 @@ test('子任务失败详情经白名单展示和复制，拒绝服务端额外�
   assert.match(text, /503/);
   assert.doesNotMatch(JSON.stringify(projected) + text, /PRIVATE_/);
   assert.match(render(value), /系统错误码/);
+});
+
+/** 数据库失败仍使用原错误分类；只显示服务端已保存的固定诊断元数据。 */
+function databaseFixture(details?: Record<string, unknown>): ErrorDiagnostics {
+  const value = fixture();
+  Object.assign(value.items[0], {
+    category: 'database',
+    code: 'STORAGE_FAILED',
+    message: '执行数据保存或读取失败',
+    failureDetails: details,
+  });
+  return value;
+}
+
+test('数据库排查明细与复制显示中文类型、操作、事务阶段和数据库尝试次数', () => {
+  const value = databaseFixture({
+    databaseErrorType: 'SequelizeConnectionAcquireTimeoutError',
+    databaseOperation: 'lease.lock_admission',
+    databaseTransactionPhase: 'begin',
+    databaseAttempt: 3,
+    databaseCode: 'ETIMEDOUT',
+    databaseErrno: 1205,
+    databaseSqlState: 'HY000',
+  });
+  const projected = projectErrorDiagnostics(value, 'session/one');
+  const copy = errorDiagnosticText('session/one', projected.items[0]);
+  const html = render(value);
+  for (const [key, expected] of [
+    ['数据库错误类型', '连接池获取连接超时（SequelizeConnectionAcquireTimeoutError）'],
+    ['数据库操作', '锁定任务准入记录（lease.lock_admission）'],
+    ['数据库事务阶段', '开始事务（begin）'],
+    ['数据库尝试次数', '3'],
+    ['数据库错误码', 'ETIMEDOUT'],
+    ['数据库错误编号', '1205'],
+    ['SQLSTATE', 'HY000'],
+  ]) {
+    assert.ok(html.includes(`<dt>${key}</dt><dd>${expected}</dd>`), `${key}: ${html}`);
+    assert.ok(copy.includes(`${key}: ${expected}`), copy);
+  }
+  assert.match(copy, /尝试次数: 2\n/);
+  assert.equal(projected.items[0].failureDetails?.databaseAttempt, 3);
+  assert.doesNotMatch(html + copy, /死锁|deadlock/i);
+});
+
+test('全部租约操作、事务阶段及连接协议错误码按固定合同投影并展示', () => {
+  const cases: [string, string, string][] = [
+    ['databaseErrorType', 'SequelizeDatabaseError', '数据库执行异常'],
+    ['databaseErrorType', 'SequelizeConnectionError', '数据库连接异常'],
+    ['databaseErrorType', 'SequelizeTimeoutError', '数据库操作超时'],
+    ['databaseOperation', 'lease.lookup_run', '查询任务租约记录'],
+    ['databaseOperation', 'lease.lookup_session', '查询会话租约记录'],
+    ['databaseOperation', 'lease.lock_admission', '锁定任务准入记录'],
+    ['databaseOperation', 'lease.count_active', '统计活跃任务'],
+    ['databaseOperation', 'lease.lock_workspace', '锁定工作区'],
+    ['databaseOperation', 'lease.lock_session', '锁定会话'],
+    ['databaseOperation', 'lease.lock_run', '锁定任务'],
+    ['databaseOperation', 'lease.clock', '读取数据库时钟'],
+    ['databaseOperation', 'lease.renew', '续期任务租约'],
+    ['databaseOperation', 'lease.write', '写入租约执行数据'],
+    ['databaseTransactionPhase', 'begin', '开始事务'],
+    ['databaseTransactionPhase', 'action', '执行事务操作'],
+    ['databaseTransactionPhase', 'commit', '提交及提交后回调'],
+    ...[
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ECONNREFUSED',
+      'PROTOCOL_CONNECTION_LOST',
+      'PROTOCOL_SEQUENCE_TIMEOUT',
+      'ER_LOCK_DEADLOCK',
+      'ER_OUT_OF_SORTMEMORY',
+    ].map((code): [string, string, string] => ['databaseCode', code, code]),
+  ];
+  for (const [field, code, chinese] of cases) {
+    const value = databaseFixture({ [field]: code });
+    const projected = projectErrorDiagnostics(value, 'session/one');
+    const copy = errorDiagnosticText('session/one', projected.items[0]);
+    assert.equal(Reflect.get(projected.items[0].failureDetails ?? {}, field), code);
+    assert.ok(copy.includes(chinese), copy);
+    assert.ok(render(value).includes(chinese), field);
+  }
+  for (const attempt of [1, 2, 3]) {
+    const projected = projectErrorDiagnostics(
+      databaseFixture({ databaseAttempt: attempt }),
+      'session/one',
+    );
+    assert.equal(projected.items[0].failureDetails?.databaseAttempt, attempt);
+    assert.ok(
+      errorDiagnosticText('session/one', projected.items[0]).includes(`数据库尝试次数: ${attempt}`),
+    );
+  }
+  for (const databaseErrorType of databaseErrorTypes) {
+    const value = databaseFixture({ databaseErrorType });
+    const projected = projectErrorDiagnostics(value, 'session/one');
+    const copy = errorDiagnosticText('session/one', projected.items[0]);
+    assert.ok(copy.includes(`（${databaseErrorType}）`), copy);
+    assert.doesNotMatch(copy, /数据库错误类型: 未记录/);
+    assert.ok(render(value).includes(`（${databaseErrorType}）`));
+  }
+});
+
+test('数据库未知及私有字段不进入安全投影、明细或复制；旧 STORAGE_FAILED 不推断死锁', () => {
+  for (const attempt of [0, -1, 4, 1.5, '2', NaN, Infinity, { value: 2 }]) {
+    const value = databaseFixture({
+      databaseErrorType: 'SequelizeDatabaseError PRIVATE_SELECT secret',
+      databaseOperation: 'lease.lock_run PRIVATE_PASSWORD',
+      databaseTransactionPhase: 'commit PRIVATE_BINDINGS',
+      databaseAttempt: attempt,
+      databaseCode: 'ECONNRESET PRIVATE_TOKEN',
+      databaseErrno: 'PRIVATE_ERRNO',
+      databaseSqlState: 'HY000 PRIVATE_SQL',
+      sql: 'SELECT PRIVATE_SQL',
+      parameters: ['PRIVATE_BINDINGS'],
+      parent: { message: 'PRIVATE_MESSAGE' },
+      stack: 'PRIVATE_STACK',
+    });
+    const projected = projectErrorDiagnostics(value, 'session/one');
+    const copy = errorDiagnosticText('session/one', projected.items[0]);
+    const directCopy = errorDiagnosticText('session/one', value.items[0]);
+    const html = render(value);
+    assert.equal(projected.items[0].failureDetails, undefined);
+    assert.doesNotMatch(
+      JSON.stringify(projected) + copy + directCopy + html,
+      /PRIVATE_|死锁|deadlock/i,
+    );
+    for (const key of ['数据库错误类型', '数据库操作', '数据库事务阶段', '数据库尝试次数']) {
+      assert.ok(copy.includes(`${key}: 未记录（未知）`), copy);
+      assert.ok(html.includes(`<dt>${key}</dt><dd>未记录（未知）</dd>`));
+    }
+  }
+  for (const details of [undefined, {}, { databaseCode: 'ER_LOCK_WAIT_TIMEOUT' }]) {
+    const value = databaseFixture(details);
+    const projected = projectErrorDiagnostics(value, 'session/one');
+    const copy = errorDiagnosticText('session/one', projected.items[0]);
+    assert.match(copy, /数据库错误类型: 未记录（未知）/);
+    assert.match(copy, /数据库事务阶段: 未记录（未知）/);
+    assert.doesNotMatch(copy + render(value), /死锁|deadlock/i);
+  }
+  for (const unknown of ['__proto__', 'constructor', '<img src=x onerror=PRIVATE_XSS>', {}, []]) {
+    const value = databaseFixture({
+      databaseErrorType: unknown,
+      databaseOperation: unknown,
+      databaseTransactionPhase: unknown,
+    });
+    const projected = projectErrorDiagnostics(value, 'session/one');
+    assert.equal(projected.items[0].failureDetails, undefined);
+    assert.doesNotMatch(
+      render(value) + errorDiagnosticText('session/one', projected.items[0]),
+      /PRIVATE_|__proto__|constructor|<img/,
+    );
+  }
+  for (const databaseTransactionPhase of ['rollback', 'after_commit']) {
+    const value = databaseFixture({ databaseTransactionPhase });
+    const projected = projectErrorDiagnostics(value, 'session/one');
+    const copy = errorDiagnosticText('session/one', projected.items[0]);
+    assert.equal(projected.items[0].failureDetails, undefined);
+    assert.match(copy, /数据库事务阶段: 未记录（未知）/);
+    assert.doesNotMatch(copy + render(value), /rollback|after_commit|提交成功|已提交/);
+  }
 });

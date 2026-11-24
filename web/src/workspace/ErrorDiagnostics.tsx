@@ -6,7 +6,7 @@ import type {
   ErrorDiagnosticsQuery,
 } from '../../../shared/errorDiagnostics';
 import { data, id } from './api';
-import { readFailureDetails } from '../../../src/shared/failureDetails';
+import { readFailureDetails, type FailureDetails } from '../../../src/shared/failureDetails';
 
 const categories: Record<DiagnosticErrorCategory, string> = {
   model: '模型调用异常',
@@ -32,6 +32,38 @@ const roles: Record<string, string> = {
   design: '设计专家',
   review: '审查专家',
 };
+const databaseErrorTypes = {
+  SequelizeDatabaseError: '数据库执行异常',
+  SequelizeConnectionAcquireTimeoutError: '连接池获取连接超时',
+  SequelizeConnectionError: '数据库连接异常',
+  SequelizeConnectionRefusedError: '数据库拒绝连接',
+  SequelizeAccessDeniedError: '数据库访问被拒绝',
+  SequelizeHostNotFoundError: '数据库主机未找到',
+  SequelizeHostNotReachableError: '数据库主机不可达',
+  SequelizeConnectionTimedOutError: '数据库连接超时',
+  SequelizeTimeoutError: '数据库操作超时',
+  SequelizeUniqueConstraintError: '数据库唯一约束冲突',
+  SequelizeForeignKeyConstraintError: '数据库外键约束冲突',
+  SequelizeExclusionConstraintError: '数据库排他约束冲突',
+  SequelizeValidationError: '数据库数据校验失败',
+} satisfies Record<NonNullable<FailureDetails['databaseErrorType']>, string>;
+const databaseOperations = {
+  'lease.lookup_run': '查询任务租约记录',
+  'lease.lookup_session': '查询会话租约记录',
+  'lease.lock_admission': '锁定任务准入记录',
+  'lease.count_active': '统计活跃任务',
+  'lease.lock_workspace': '锁定工作区',
+  'lease.lock_session': '锁定会话',
+  'lease.lock_run': '锁定任务',
+  'lease.clock': '读取数据库时钟',
+  'lease.renew': '续期任务租约',
+  'lease.write': '写入租约执行数据',
+} satisfies Record<NonNullable<FailureDetails['databaseOperation']>, string>;
+const databaseTransactionPhases = {
+  begin: '开始事务',
+  action: '执行事务操作',
+  commit: '提交及提交后回调',
+} satisfies Record<NonNullable<FailureDetails['databaseTransactionPhase']>, string>;
 
 type ErrorItem = Omit<DiagnosticError, 'category'> & {
   category: DiagnosticErrorCategory | 'unknown';
@@ -41,6 +73,24 @@ export type ErrorDiagnosticsSnapshot = Omit<ErrorDiagnostics, 'items'> & { items
 /** 未知枚举只显示固定标签，不回显任意上游文案。 */
 function label(labels: Record<string, string>, value: unknown, fallback: string): string {
   return typeof value === 'string' && Object.hasOwn(labels, value) ? labels[value] : fallback;
+}
+
+/** 明细与复制共用白名单投影；固定中文附原始枚举便于定位，历史缺失不推断原因。 */
+function databaseDiagnosticFacts(input: unknown): [string, string | number][] {
+  const details = readFailureDetails(input);
+  const knownLabel = (labels: Record<string, string>, value: unknown) =>
+    typeof value === 'string' && Object.hasOwn(labels, value)
+      ? `${labels[value]}（${value}）`
+      : '未记录（未知）';
+  return [
+    ['数据库错误类型', knownLabel(databaseErrorTypes, details?.databaseErrorType)],
+    ['数据库操作', knownLabel(databaseOperations, details?.databaseOperation)],
+    ['数据库事务阶段', knownLabel(databaseTransactionPhases, details?.databaseTransactionPhase)],
+    ['数据库尝试次数', details?.databaseAttempt ?? '未记录（未知）'],
+    ['数据库错误码', details?.databaseCode ?? '未记录'],
+    ['数据库错误编号', details?.databaseErrno ?? '未记录'],
+    ['SQLSTATE', details?.databaseSqlState ?? '未记录'],
+  ];
 }
 
 /** 仅接收有界文本；不序列化对象、异常或额外私有字段。 */
@@ -196,9 +246,7 @@ export function errorDiagnosticText(sessionId: string, item: ErrorItem): string 
     ['恢复状态', label(recoveries, item.recovery, '恢复状态未知')],
     ['错误类型', item.failureDetails?.errorType],
     ['系统错误码', item.failureDetails?.causeCode],
-    ['数据库错误码', item.failureDetails?.databaseCode],
-    ['数据库错误编号', item.failureDetails?.databaseErrno],
-    ['SQLSTATE', item.failureDetails?.databaseSqlState],
+    ...databaseDiagnosticFacts(item.failureDetails),
     ['框架错误码', item.failureDetails?.frameworkCode],
     ['响应状态码', item.failureDetails?.statusCode],
     ['子任务阶段', item.failureDetails?.subagentPhase],
@@ -264,9 +312,7 @@ function ErrorRecord({
             ['尝试次数', item.attempt ?? '未记录'],
             ['错误类型', item.failureDetails?.errorType ?? '未记录'],
             ['系统错误码', item.failureDetails?.causeCode ?? '未记录'],
-            ['数据库错误码', item.failureDetails?.databaseCode ?? '未记录'],
-            ['数据库错误编号', item.failureDetails?.databaseErrno ?? '未记录'],
-            ['SQLSTATE', item.failureDetails?.databaseSqlState ?? '未记录'],
+            ...databaseDiagnosticFacts(item.failureDetails),
             ['框架错误码', item.failureDetails?.frameworkCode ?? '未记录'],
             ['响应状态码', item.failureDetails?.statusCode ?? '未记录'],
             ['子任务阶段', item.failureDetails?.subagentPhase ?? '未记录'],

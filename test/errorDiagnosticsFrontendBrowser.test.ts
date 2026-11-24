@@ -15,7 +15,7 @@ const playwrightPath = fileURLToPath(
 
 /** 使用真实 Drawer、React 状态和 API 层；合成离线数据，不连接业务服务。 */
 test(
-  '浏览器：会话统计、固定水位分页、刷新保留展开、筛选竞态、404、关闭取消与窄屏',
+  '浏览器：数据库明细与复制、历史未知、会话统计、分页竞态、关闭取消与窄屏',
   {
     skip:
       process.env.PIXELPRINT_BROWSER_TESTS !== '1' ||
@@ -54,6 +54,21 @@ test(
     let seq = 2000;
     let failure = 0;
     let wrongToken = false;
+    const databaseFailure = {
+      databaseErrorType: 'SequelizeConnectionAcquireTimeoutError' as const,
+      databaseOperation: 'lease.lock_admission' as const,
+      databaseTransactionPhase: 'commit' as const,
+      databaseAttempt: 3,
+      databaseCode: 'ETIMEDOUT' as const,
+      databaseErrno: 1205,
+      databaseSqlState: 'HY000',
+      ...({
+        sql: 'PRIVATE_SQL',
+        parameters: ['PRIVATE_BINDINGS'],
+        stack: 'PRIVATE_STACK',
+      } as object),
+    };
+    let databaseDetails: DiagnosticError['failureDetails'] = databaseFailure;
     let hold: ((url: URL) => boolean) | null = null;
     const held: Array<() => void> = [];
     const row = (id: string, runId: string, rowSeq: number, url: URL): DiagnosticError => ({
@@ -74,6 +89,7 @@ test(
       requestId: `request-${id}`,
       attempt: 2,
       recovery: 'subsequent_success',
+      failureDetails: databaseDetails,
     });
     const server = createServer((req, res) => {
       const url = new URL(req.url!, 'http://localhost');
@@ -180,6 +196,12 @@ test(
       value: {writeText: async value => { window.copied = value; }}
     });`);
     const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const external: string[] = [];
+    await page.route('**/*', (route: any) => {
+      if (new URL(route.request().url()).origin === origin) return route.continue();
+      external.push(route.request().url());
+      return route.abort();
+    });
     const update = (patch: Record<string, unknown>) =>
       page.evaluate((value: Record<string, unknown>) => (window as any).setFixture(value), patch);
     const errorCalls = () => requests.filter((url) => url.pathname.endsWith('/errors'));
@@ -221,6 +243,51 @@ test(
     assert.match(copied, /sessionId: session-a/);
     assert.match(copied, /requestId: request-stable-error/);
     assert.doesNotMatch(copied, /PRIVATE_|rawStack/);
+    for (const [key, expected] of [
+      ['数据库错误类型', '连接池获取连接超时（SequelizeConnectionAcquireTimeoutError）'],
+      ['数据库操作', '锁定任务准入记录（lease.lock_admission）'],
+      ['数据库事务阶段', '提交及提交后回调（commit）'],
+      ['数据库尝试次数', '3'],
+      ['数据库错误码', 'ETIMEDOUT'],
+      ['数据库错误编号', '1205'],
+      ['SQLSTATE', 'HY000'],
+    ]) {
+      const fact = details.getByText(key, { exact: true }).locator('..');
+      assert.equal(await fact.locator('dd').innerText(), expected);
+      assert.ok(copied.includes(`${key}: ${expected}`), copied);
+    }
+    // 旧记录刷新后仍可展开和复制；缺失元数据不沿用上次已知原因。
+    databaseDetails = undefined;
+    await region.getByRole('button', { name: '刷新错误诊断', exact: true }).click();
+    await waitReady();
+    assert.equal(await details.getAttribute('open'), '');
+    for (const key of ['数据库错误类型', '数据库操作', '数据库事务阶段', '数据库尝试次数']) {
+      const fact = details.getByText(key, { exact: true }).locator('..');
+      assert.equal(await fact.locator('dd').innerText(), '未记录（未知）');
+    }
+    await region.getByRole('button', { name: '复制排查信息' }).click();
+    await page.waitForFunction(() =>
+      (window as any).copied.includes('数据库错误类型: 未记录（未知）'),
+    );
+    const historicalCopy = await page.evaluate(() => (window as any).copied);
+    for (const key of ['数据库错误类型', '数据库操作', '数据库事务阶段', '数据库尝试次数']) {
+      assert.ok(historicalCopy.includes(`${key}: 未记录（未知）`), historicalCopy);
+    }
+    assert.doesNotMatch(
+      historicalCopy + (await details.innerText()),
+      /Sequelize|lease\.|ETIMEDOUT|PRIVATE_|死锁/,
+    );
+    databaseDetails = databaseFailure;
+    await region.getByRole('button', { name: '刷新错误诊断', exact: true }).click();
+    await waitReady();
+    assert.equal(
+      await details
+        .getByText('数据库事务阶段', { exact: true })
+        .locator('..')
+        .locator('dd')
+        .innerText(),
+      '提交及提交后回调（commit）',
+    );
     // 过期快照 409 保留已加载列表和已确认统计，刷新从无游标首屏开始。
     failure = 409;
     await region.getByRole('button', { name: '加载更早错误', exact: true }).click();
@@ -369,5 +436,6 @@ test(
     await region.getByRole('button', { name: '复制排查信息' }).click();
     assert.match(await page.evaluate(() => (window as any).copied), /sessionId: session-b/);
     assert.equal(errors.length, 0, errors.join('\n'));
+    assert.deepEqual(external, []);
   },
 );
