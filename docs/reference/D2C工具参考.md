@@ -38,3 +38,51 @@
 - 子任务使用 `figma` 时只开放对绑定稿已有缓存的 `inspect-node`。委派、切图和运行预览由主 Agent 负责。
 
 生成前的规则扫描为出码提供 `rule-hits.json`，生成后的 `check_rules` 检查当前源码。生成、检查与交付的关系见 [D2C 生成与验收流程](../D2C生成与验收流程.md)。
+
+## 典型调用顺序
+
+```mermaid
+flowchart LR
+  R["list_files / read_file<br/>固定 Skill 与已有文件"] --> F["figma<br/>版本、节点缓存与设计基准"]
+  F --> S["prepare_slices<br/>切图、压缩、保存、地址清单"]
+  S --> D["delegate_agent / wait_subagents<br/>规则补判与授权区块实现"]
+  D --> W["write_file / edit_file<br/>稳定提交当前修订"]
+  W --> C["check_rules<br/>检查实际代码"]
+  C --> B["build_preview<br/>编译当前入口"]
+  B --> I["inspect_preview<br/>运行、动作断言与截图"]
+```
+
+这是典型依赖关系；主任务可以与已委派区块并行工作，已有有效节点与切图优先复用。小范围交互修改直接读取目标源码，保存后验收，不必重新走完整设计扫描和切图。
+
+## 参数、结果与失败处理
+
+| 工具或场景 | 调用要点 | 失败后的处理 |
+| --- | --- | --- |
+| 固定规则读取 | `list_files` 配合 `resource=true` 获取真实文件名，再用 `read_file` 读取 | 不猜测 `R01.md` 等缩写，不用文件读取接口枚举目录 |
+| 长文件读取 | 按工具返回的截断标志和 `nextOffset` 补读；偏移是字符位置 | 大模型窗口不取消单次工具的大小限制；不重复读取相同范围 |
+| 精确编辑 | 使用当前文件摘要与唯一匹配内容 | 冲突时重读最新修订，不能覆盖其他任务已提交结果 |
+| 区块委派 | 指定任务目标、负责节点和精确写入范围 | 先读取已保存进度和产物，恢复缺失部分；已完成区块不重做 |
+| `inspect_preview` | 使用 `entryPath`、可选 `actions`、`focusSelector`；动作支持 click/swipe/scroll/expect | 参数错误按工具反馈修正；断言失败记录实际观测，不当作交互通过 |
+| 截图覆盖 | 定点截图可检查长页面下部；页面截图有 12000px / 10MiB 上限 | 局部覆盖不等同整页验收，按实际 coverage 说明未覆盖范围 |
+| 存储与租约 | 文件和事件经过服务端受保护提交 | 关联排查编号与 runId 查询诊断，不把上传完成等同数据库登记完成 |
+
+具体参数校验以工具定义为准，入口为 `src/functions/d2c/run/agent/agent.ts`、`run/tools.ts` 和 `preview/inspection.ts`。公开聊天与工具摘要是用户可读投影，完整检查点、原始响应及凭据不直接显示。
+
+## 自建部署使用的基础工具
+
+下表是应用的基础设施连接，不是模型可随意调用的 Agent 工具。
+
+| 能力 | 当前实现 | 配置入口 / 代码 |
+| --- | --- | --- |
+| HTTP 与页面 | Fastify、React、Ant Design | `server`；`src/app.ts`、`web/src/` |
+| 账号与登录态 | 本地账号、scrypt 密码哈希、签名 Cookie；个人 API Token 用于插件接口 | `auth`；`src/hooks/http/identity.ts`、`auth.ts` |
+| 数据库 | MySQL、mysql2、Sequelize | `database`；`src/hooks/tools/mysql.ts` |
+| 缓存与通知 | 标准 Redis / node-redis；编辑副本、Pub/Sub 通知 | `redis`；`src/hooks/tools/redis.ts` |
+| 结构化日志 | Pino；诊断字段脱敏并关联排查编号 | `logging`；`src/hooks/tools/logging.ts` |
+| 文件与对象 | 本地文件或 S3 兼容对象存储（例如自建 MinIO、AWS S3） | `storage`；`src/hooks/tools/storage.ts` |
+| 模型 | 兼容 OpenAI 的模型接口、Deep Agents / LangGraph | `runtime.modelConfigs`；`run/agent/model.ts` |
+| 编译与截图 | 固定 Vite 模板、本地 Node 子进程、Playwright/Chromium | `npm run prepare:preview`；`preview-template/`、`preview-browser/` |
+| 图片压缩 | 固定图片处理工具链，尝试无损优化并保存真实结果 | `npm run prepare:images`；`scripts/prepare-image-compression.mjs` |
+| 运行配置 | 启动时读取项目配置文件，修改后重启 | `project.config.json` 或 `PIXELPRINT_CONFIG` |
+
+部署步骤见[部署与配置](../deployment/部署与配置.md)，字段见[配置说明](../deployment/configuration.md)，建表和升级统一见[SQL 入口](../sql/README.md)。

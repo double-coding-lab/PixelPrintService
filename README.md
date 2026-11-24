@@ -98,3 +98,5 @@ npm run pixelprint:update
 ## 分发说明
 
 此目录是独立副本，不含原项目 Git 历史、内部知识库原文、真实配置、用户产物或聊天数据。未替项目作者选择开源许可证；正式公开发布前，应确认自有代码和上游资源的授权，并补充 LICENSE。
+
+数据库结构与历史升级统一见 [docs/sql](docs/sql/README.md)，完整工具及执行链路见[文档目录](docs/README.md)。
