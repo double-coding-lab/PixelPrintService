@@ -293,6 +293,7 @@ export type RunFailureReport = {
   runId?: string;
   sessionId?: string;
   diagnostics: GatewayDiagnostics &
+    z.infer<typeof databaseFailureSchema> &
     Partial<Omit<ScriptDiagnostics, 'causeCode'>> & {
       slice?: SliceDiagnostics;
       frameworkCode?: FrameworkCode;
@@ -301,9 +302,6 @@ export type RunFailureReport = {
       subagentRole?: SubagentExecutionContext['role'];
       subagentPhase?: SubagentExecutionContext['phase'];
       causeCode?: string;
-      databaseCode?: string;
-      databaseErrno?: number;
-      databaseSqlState?: string;
       statusCode?: number;
       exitCode?: number;
       location?: string;

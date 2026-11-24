@@ -16,7 +16,9 @@ test('数据库诊断遍历 ORM 分支和循环引用，未知码及任意错误
     databaseErrno: 1038,
     databaseSqlState: 'HY001',
   });
-  assert.deepEqual(databaseDiagnostics({ code: 'private-code', errno: 1038 }), {});
+  assert.deepEqual(databaseDiagnostics({ code: 'private-code', errno: 1038 }), {
+    databaseErrno: 1038,
+  });
 });
 
 test('私有接口错误日志保留固定数据库码，仍省略 SQL、绑定值及错误堆栈', async () => {

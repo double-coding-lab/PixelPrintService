@@ -14,7 +14,11 @@ import { runFailureSchema, type RunFailure } from './errors';
 import { repairToolHistory } from './history';
 
 import { deadlockTransaction, type DeadlockRetry } from '@/common/deadlockTransaction';
-import { databaseDiagnostics } from '@/common/databaseDiagnostics';
+import {
+  annotateDatabaseError,
+  databaseDiagnostics,
+  withDatabaseOperation,
+} from '@/common/databaseDiagnostics';
 
 const maxTimelineSeq = 4294967294;
 
@@ -59,22 +63,28 @@ export function createRunLeases(
   /** 时间取自数据库；原始连接错误不进入公开状态或时间线。 */
   async function now(transaction?: Transaction) {
     try {
-      const value = options.now
-        ? await options.now(transaction)
-        : Number(
-            (
-              await mysql.query<{ nowMs: number | string }>(
-                'SELECT UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS nowMs',
-                { type: QueryTypes.SELECT, transaction },
-              )
-            )[0]?.nowMs,
-          );
-      if (!Number.isSafeInteger(value) || value <= 0 || value + options.leaseMs > 8640000000000000)
-        throw new Error();
-      return value;
+      return await withDatabaseOperation('lease.clock', async () => {
+        const value = options.now
+          ? await options.now(transaction)
+          : Number(
+              (
+                await mysql.query<{ nowMs: number | string }>(
+                  'SELECT UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS nowMs',
+                  { type: QueryTypes.SELECT, transaction },
+                )
+              )[0]?.nowMs,
+            );
+        if (
+          !Number.isSafeInteger(value) ||
+          value <= 0 ||
+          value + options.leaseMs > 8640000000000000
+        )
+          throw new Error();
+        return value;
+      });
     } catch (error) {
       if (databaseDiagnostics(error).databaseCode === 'ER_LOCK_DEADLOCK') throw error;
-      throw new SessionError(503, 'CLOCK_UNAVAILABLE', '执行数据库时钟不可用');
+      throw new SessionError(503, 'CLOCK_UNAVAILABLE', '执行数据库时钟不可用', error);
     }
   }
 
@@ -97,9 +107,11 @@ export function createRunLeases(
       run.leaseExpiresAt?.getTime() === time + options.leaseMs
     )
       return;
-    await run.update(
-      { heartbeatAt: new Date(time), leaseExpiresAt: new Date(time + options.leaseMs) },
-      { transaction },
+    await withDatabaseOperation('lease.renew', () =>
+      run.update(
+        { heartbeatAt: new Date(time), leaseExpiresAt: new Date(time + options.leaseMs) },
+        { transaction },
+      ),
     );
   }
 
@@ -122,48 +134,62 @@ export function createRunLeases(
     retry: DeadlockRetry = {},
   ): Promise<T | null> {
     requireIdentifier(runId);
-    const candidate = await runs.findOne({ where: { runId } });
+    const candidate = await withDatabaseOperation('lease.lookup_run', () =>
+      runs.findOne({ where: { runId } }),
+    );
     if (!candidate?.sessionId) return null;
-    const initial = await sessions.findOne({ where: { sessionId: candidate.sessionId } });
+    const initial = await withDatabaseOperation('lease.lookup_session', () =>
+      sessions.findOne({ where: { sessionId: candidate.sessionId! } }),
+    );
     if (!initial?.workspaceId) return null;
     return deadlockTransaction(
       mysql,
       async (transaction) => {
         if (admission && options.concurrency !== undefined) {
           /** 固定首行作为全实例领取互斥锚点；软删除保留该行，禁止直接物理清理。 */
-          const anchor = await workspaces.findOne({
-            attributes: ['workspaceId'],
-            order: [['id', 'ASC']],
-            /** 软删除仍保留准入锚点，不能随工作区隐藏而更换全局锁。 */
-            paranoid: false,
-            transaction,
-            lock: transaction.LOCK.UPDATE,
-          });
+          const anchor = await withDatabaseOperation('lease.lock_admission', () =>
+            workspaces.findOne({
+              attributes: ['workspaceId'],
+              order: [['id', 'ASC']],
+              /** 软删除仍保留准入锚点，不能随工作区隐藏而更换全局锁。 */
+              paranoid: false,
+              transaction,
+              lock: transaction.LOCK.UPDATE,
+            }),
+          );
           if (!anchor) return null;
           /** 已过期但尚未回收的运行记录仍计入配额，避免靠忽略租约抢占并发。 */
-          const active = await runs.count({
-            where: { status: { [Op.in]: ['running', 'stopping'] } },
-            transaction,
-          });
+          const active = await withDatabaseOperation('lease.count_active', () =>
+            runs.count({
+              where: { status: { [Op.in]: ['running', 'stopping'] } },
+              transaction,
+            }),
+          );
           if (active >= options.concurrency) return null;
         }
-        const workspace = await workspaces.findOne({
-          where: { workspaceId: initial.workspaceId },
-          transaction,
-          lock: transaction.LOCK.UPDATE,
-        });
+        const workspace = await withDatabaseOperation('lease.lock_workspace', () =>
+          workspaces.findOne({
+            where: { workspaceId: initial.workspaceId },
+            transaction,
+            lock: transaction.LOCK.UPDATE,
+          }),
+        );
         if (!workspace) return null;
-        const session = await sessions.findOne({
-          where: { sessionId: candidate.sessionId, workspaceId: workspace.workspaceId },
-          transaction,
-          lock: transaction.LOCK.UPDATE,
-        });
+        const session = await withDatabaseOperation('lease.lock_session', () =>
+          sessions.findOne({
+            where: { sessionId: candidate.sessionId, workspaceId: workspace.workspaceId },
+            transaction,
+            lock: transaction.LOCK.UPDATE,
+          }),
+        );
         if (!session) return null;
-        const run = await runs.findOne({
-          where: { runId, sessionId: session.sessionId },
-          transaction,
-          lock: transaction.LOCK.UPDATE,
-        });
+        const run = await withDatabaseOperation('lease.lock_run', () =>
+          runs.findOne({
+            where: { runId, sessionId: session.sessionId },
+            transaction,
+            lock: transaction.LOCK.UPDATE,
+          }),
+        );
         if (!run) return null;
         return action(run, session, workspace, transaction);
       },
@@ -336,7 +362,8 @@ export function createRunLeases(
           });
         } catch (error) {
           /** 回滚后最多重试两次，每次重新加锁并核对当前时间，绝不复活过期租约。 */
-          if (attempt >= 2 || !isLockConflict(error)) throw error;
+          if (attempt >= 2 || !isLockConflict(error))
+            throw annotateDatabaseError(error, { databaseAttempt: attempt + 1 });
         }
       }
     },
@@ -356,7 +383,9 @@ export function createRunLeases(
         async (run, session, _workspace, transaction) => {
           if (!owns(run, session, lease, await now(transaction)))
             throw new SessionError(409, 'LEASE_LOST', '执行租约已失效');
-          const value = await write(session, transaction);
+          const value = await withDatabaseOperation('lease.write', () =>
+            write(session, transaction),
+          );
           if (session.timelineSeq >= maxTimelineSeq)
             throw new SessionError(409, 'REVISION_EXHAUSTED', '须保留轮次结束事件序号');
           const time = await now(transaction);

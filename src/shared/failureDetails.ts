@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** 数据库诊断仅公开固定代码、编号和 SQLSTATE，不含 SQL 或绑定值。 */
+/** 数据库诊断仅公开固定代码、类型、阶段和编号，不含 SQL 或绑定值。 */
 export const databaseErrorCodes = [
   'ER_OUT_OF_SORTMEMORY',
   'ER_LOCK_DEADLOCK',
@@ -12,9 +12,53 @@ export const databaseErrorCodes = [
   'ER_NET_PACKET_TOO_LARGE',
   'ER_DUP_ENTRY',
   'ER_DISK_FULL',
+  'ER_QUERY_TIMEOUT',
+  'ER_SERVER_SHUTDOWN',
+  'ER_ACCESS_DENIED_ERROR',
+  'ER_TOO_MANY_USER_CONNECTIONS',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EPIPE',
+  'PROTOCOL_CONNECTION_LOST',
+  'PROTOCOL_SEQUENCE_TIMEOUT',
+  'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR',
+] as const;
+export const databaseErrorTypes = [
+  'SequelizeDatabaseError',
+  'SequelizeConnectionError',
+  'SequelizeConnectionAcquireTimeoutError',
+  'SequelizeConnectionTimedOutError',
+  'SequelizeConnectionRefusedError',
+  'SequelizeHostNotFoundError',
+  'SequelizeHostNotReachableError',
+  'SequelizeAccessDeniedError',
+  'SequelizeTimeoutError',
+  'SequelizeUniqueConstraintError',
+  'SequelizeForeignKeyConstraintError',
+  'SequelizeExclusionConstraintError',
+  'SequelizeValidationError',
+] as const;
+export const databaseOperations = [
+  'lease.lookup_run',
+  'lease.lookup_session',
+  'lease.lock_admission',
+  'lease.count_active',
+  'lease.lock_workspace',
+  'lease.lock_session',
+  'lease.lock_run',
+  'lease.clock',
+  'lease.renew',
+  'lease.write',
 ] as const;
 export const databaseFailureSchema = z.object({
   databaseCode: z.enum(databaseErrorCodes).optional().catch(undefined),
+  databaseErrorType: z.enum(databaseErrorTypes).optional().catch(undefined),
+  databaseOperation: z.enum(databaseOperations).optional().catch(undefined),
+  databaseTransactionPhase: z.enum(['begin', 'action', 'commit']).optional().catch(undefined),
+  databaseAttempt: z.number().int().min(1).max(3).optional().catch(undefined),
   databaseErrno: z.number().int().positive().max(65535).optional().catch(undefined),
   databaseSqlState: z
     .string()
