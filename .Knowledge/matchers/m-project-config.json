@@ -20,6 +20,9 @@
     "单次请求超时",
     "external",
     "contentStorage",
-    "checkpointStorage"
+    "checkpointStorage",
+    "个人模型Token",
+    "模型凭据",
+    "modelCredentialId"
   ]
 }

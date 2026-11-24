@@ -49,3 +49,7 @@ Figma Token 用 AES-256-GCM 加密保存。`activeKeyId` 选择当前加密材�
 ## 新建配置默认外置正文
 
 示例与setup默认对contentStorage和checkpointStorage启用external，并分别生成正文密钥；新建表准备好引用列后运行。已有配置保持原值，已有数据库升级先补列再切模式。配置位置与初始化边界见[项目配置主题](../topics/project-config.md#新建部署的正文外置默认值)。
+
+## 个人模型 API Token
+
+顶栏模型凭据使用账号自己的 Token，广场分支绑定当前修订，服务地址和模型名沿管理员默认模型。历史空绑定会话沿平台配置。已有数据库按 `docs/sql/personal-model-credentials-migration.sql` 补齐凭据类型与会话绑定列，完整安全和部署约定见[个人模型凭据](../topics/project-config.md#个人模型凭据)。

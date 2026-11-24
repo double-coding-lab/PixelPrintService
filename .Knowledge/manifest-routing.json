@@ -16,7 +16,8 @@
     ],
     "d2c-session-plaza": [
       "d2c-workspace-foundation",
-      "d2c-preview-editing"
+      "d2c-preview-editing",
+      "project-config"
     ]
   },
   "topicPaths": {
@@ -152,7 +153,7 @@
       "topics": [
         "d2c-session-plaza"
       ],
-      "summary": "登录用户会话广场、独立编辑副本与个人作品再次编辑"
+      "summary": "登录用户会话广场、个人分支续聊与隔离作品副本"
     }
   ],
   "projectRev": 3,

@@ -1,6 +1,6 @@
 ---
 id: project-config
-revision: 4
+revision: 5
 summary: "本地配置字段、模型预算、存储与生效时机"
 primary: config
 confidence: inferred
@@ -46,3 +46,9 @@ project.config.json、配置填写、运行配置、modelConfigs、contextBudget
 
 - 示例及setup生成的runtime.d2c.contentStorage与checkpointStorage默认mode=external、schemaReady=true，阈值262144字节；setup分别生成独立32字节标准Base64正文密钥。
 - 新建表由db:init或容器入口创建引用列。已有project.config.json不覆盖，省略存储块仍兼容旧库；已有数据库先补齐两阶段引用列再启用，不能仅复制新默认值。
+
+## 个人模型凭据
+
+- 顶栏“模型凭据”仅保存本地账号自己的API Token；MODEL_BASE_URL与MODEL_NAME沿管理员modelConfigs首项，浏览器不提交自选服务地址。凭据使用runtime.d2c.secrets现有密钥加密并保留修订；备份或轮换密钥时继续保留已有材料。
+- 新建广场会话分支必须绑定本人Figma及model凭据；modelCredentialId固定到会话和执行快照，执行按发起账号解密，同一轮次主子模型与摘要共用；个人凭据失败返回CREDENTIAL_UNAVAILABLE，历史NULL会话沿平台模型。默认模型连接改变后重新保存个人Token。
+- 已有数据库在发布前备份并审核执行docs/sql/personal-model-credentials-migration.sql，扩展d2c_credential.kind和新增d2c_session.modelCredentialId；程序和db:init不自动ALTER已有表，全新库按注册模型创建。个人Token不进入源码、日志、公开数据、明文快照或浏览器存储。
