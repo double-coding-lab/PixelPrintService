@@ -1,3 +1,5 @@
+import { createModelCredentialService } from '../credential/model';
+import { SessionError } from '../session/access';
 import { publishedRuntimeCoverUrls } from './runtimeCover';
 import type { FastifyInstance } from 'fastify';
 import { createD2cConfigReader } from '@/config/d2c';
@@ -47,7 +49,24 @@ export function installSharingEditors(app: FastifyInstance) {
     const options = { binary: () => binary, readLimits: () => readConfig().d2c.limits };
     return {
       ...options,
-      sharing: createSharingService(app.mysql, options),
+      sharing: createSharingService(app.mysql, {
+        ...options,
+        personalModelCredential: async (userId) => {
+          const modelCredentials = createModelCredentialService(
+            app.mysql,
+            () => readConfig().d2c.secrets,
+            () => readConfig().modelConfigs,
+          );
+          const status = await modelCredentials.getStatus(userId);
+          if (!status.configured)
+            throw new SessionError(
+              422,
+              'MODEL_CREDENTIAL_UNAVAILABLE',
+              '请先在模型凭据中保存自己的模型 Token',
+            );
+          return status.credentialId;
+        },
+      }),
       works: createSavedWorkService(app.mysql, {
         ...options,
         readCovers: (userId, sourceIds) => publishedRuntimeCoverUrls(app.mysql, userId, sourceIds),

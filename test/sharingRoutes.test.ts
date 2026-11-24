@@ -1,3 +1,4 @@
+import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Fastify, { type FastifyRequest } from 'fastify';
@@ -224,4 +225,138 @@ test('广场 scope 传给服务且非法值返回422；撤回只沿既有PUT并�
     (await f.app.inject({ method: 'DELETE', url: '/api/d2c/plaza/sessions/source' })).statusCode,
     404,
   );
+});
+
+/** Fork API 契约单独注入，保留既有路由用例及 fixture。 */
+async function forkRouteFixture(userId = 'viewer') {
+  const app = Fastify();
+  const calls: unknown[][] = [];
+  let failure: SessionError | undefined;
+  app.decorateRequest('getUser', async function () {
+    return (userId ? { userId, name: '登录用户' } : undefined) as unknown as Awaited<
+      ReturnType<FastifyRequest['getUser']>
+    >;
+  });
+  app.register(sharingRoutes, {
+    prefix: '/api/d2c',
+    sharing: async () =>
+      ({
+        async fork(...args: unknown[]) {
+          calls.push(args);
+          if (failure) throw failure;
+          return { workspaceId: 'own-workspace', sessionId: 'new-session', activeRunId: null };
+        },
+      }) as unknown as ReturnType<typeof createSharingService>,
+  });
+  await app.ready();
+  return {
+    app,
+    calls,
+    fail: (error: SessionError) => {
+      failure = error;
+    },
+  };
+}
+
+const forkRequest = {
+  method: 'POST' as const,
+  url: '/api/d2c/plaza/sessions/11111111-1111-4111-8111-111111111111/forks',
+  payload: {
+    workspaceId: 'own-workspace',
+    credentialId: 'own-figma',
+    clientRequestId: '22222222-2222-4222-8222-222222222222',
+  },
+};
+
+test('Fork API requires login and same origin before invoking the service', async (t) => {
+  const f = await forkRouteFixture();
+  t.after(() => f.app.close());
+  for (const request of [
+    forkRequest,
+    { ...forkRequest, headers: { ...headers, origin: 'https://foreign.test' } },
+  ]) {
+    const response = await f.app.inject(request);
+    assert.equal(response.statusCode, 403, response.body);
+    assert.equal(response.json().data.reason, 'CROSS_SITE_REQUEST');
+  }
+  assert.deepEqual(f.calls, []);
+  const anonymous = await forkRouteFixture('');
+  t.after(() => anonymous.app.close());
+  const denied = await anonymous.app.inject({ ...forkRequest, headers });
+  assert.equal(denied.statusCode, 401);
+  assert.equal(denied.json().data.reason, 'LOGIN_REQUIRED');
+  assert.deepEqual(anonymous.calls, []);
+});
+
+test('Fork API accepts only target credential/UUID/name and derives actor from login', async (t) => {
+  const f = await forkRouteFixture();
+  t.after(() => f.app.close());
+  for (const payload of [
+    {},
+    { ...forkRequest.payload, clientRequestId: 'invalid' },
+    { ...forkRequest.payload, workspaceId: '../someone' },
+    { ...forkRequest.payload, credentialId: '' },
+    { ...forkRequest.payload, name: '  ' },
+    { ...forkRequest.payload, name: 'a'.repeat(201) },
+    ...[
+      'ownerEid',
+      'ownerUserId',
+      'userId',
+      'creatorName',
+      'figmaToken',
+      'files',
+      'sdkItem',
+      'modelCredentialId',
+    ].map((key) => ({ ...forkRequest.payload, [key]: 'forged' })),
+  ]) {
+    const response = await f.app.inject({ ...forkRequest, headers, payload });
+    assert.equal(response.statusCode, 422, response.body);
+  }
+  assert.deepEqual(f.calls, []);
+  const response = await f.app.inject({
+    ...forkRequest,
+    headers,
+    payload: { ...forkRequest.payload, name: '  我的分支  ' },
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.headers['cache-control'], 'private, no-store');
+  assert.deepEqual(response.json().data, {
+    workspaceId: 'own-workspace',
+    sessionId: 'new-session',
+    activeRunId: null,
+  });
+  assert.deepEqual(f.calls, [
+    [
+      'viewer',
+      '11111111-1111-4111-8111-111111111111',
+      { ...forkRequest.payload, name: '我的分支' },
+    ],
+  ]);
+  const withoutName = await f.app.inject({ ...forkRequest, headers });
+  assert.equal(withoutName.statusCode, 200, withoutName.body);
+  assert.deepEqual(f.calls[1], [
+    'viewer',
+    '11111111-1111-4111-8111-111111111111',
+    forkRequest.payload,
+  ]);
+});
+
+test('Fork API preserves permission, withdrawn-source and revision-conflict service errors', async (t) => {
+  const f = await forkRouteFixture();
+  t.after(() => f.app.close());
+  for (const [status, reason] of [
+    [403, 'PERSONAL_WORKSPACE_REQUIRED'],
+    [422, 'CREDENTIAL_UNAVAILABLE'],
+    [422, 'MODEL_CREDENTIAL_UNAVAILABLE'],
+    [503, 'MODEL_CREDENTIAL_UNAVAILABLE'],
+    [404, 'SHARE_NOT_FOUND'],
+    [409, 'SOURCE_CHANGED'],
+  ] as const) {
+    f.fail(new SessionError(status, reason, '操作不可用'));
+    const response = await f.app.inject({ ...forkRequest, headers });
+    assert.equal(response.statusCode, status, response.body);
+    assert.equal(response.json().data.reason, reason);
+    assert.equal(response.headers['cache-control'], 'private, no-store');
+  }
+  assert.equal(f.calls.length, 6);
 });

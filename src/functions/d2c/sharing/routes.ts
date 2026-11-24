@@ -102,6 +102,21 @@ export default async function sharingRoutes(app: FastifyInstance, options: Parti
       data: await (await services.sharing()).get((await request.getUser()).userId, id),
     });
   });
+  app.post('/plaza/sessions/:id/forks', async (request) => {
+    const { id } = parameters.omit({ editId: true }).parse(request.params);
+    const input = z
+      .object({
+        workspaceId: identifier,
+        credentialId: identifier,
+        clientRequestId: z.string().uuid(),
+        name: z.string().trim().min(1).max(200).optional(),
+      })
+      .strict()
+      .parse(request.body);
+    return responseData.success({
+      data: await (await services.sharing()).fork((await request.getUser()).userId, id, input),
+    });
+  });
   app.get('/plaza/sessions/:id/usage', async (request) => {
     const { id } = parameters.omit({ editId: true }).parse(request.params);
     return responseData.success({

@@ -1,4 +1,5 @@
 import { runtimeCoverIds } from './runtimeCover';
+import { forkPublishedSession, type ForkInput, type ForkOptions } from './fork';
 import { contentModel, resolveTextContent } from '../content/runtime';
 import { findOrderedRows } from '../utils/orderedRead';
 import { publicOverviewPayload } from './overview';
@@ -169,7 +170,10 @@ function canManageSharing(eid: string, session: D2cSession, workspace: D2cWorksp
 }
 
 /** 独立的广场只读服务；发布写入复查统一管理权限，binary 延迟取得，文本读取无需存储。 */
-export function createSharingService(mysql: Sequelize, options: { binary: () => SharingBinary }) {
+export function createSharingService(
+  mysql: Sequelize,
+  options: { binary: () => SharingBinary } & ForkOptions,
+) {
   const shares = mysql.models.D2cSessionShare as typeof D2cSessionShare;
   const files = mysql.models.D2cFile as typeof D2cFile;
   const timeline = mysql.models.D2cTimeline as typeof D2cTimeline;
@@ -221,6 +225,9 @@ export function createSharingService(mysql: Sequelize, options: { binary: () => 
   }
 
   return {
+    fork(userId: string, shareId: string, input: ForkInput, creatorName?: string) {
+      return forkPublishedSession(mysql, userId, shareId, input, options, creatorName);
+    },
     /** 状态沿用私有访问权限，历史个人会话与发布写入使用同一授权规则。 */
     async status(eid: string, sessionId: string) {
       requireSharingIdentity(eid);
