@@ -1,0 +1,35 @@
+src/common/databaseDiagnostics.ts
+  s_e16f52fd1de115::t_999260e5a04997 76-77,79-136
+  s_e16f52fd1de115::t_40860f6f3837fd 75,78
+test/databaseContext.test.ts
+  s_e16f52fd1de115::t_53fb7242622dbe 139-184
+  s_e16f52fd1de115::t_be59589bd1764f 297-301
+  s_e16f52fd1de115::t_d4c24eb3de43c9 3-117,367-378,380-603
+  s_e16f52fd1de115::t_78a944b750567b 608-614
+  s_e16f52fd1de115::t_b744d5e511697b 379
+src/shared/failureDetails.ts
+  s_e16f52fd1de115::t_999260e5a04997 60
+src/functions/d2c/run/leases.ts
+  s_e16f52fd1de115::t_999260e5a04997 67-83,110-114,150-159,162-167,170-176,178-184,186-192,386-388
+  s_e16f52fd1de115::t_c2f9ba5c4f85c3 17-21,66,84,87,137-139,141-143,365-366
+src/functions/d2c/run/errors.ts
+  s_e16f52fd1de115::t_c2f9ba5c4f85c3 296
+test/databaseDiagnostics.test.ts
+  s_e16f52fd1de115::t_330aee96914fb5 19-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "506fe055e9c8a5fde2a435691e4fddf13fc5f311",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
