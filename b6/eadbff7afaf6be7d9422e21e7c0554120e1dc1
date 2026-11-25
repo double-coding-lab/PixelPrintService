@@ -1,0 +1,29 @@
+src/functions/d2c/run/agent/agent.ts
+  s_e16f52fd1de115::t_61cc5bc20ec468 138-139,1272,2603,2614,2616
+  s_e16f52fd1de115::t_29df033082be5b 457,817-825,2604-2613,2615
+  s_e16f52fd1de115::t_0c0920b3989de9 812-816,826-828,1273-1275
+test/nativeScanAgent.test.ts
+  s_e16f52fd1de115::t_6b692eddfa5aa5 1
+src/functions/d2c/run/ruleScan/report.ts
+  s_e16f52fd1de115::t_be89b819b8822f 210-251,255-256
+src/functions/d2c/run/subagent.ts
+  s_e16f52fd1de115::t_be89b819b8822f 125-127,142
+test/nativeScanPending.test.ts
+  s_e16f52fd1de115::t_be89b819b8822f 1-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "b6eadbff7afaf6be7d9422e21e7c0554120e1dc1",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
