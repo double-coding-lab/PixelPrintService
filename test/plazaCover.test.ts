@@ -179,7 +179,7 @@ function fixture() {
 }
 
 const coverUrl = (id: string, share = shareId) =>
-  `/api/d2c/plaza/sessions/${share}/attachments/${id}`;
+  `/api/d2c/plaza/sessions/${share}/attachments/${id}?view=cover`;
 
 test('list and detail select earliest real screenshot by timeline order, using only authenticated URL', async (t) => {
   const f = fixture();

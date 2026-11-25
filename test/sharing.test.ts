@@ -1,3 +1,4 @@
+import type { ImageVariants } from '../src/functions/d2c/images/variants';
 import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -242,7 +243,9 @@ function fixture() {
       }
     },
   } as unknown as Sequelize;
+  let variants: ImageVariants | undefined;
   const service = createSharingService(mysql, {
+    imageVariants: () => variants,
     binary: () => ({
       async downloadFile() {
         downloads++;
@@ -291,6 +294,9 @@ function fixture() {
     file,
     event,
     downloads: () => downloads,
+    setVariants(value: ImageVariants | undefined) {
+      variants = value;
+    },
     setBinary(data: Buffer) {
       binaryData = data;
     },
@@ -643,7 +649,7 @@ async function attachmentFixture() {
     attachmentId,
     messageId: 'message-a',
     eid: 'owner',
-    objectLocator: { private: 'locator' },
+    objectLocator: { private: 'locator' } as Record<string, unknown>,
     size: data.length,
     sha256: sha(data),
     mimeType: 'image/png',
@@ -1003,5 +1009,108 @@ test('HTTP real service returns mine permissions/source safely and denies lost c
   assert.equal(
     (await app.inject(`/api/d2c/plaza/sessions/${shareId}`)).json().data.canManage,
     false,
+  );
+});
+
+test('封面优先使用缩小WebP，ETag命中不下载，条件读取仍复查发布状态', async () => {
+  const f = await attachmentFixture();
+  const original = (await f.service.attachment('reader', f.shareId, 'attachment-a')).data!;
+  f.row.objectLocator = {
+    provider: 'local',
+    fileName: 'source.png',
+    url: 'https://images.example.com/source.png',
+    size: original.length,
+    sha256: sha(original),
+    mimeType: 'image/png',
+  };
+  const webp = Buffer.from(
+    'UklGRjYAAABXRUJQVlA4ICoAAACQAQCdASoBAAEAAUAmJaACdLoAA5gA/uC5f/OJfyR+gXdn/3GtufrEAAA=',
+    'base64',
+  );
+  const variant = {
+    ...f.row.objectLocator,
+    fileName: 'source.png_.webp',
+    url: 'https://images.example.com/small.webp',
+    size: webp.length,
+    sha256: sha(webp),
+    mimeType: 'image/webp',
+  };
+  let reads = 0;
+  let revoke = false;
+  f.setVariants({
+    find: async () => {
+      if (revoke) f.tables.D2cSessionShare[0].enabled = false;
+      return variant;
+    },
+    read: async () => {
+      reads++;
+      return webp;
+    },
+    invalidate: async () => {},
+  } as unknown as ImageVariants);
+  const image = await f.service.attachment('reader', f.shareId, 'attachment-a', { cover: true });
+  assert.equal(image.mimeType, 'image/webp');
+  assert.deepEqual(image.data, webp);
+  assert.equal(reads, 1);
+  const cached = await f.service.attachment('reader', f.shareId, 'attachment-a', {
+    cover: true,
+    ifNoneMatch: `W/${image.etag}`,
+  });
+  assert.equal(cached.notModified, true);
+  assert.equal(cached.data, undefined);
+  assert.equal(reads, 1);
+  revoke = true;
+  await assert.rejects(
+    f.service.attachment('reader', f.shareId, 'attachment-a', {
+      cover: true,
+      ifNoneMatch: image.etag,
+    }),
+    reason('SHARE_NOT_FOUND'),
+  );
+});
+
+test('WebP未就绪或读取损坏时回退原图，不改变普通附件读取', async () => {
+  const f = await attachmentFixture();
+  const original = (await f.service.attachment('reader', f.shareId, 'attachment-a')).data!;
+  f.row.objectLocator = {
+    provider: 'local',
+    fileName: 'source.png',
+    url: 'https://images.example.com/source.png',
+    size: original.length,
+    sha256: sha(original),
+    mimeType: 'image/png',
+  };
+  let invalidated = 0;
+  const variant = {
+    ...f.row.objectLocator,
+    mimeType: 'image/webp',
+    sha256: sha('bad-webp'),
+    size: 8,
+  };
+  f.setVariants({
+    find: async () => variant,
+    read: async (value: unknown) => (value === variant ? Buffer.from('bad-webp') : original),
+    invalidate: async () => {
+      invalidated++;
+    },
+  } as unknown as ImageVariants);
+  const fallback = await f.service.attachment('reader', f.shareId, 'attachment-a', { cover: true });
+  assert.equal(fallback.mimeType, 'image/png');
+  assert.deepEqual(fallback.data, original);
+  assert.equal(invalidated, 1);
+  f.setVariants({ find: async () => null, read: async () => original } as unknown as ImageVariants);
+  assert.deepEqual(
+    (await f.service.attachment('reader', f.shareId, 'attachment-a', { cover: true })).data,
+    original,
+  );
+  f.setVariants({
+    find: async () => {
+      throw new Error('unavailable');
+    },
+    read: async () => original,
+  } as unknown as ImageVariants);
+  assert.deepEqual(
+    (await f.service.attachment('reader', f.shareId, 'attachment-a', { cover: true })).data,
+    original,
   );
 });

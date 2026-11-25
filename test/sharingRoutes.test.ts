@@ -32,6 +32,18 @@ async function fixture(eid = 'viewer') {
     get: async () => {
       throw new SessionError(404, 'SHARE_NOT_FOUND', '公开会话不存在');
     },
+    attachment: async (...args: unknown[]) => {
+      calls.push(['attachment', ...args]);
+      if (args[1] === 'withdrawn') throw new SessionError(404, 'SHARE_NOT_FOUND', '已撤回');
+      const view = args[3] as { cover?: boolean; ifNoneMatch?: string } | undefined;
+      return {
+        data: Buffer.from('webp'),
+        mimeType: 'image/webp',
+        ...(view?.cover
+          ? { etag: '"fixture-webp"', notModified: view.ifNoneMatch === '"fixture-webp"' }
+          : {}),
+      };
+    },
     timeline: async (...args: unknown[]) => {
       calls.push(['timeline', ...args]);
       return { entries: [], hasMore: false, nextSeq: 0 };
@@ -359,4 +371,41 @@ test('Fork API preserves permission, withdrawn-source and revision-conflict serv
     assert.equal(response.headers['cache-control'], 'private, no-store');
   }
   assert.equal(f.calls.length, 6);
+});
+
+test('封面HTTP响应允许私有条件缓存，原图保留no-store，304不能绕过登录或撤回校验', async (t) => {
+  const f = await fixture();
+  t.after(() => f.app.close());
+  const path = '/api/d2c/plaza/sessions/public/attachments/image';
+  const full = await f.app.inject(path + '?view=cover');
+  assert.equal(full.statusCode, 200);
+  assert.equal(full.headers['cache-control'], 'private, no-cache');
+  assert.equal(full.headers.etag, '"fixture-webp"');
+  assert.equal(full.body, 'webp');
+  const cached = await f.app.inject({
+    url: path + '?view=cover',
+    headers: { 'if-none-match': '"fixture-webp"' },
+  });
+  assert.equal(cached.statusCode, 304);
+  assert.equal(cached.body, '');
+  assert.equal((await f.app.inject(path)).headers['cache-control'], 'private, no-store');
+  assert.equal((await f.app.inject(path + '?view=unknown')).statusCode, 422);
+  const withdrawn = await f.app.inject({
+    url: path.replace('public', 'withdrawn') + '?view=cover',
+    headers: { 'if-none-match': '"fixture-webp"' },
+  });
+  assert.equal(withdrawn.statusCode, 404);
+  assert.equal(withdrawn.headers['cache-control'], 'private, no-store');
+  const anon = await fixture('');
+  t.after(() => anon.app.close());
+  assert.equal(
+    (
+      await anon.app.inject({
+        url: path + '?view=cover',
+        headers: { 'if-none-match': '"fixture-webp"' },
+      })
+    ).statusCode,
+    401,
+  );
+  assert.deepEqual(anon.calls, []);
 });

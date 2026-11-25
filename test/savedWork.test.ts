@@ -14,7 +14,10 @@ import {
 const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const settings = { textFileBytes: 10000, filesPerSession: 100, uploadBytes: 100000 };
 /** In-memory transaction adapter asserts owner filters on every database read/update. */
-function fixture(readCovers?: (user: string, ids: string[]) => Promise<Map<string, string>>) {
+function fixture(
+  readCovers?: (user: string, ids: string[]) => Promise<Map<string, string>>,
+  readVariantCovers?: (urls: string[]) => Promise<Map<string, string>>,
+) {
   type Row = Record<string, any>;
   let workRows: Row[] = [];
   let fileRows: Row[] = [];
@@ -93,6 +96,7 @@ function fixture(readCovers?: (user: string, ids: string[]) => Promise<Map<strin
   } as unknown as Sequelize;
   const service = createSavedWorkService(mysql, {
     readCovers,
+    readVariantCovers,
     readLimits: () => settings,
     binary: () => ({
       async downloadFile(locator) {
@@ -420,4 +424,34 @@ test('legacy saved cover follows published source in one batch, unsafe or missin
   const noCover = fixture(async () => new Map([['public-source', 'javascript:bad']]));
   await noCover.service.save('alice', { draft: draft() });
   assert.equal((await noCover.service.list('alice')).items[0].coverUrl, null);
+});
+
+test('已保存作品优先使用已就绪WebP并保留原图回退，派生查询失败不影响列表', async () => {
+  const original = 'https://images.example.com/original.png';
+  const webp = 'https://images.example.com/original.png_.webp';
+  let unavailable = false;
+  const seen: string[][] = [];
+  const f = fixture(undefined, async (urls) => {
+    seen.push(urls);
+    if (unavailable) throw new Error('redis down');
+    return new Map([[original, webp]]);
+  });
+  // Populate through the same owner-scoped frozen snapshot shape used by the repository fixtures.
+  f.workRows().push({
+    workId: 'variant-work',
+    ownerEid: 'alice',
+    name: 'variant',
+    revision: 1,
+    sourceId: 'source',
+    configSnapshot: { runtimeCoverUrl: original },
+    deletedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  const first = await f.service.list('alice');
+  assert.equal(first.items[0].coverUrl, webp);
+  assert.equal(first.items[0].coverOriginalUrl, original);
+  assert.deepEqual(seen[0], [original]);
+  unavailable = true;
+  assert.equal((await f.service.list('alice')).items[0].coverUrl, original);
 });
