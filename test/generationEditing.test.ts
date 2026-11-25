@@ -173,7 +173,7 @@ test('输出约定遵守配置且沿用历史入口，不把blocks提到pages根
     images: { assetsDir: 'src/static/' },
     merge: { mode: 'components' },
   };
-  assert.match(generationPlan(config, []), /src\/pages\/page\/blocks\/<英文别名>/);
+  assert.match(generationPlan(config, []), /src\/pages\/home\/blocks\/<英文别名>/);
   assert.match(generationPlan(config, []), /merge.mode=components/);
   assert.match(
     generationPlan({}, [
@@ -184,7 +184,7 @@ test('输出约定遵守配置且沿用历史入口，不把blocks提到pages根
     /本轮页面目录：pages\/legacy\//,
   );
   assert.match(generationPlan({}, ['App.tsx']), /区块目录统一为 blocks\//);
-  assert.match(generationPlan({}, ['shared/utils/index.ts']), /本轮页面目录：pages\/page\//);
+  assert.match(generationPlan({}, ['shared/utils/index.ts']), /本轮页面目录：pages\/home\//);
   const existing = generationPlan(config, [
     'legacy/home/index.tsx',
     'legacy/home/blocks/prize/index.tsx',
@@ -194,6 +194,27 @@ test('输出约定遵守配置且沿用历史入口，不把blocks提到pages根
   assert.match(
     generationPlan(config, ['pages/a/index.tsx', 'pages/b/index.tsx']),
     /当前已有多个页面目录/,
+  );
+});
+
+test('H5与RN首次生成统一home，已有入口及明确输出根目录保持原组织', () => {
+  assert.match(
+    generationPlan({ project: { framework: 'react' }, output: { dir: 'pages/' } }, []),
+    /本轮页面目录：pages\/home\//,
+  );
+  assert.match(generationPlan({}, []), /本轮页面目录：pages\/home\//);
+  const rn = { project: { framework: 'rn' }, output: { dir: 'pages/' } };
+  const plan = generationPlan(rn, []);
+  assert.match(plan, /本轮页面目录：pages\/home\//);
+  assert.match(plan, /pages\/home\/blocks\/<英文别名>/);
+  assert.doesNotMatch(plan, /src\/pages|本轮页面目录：pages\/page/);
+  assert.match(
+    generationPlan(rn, ['src/pages/page/index.tsx']),
+    /本轮页面目录：src\/pages\/page\//,
+  );
+  assert.match(
+    generationPlan({ ...rn, output: { dir: 'screens/' } }, []),
+    /本轮页面目录：screens\/home\//,
   );
 });
 
