@@ -60,7 +60,8 @@ export type FileInfo = {
 };
 
 export type TextFile = FileInfo & { content: string };
-export type FileList = { fileRevision: number; files: FileInfo[] };
+export type WebpFile = FileInfo & { sourceFileId: string };
+export type FileList = { fileRevision: number; files: FileInfo[]; webpFiles?: WebpFile[] };
 /** 版本为冻结快照；保存状态与规则检查状态分别展示。 */
 export type VersionMetadata = {
   versionId: string;

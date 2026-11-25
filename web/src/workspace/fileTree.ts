@@ -42,6 +42,25 @@ export function buildFileTree(files: FileInfo[], search = ''): FileNode[] {
   return sort(roots);
 }
 
+/** WebP派生单列为虚拟目录，保留源路径层级；独立key避免与真实目录重名冲突。 */
+export function buildSourceFileTree(files: FileInfo[], webpFiles: FileInfo[], search = '') {
+  const roots = buildFileTree(files, search);
+  const query = search.trim().toLocaleLowerCase();
+  const derivatives = buildFileTree(webpFiles, query === 'webp' ? '' : search);
+  if (!derivatives.length) return roots;
+  function namespace(nodes: FileNode[]): FileNode[] {
+    return nodes.map((node) =>
+      node.children
+        ? { ...node, key: `webp:${node.key}`, children: namespace(node.children) }
+        : node,
+    );
+  }
+  return [
+    { key: 'virtual:webp', title: 'WebP 缩略图', isLeaf: false, children: namespace(derivatives) },
+    ...roots,
+  ];
+}
+
 /** 搜索时展开所有匹配目录，清空搜索后恢复用户原来的展开状态。 */
 export function directoryKeys(nodes: FileNode[]): string[] {
   return nodes.flatMap((node) =>

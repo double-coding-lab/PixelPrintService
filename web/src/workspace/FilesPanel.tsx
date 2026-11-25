@@ -8,7 +8,7 @@ import VersionsPanel from './VersionsPanel';
 import ValidationNotice from './ValidationNotice';
 import type { FileList } from './types';
 import Icon from '../components/Icon';
-import { buildFileTree, directoryKeys } from './fileTree';
+import { buildSourceFileTree, directoryKeys } from './fileTree';
 import EditWorkspace from './EditWorkspace';
 import DesignReferencePanel from './DesignReferencePanel';
 import type { InspectorSourceRequest } from './PreviewInspector';
@@ -42,7 +42,11 @@ export default function FilesPanel({
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string[]>([]);
   const initialized = useRef(false);
-  const tree = useMemo(() => buildFileTree(list?.files ?? [], search), [list, search]);
+  const displayFiles = useMemo(() => [...(list?.files ?? []), ...(list?.webpFiles ?? [])], [list]);
+  const tree = useMemo(
+    () => buildSourceFileTree(list?.files ?? [], list?.webpFiles ?? [], search),
+    [list, search],
+  );
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -54,12 +58,16 @@ export default function FilesPanel({
           if (!initialized.current) {
             initialized.current = true;
             setExpanded(
-              buildFileTree(value.files)
+              buildSourceFileTree(value.files, value.webpFiles ?? [])
                 .filter((node) => !node.isLeaf)
                 .map((node) => node.key),
             );
           }
-          setSelected((prior) => (value.files.some((file) => file.fileId === prior) ? prior : ''));
+          setSelected((prior) =>
+            [...value.files, ...(value.webpFiles ?? [])].some((file) => file.fileId === prior)
+              ? prior
+              : '',
+          );
           setError('');
           setLoading(false);
         }
@@ -125,7 +133,7 @@ export default function FilesPanel({
         <nav className="file-list" aria-label="会话文件">
           <div className="file-tree-heading">
             <h3>
-              文件 <span className="count">{list?.files.length ?? 0}</span>
+              文件 <span className="count">{displayFiles.length}</span>
               {validationState && <ValidationNotice state={validationState} />}
             </h3>
             <button
@@ -158,10 +166,13 @@ export default function FilesPanel({
               {expanded.length ? '收起目录' : '展开目录'}
             </button>
           </div>
+          <p className="muted" style={{ padding: '0 12px', fontSize: 12 }}>
+            WebP 缩略图生成后显示在独立目录，点击刷新查看。
+          </p>
           <div className="file-tree-scroll">
             {loading && !list && <p className="muted">正在加载文件…</p>}
             {list && !list.files.length && <p className="empty">暂无文件</p>}
-            {!!list?.files.length && !tree.length && <p className="empty">没有匹配的文件。</p>}
+            {!!displayFiles.length && !tree.length && <p className="empty">没有匹配的文件。</p>}
             <Tree.DirectoryTree
               showIcon
               icon={(node) => (
@@ -192,7 +203,7 @@ export default function FilesPanel({
             key={selected}
             sessionId={sessionId}
             fileId={selected}
-            current={list.files.find((file) => file.fileId === selected)}
+            current={displayFiles.find((file) => file.fileId === selected)}
           />
         ) : (
           <div className="editor-empty">选择文件查看</div>
