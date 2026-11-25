@@ -628,3 +628,68 @@ test('Redis store adapter preserves queue payloads, lease tokens, ordered misses
   response = null;
   assert.equal(await store.claim('token'), null);
 });
+
+test('现有派生批量只读绑定各原图摘要，不排队、不转换、不上传，查询故障保持原图', async (t) => {
+  const f = await fixture(t, () => false);
+  f.store.ready.set(variantId(f.source.url), { sourceSha: f.source.sha256, locator: f.derivative });
+  const sources = Array.from({ length: 201 }, (_, i) => ({
+    url: f.source.url,
+    sha256: i === 1 ? '0'.repeat(64) : f.source.sha256,
+  }));
+  const sizes: number[] = [];
+  const get = f.store.get.bind(f.store);
+  f.store.get = async (ids) => {
+    sizes.push(ids.length);
+    return get(ids);
+  };
+  const hits = await f.variants.existing(sources);
+  assert.deepEqual(sizes, [100, 100, 1]);
+  assert.equal(hits[0]?.url, f.derivative.url);
+  assert.equal(hits[1], null);
+  assert.equal(hits[200]?.sha256, f.derivative.sha256);
+  await flush();
+  assert.equal(f.store.enqueues.length, 0);
+  assert.equal(f.store.remembered.length, 0);
+  assert.equal(f.uploads.length, 0);
+  assert.equal(f.downloads.length, 0);
+  f.store.ready.set(variantId(f.source.url), {
+    sourceSha: f.source.sha256,
+    locator: { ...f.derivative, url: 'javascript:alert(1)' },
+  });
+  assert.deepEqual(await f.variants.existing([sources[0]]), [null]);
+  f.store.get = async () => {
+    throw new Error('offline');
+  };
+  assert.deepEqual(await f.variants.existing([sources[0]]), [null]);
+  assert.equal(f.store.enqueues.length, 0);
+});
+
+test('派生只读索引超时不阻塞原文件列表，也不发起生成', async (t) => {
+  const f = await fixture(t);
+  f.store.get = async () => new Promise(() => {});
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const lookup = f.variants.existing([{ url: f.source.url, sha256: f.source.sha256 }]);
+  t.mock.timers.tick(1000);
+  assert.deepEqual(await lookup, [null]);
+  t.mock.timers.reset();
+  assert.equal(f.store.enqueues.length, 0);
+  assert.equal(f.uploads.length, 0);
+});
+
+test('社区版只读派生目录兼容本地HTTP与S3回执，不触发补生成', async (t) => {
+  const f = await fixture(t);
+  for (const provider of ['local', 's3'] as const) {
+    const image = {
+      ...f.derivative,
+      provider,
+      url:
+        provider === 'local'
+          ? 'http://127.0.0.1:8080/storage/ready.webp'
+          : 'https://cdn.example.test/ready.webp',
+    };
+    f.store.ready.set(variantId(f.source.url), { sourceSha: f.source.sha256, locator: image });
+    assert.equal((await f.variants.existing([f.source]))[0]?.url, image.url);
+  }
+  assert.equal(f.store.enqueues.length, 0);
+  assert.equal(f.uploads.length, 0);
+});

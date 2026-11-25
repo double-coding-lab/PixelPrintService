@@ -240,6 +240,41 @@ export function createImageVariants(options: {
     enqueue(source, source.fileName, true);
     return null;
   }
+  /** 只读已就绪派生索引；逐项绑定原图摘要，不排队、转换、上传或修复索引。 */
+  async function existing(sources: ReadonlyArray<{ url: string; sha256: string }>) {
+    const result: Array<StorageFileObject | null> = [];
+    const deadline = Date.now() + 1000;
+    try {
+      for (let offset = 0; offset < sources.length; offset += 100) {
+        const batch = sources.slice(offset, offset + 100);
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new Error('IMAGE_VARIANT_LOOKUP_TIMEOUT');
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const rows = await Promise.race([
+          options.store.get(batch.map((source) => variantId(source.url))),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('IMAGE_VARIANT_LOOKUP_TIMEOUT')), remaining);
+          }),
+        ]).finally(() => clearTimeout(timer));
+        for (const [i, source] of batch.entries()) {
+          const hit = rows[i];
+          result.push(
+            /^[a-f0-9]{64}$/.test(source.sha256) &&
+              hit?.sourceSha === source.sha256 &&
+              validLocator(hit.locator) &&
+              hit.locator.mimeType === 'image/webp'
+              ? hit.locator
+              : null,
+          );
+        }
+      }
+      return result;
+    } catch {
+      report('lookup');
+      return sources.map(() => null);
+    }
+  }
+
   async function preferredUrls(urls: string[]) {
     const result = new Map<string, string>();
     try {
@@ -278,6 +313,7 @@ export function createImageVariants(options: {
     find,
     read,
     preferredUrls,
+    existing,
     async invalidate(source: StorageFileObject) {
       try {
         await options.store.invalidate(variantId(source.url));

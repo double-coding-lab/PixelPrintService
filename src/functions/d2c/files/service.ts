@@ -1,3 +1,4 @@
+import type { ImageVariants } from '../images/variants';
 import { findOrderedRows } from '../utils/orderedRead';
 import { assetUrl } from '../utils/assetUrls';
 import { createHash, randomUUID } from 'node:crypto';
@@ -9,6 +10,9 @@ import { isExecutionDocument, assertArtifactPath, normalizeRelativePath } from '
 import { ownedSession, requireIdentifier, requireRevision, SessionError } from '../session/access';
 import { appendFileEvent } from '../session/service';
 import { contentModel, prepareTextContent, resolveTextContent } from '../content/runtime';
+
+type FileMetadata = ReturnType<typeof summary>;
+type WebpMetadata = FileMetadata & { sourceFileId: string };
 
 type FileLimits = { textFileBytes: number; filesPerSession: number };
 
@@ -55,11 +59,13 @@ function summary(file: D2cFile) {
  * 手工写入统一锁定工作区及会话；副本应用可协调暂停，拒绝与 Agent 执行并行写入。
  * @param readLimits 每次写入时读取 RuntimeConfig 的文本字节和会话文件数量限额。
  * @param notify 事务提交后发布 sessionId/seq 提示，失败不回滚已保存文件。
+ * @param imageVariants 只读派生索引；虚拟图片单列返回，不计入稳定文件或修订。
  */
 export function createFileService(
   mysql: Sequelize,
   readLimits: () => FileLimits | undefined,
   notify?: (sessionId: string, seq: number) => void,
+  imageVariants?: () => Pick<ImageVariants, 'existing'> | undefined,
 ) {
   const files = contentModel(mysql, mysql.models.D2cFile as typeof D2cFile);
   const runs = mysql.models.D2cRun as typeof D2cRun;
@@ -199,7 +205,14 @@ export function createFileService(
 
   return {
     /** 文件树返回产物直链，不携带正文或完整对象定位。 */
-    async list(userId: string, sessionId: string) {
+    async list(
+      userId: string,
+      sessionId: string,
+    ): Promise<{
+      fileRevision: number;
+      files: FileMetadata[];
+      webpFiles?: WebpMetadata[];
+    }> {
       const { session } = await ownedSession(mysql, userId, sessionId);
       const rows = await findOrderedRows(files, 'pathHash', {
         where: { sessionId },
@@ -217,7 +230,41 @@ export function createFileService(
           'objectLocator',
         ],
       });
-      return { fileRevision: session.fileRevision, files: rows.map(summary) };
+      const metadata = rows.map(summary);
+      const result = { fileRevision: session.fileRevision, files: metadata };
+      if (!imageVariants) return result;
+      const webpFiles: WebpMetadata[] = [];
+      try {
+        // 索引绑定真实上传回执；展示地址可能已按本地访问前缀投影。
+        const candidates = rows.flatMap((row, index) => {
+          const file = metadata[index];
+          const url = row.objectLocator?.url;
+          return file.url && file.mimeType?.startsWith('image/') && typeof url === 'string'
+            ? [{ file, url }]
+            : [];
+        });
+        const ready = await imageVariants()?.existing(
+          candidates.map(({ file, url }) => ({ url, sha256: file.sha256! })),
+        );
+        for (const [index, { file }] of candidates.entries()) {
+          const image = ready?.[index];
+          if (!image) continue;
+          webpFiles.push({
+            ...file,
+            sourceFileId: file.fileId!,
+            fileId: `webp:${file.fileId}`,
+            path: `${file.path}_.webp`,
+            kind: 'asset',
+            mimeType: 'image/webp',
+            url: image.url,
+            size: image.size,
+            sha256: image.sha256,
+          });
+        }
+      } catch {
+        // 派生服务不可用时，原文件清单仍正常返回。
+      }
+      return { ...result, webpFiles };
     },
     /** 本人会话文本、执行清单与受控缓存 JSON 可只读查看；其他内部资料和二进制仍拒绝。 */
     async get(userId: string, sessionId: string, fileId: string) {

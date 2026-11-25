@@ -1,3 +1,4 @@
+import { imageVariantsFor } from '@/hooks/tools/imageVariants';
 import { createMessageQueueService } from './session/queue';
 import { recordPreviewUpdate } from './preview/events';
 import attachmentRoutes from './attachments';
@@ -80,6 +81,7 @@ export default async function sessionRoutes(
           d2c?: { limits?: { textFileBytes: number; filesPerSession: number } };
         }>()?.d2c?.limits,
       notifications.publish,
+      () => imageVariantsFor(app),
     );
   const subscriptions = new Set<AbortController>();
   const readConfig = createD2cConfigReader(
