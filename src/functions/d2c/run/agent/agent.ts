@@ -38,6 +38,7 @@ import {
   nativeScanReport,
   nativeScanProblems,
   nativeScanInstructions,
+  nativeScanPending,
   assertNativeScanInput,
 } from '../ruleScan/report';
 import type { NativeRuleScanResult } from '../ruleScan';
@@ -132,6 +133,12 @@ export type AgentRunInput = {
     complete: boolean,
     merge: boolean,
   ) => Promise<string>;
+  /** 原生扫描的有界待判断视图，完整证据继续由真实文件保存。 */
+  readScanPending?: (path: string, offset: number, limit: number) => string;
+  /** 每次请求从最新已保存报告构造视图，不把初始疑难项列表冻结进每轮提示。 */
+  scanReviewPrompt?: () => string;
+  /** 只认平台已保存且逐项判断完整的扫描文件，用于免去口头收尾请求。 */
+  scanComplete?: () => boolean;
   tools: GenerationTools;
   maxTurns: number;
   contextBudgetTokens: number;
@@ -370,7 +377,15 @@ export async function runAgent(input: AgentRunInput): Promise<{
       },
     ),
     tool(
-      ({ path, resource = false, offset, length }) => {
+      ({ path, resource = false, offset, length, view }) => {
+        if (view === 'scan_pending') {
+          if (resource || !input.readScanPending)
+            throw toolIssue('INVALID_ARGUMENT', 'VALIDATION_FAILED', {
+              stage: 'tool',
+              tool: 'read_file',
+            });
+          return input.readScanPending(path, offset ?? 0, length ?? 32);
+        }
         if (path.startsWith(archivePrefix)) {
           if (resource) throw new Error('内部历史须使用 resource=false');
           const read = archive?.readText ?? input.readHistory;
@@ -439,13 +454,13 @@ export async function runAgent(input: AgentRunInput): Promise<{
       },
       {
         name: 'read_file',
-        description:
-          '读取会话文本或 PNG/JPEG/WebP 图片；图片作为视觉输入。resource=true 读取固定 Skill，resource=false 读取会话文件或 /history/ 内部历史。文本length=null由平台按当前剩余Token预算自动选择页长，小文件尽量一次读完；单次最多256000字符、128000估算Token，同轮并行读取共享预算。仅需局部时指定length；长文件按返回nextOffset接续；同一上下文已有完整且未变的内容直接使用，仅补读缺失部分。',
+        description: `读取会话文本或 PNG/JPEG/WebP 图片；图片作为视觉输入。resource=true 读取固定 Skill，resource=false 读取会话文件或 /history/ 内部历史。${input.readScanPending ? '原生扫描可用view=scan_pending读取未完成项，offset/length按条目分页；不传view仍为完整文件。' : ''}文本length=null由平台按当前剩余Token预算自动选择页长，小文件尽量一次读完；单次最多256000字符、128000估算Token，同轮并行读取共享预算。仅需局部时指定length；长文件按返回nextOffset接续；同一上下文已有完整且未变的内容直接使用，仅补读缺失部分。`,
         schema: z.object({
           path: z.string(),
           resource: z.boolean().default(false),
           offset: z.number().int().min(0).nullish(),
           length: z.number().int().min(1).max(maxReadCharacters).nullish(),
+          ...(input.readScanPending ? { view: z.enum(['full', 'scan_pending']).nullish() } : {}),
         }),
       },
     ),
@@ -794,6 +809,23 @@ export async function runAgent(input: AgentRunInput): Promise<{
     const partialFiles = new Set(progress?.state.partialFiles ?? []);
     const nativeScans = new Map<string, NativeRuleScanResult>();
     const nativeReports = new Map<string, string>();
+    /** 仅投影当前任务的授权报告，部分保存标记不能被完整判断冒充。 */
+    function pendingScanView(path: string, offset = 0, limit = 32) {
+      const scan = nativeScans.get(path);
+      const content = nativeReports.get(path);
+      if (!scan || !content)
+        throw toolIssue(
+          'INVALID_ARGUMENT',
+          'VALIDATION_FAILED',
+          {
+            stage: 'tool',
+            tool: 'read_file',
+          },
+          { path, detail: '待判断视图仅支持本次授权的原生扫描报告。' },
+        );
+      const pending = nativeScanPending(scan, content, offset, limit);
+      return { path, ...pending, complete: pending.complete && !partialFiles.has(path) };
+    }
     const write = childTools.write.bind(childTools);
     childTools.write = async (path, content) => {
       const native = nativeScans.get(path);
@@ -1235,6 +1267,21 @@ export async function runAgent(input: AgentRunInput): Promise<{
             : {}),
           ...(role === 'rule_scan'
             ? {
+                ...(nativeScans.size
+                  ? {
+                      scanReviewPrompt: () =>
+                        writePaths.map((path) => JSON.stringify(pendingScanView(path))).join('\n'),
+                      readScanPending: (path: string, offset: number, limit: number) =>
+                        JSON.stringify(pendingScanView(path, offset, limit)),
+                      scanComplete: () =>
+                        writePaths.every(
+                          (path) =>
+                            !partialFiles.has(path) &&
+                            nativeScanProblems(nativeScans.get(path)!, nativeReports.get(path)!)
+                              .length === 0,
+                        ),
+                    }
+                  : {}),
                 saveScanSnapshot: async (
                   path: string,
                   content: string,
@@ -1294,10 +1341,24 @@ export async function runAgent(input: AgentRunInput): Promise<{
                     result = `已核对累计报告：${path}`;
                   } else result = await childTools.write(path, content);
                   if (readToolFeedback(result)) return result;
-                  if (complete) partialFiles.delete(path);
+                  const native = nativeScans.get(path);
+                  const pending = native
+                    ? nativeScanPending(native, nativeReports.get(path)!)
+                    : undefined;
+                  const finished = complete && (!pending || pending.complete);
+                  if (finished) partialFiles.delete(path);
                   else partialFiles.add(path);
-                  await progress?.markScanFile(path, complete);
-                  return result;
+                  await progress?.markScanFile(path, finished);
+                  return pending
+                    ? JSON.stringify({
+                        ok: true,
+                        path,
+                        scan: { ...pending, complete: finished },
+                        hint: finished
+                          ? '授权扫描已完整保存，由平台直接交付；生成后仍需真实规则检查。'
+                          : '仅补回执中的剩余项；无需重新读写完整报告。最后一批complete=true。',
+                      })
+                    : result;
                 },
               }
             : {}),
@@ -1631,7 +1692,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           tool((params: DelegationInput) => track(launchDelegation(params)), {
             name: 'delegate_agent',
             description:
-              '有持久化子任务时本工具只启动后台工作并返回accepted/agentId，尚未完成。主Agent继续实现自己的区域，为独立子区块保留接口/占位；需要子产物或进行组合、全局检查、预览前用wait_subagents(wait=true)收集结果，不要立刻等待或循环查状态。局部失败返回handoff和resumeAgentId；优先沿用原role/nodeId/writePaths并传resumeAgentId恢复，接管前读取contextPath，不丢弃已有进度。委派独立子Agent：rule_scan每次仅扫描一个nodeId并保存其唯一rule-hits.json；多个区块分别委派，不能共用一个nodeId生成多份报告；ui仅为真实sub-图层生成区块源码和assets.txt，必须提供nodeId；无sub-整页由主Agent自己出码，Rule-Scan页面根虚拟block不允许委派ui；writePaths列出本次允许保存的全部精确相对文件路径。design/review仍只读。所有子Agent不继承聊天历史、不递归或运行任意脚本，对已知独立且writePaths不重叠的任务，一次提交全部委派进入现有队列，不要只派两项再等待整批；队列最多两个同时执行，完成自动补位，共享总预算。需要后续任务决策时用wait_subagents(wait=true,mode=any)先收取已完成项；最终整合用mode=all；UI子Agent须对授权blocks/<alias>目录执行check_rules(block)，修复后重新检查；同一违规连续两轮未改善以RULE_REPAIR_STALLED交回，父级定点接管，不原样重派；不能merge或检查越界目录。父Agent只负责自己的区域与组合，最后一次机械merge不重复深入子区域语义校验；全局单agent复验仅用户主动请求时执行。已知框架检查需要区块目录，与精确writePaths不兼容时保守拒绝，不能扩大写权限。task最多8000个UTF-8字节，中文通常每字3字节；只给目标nodeId、h5/rn、Skill/配置/全局清单/缓存/报告路径及必要约束，不复制源码、规则正文或节点JSON，详情由子Agent读取；rule_scan按rules/README.md原文读取全部规则（不硬编码数量），ui读取扫描报告落实assets.txt消费证明；内层sub返回父级继续派发。',
+              '有持久化子任务时本工具只启动后台工作并返回accepted/agentId，尚未完成。主Agent继续实现自己的区域，为独立子区块保留接口/占位；需要子产物或进行组合、全局检查、预览前用wait_subagents(wait=true)收集结果，不要立刻等待或循环查状态。局部失败返回handoff和resumeAgentId；优先沿用原role/nodeId/writePaths并传resumeAgentId恢复，接管前读取contextPath，不丢弃已有进度。委派独立子Agent：rule_scan每次仅扫描一个nodeId并保存其唯一rule-hits.json；多个区块分别委派，不能共用一个nodeId生成多份报告；ui仅为真实sub-图层生成区块源码和assets.txt，必须提供nodeId；无sub-整页由主Agent自己出码，Rule-Scan页面根虚拟block不允许委派ui；writePaths列出本次允许保存的全部精确相对文件路径。design/review仍只读。所有子Agent不继承聊天历史、不递归或运行任意脚本，对已知独立且writePaths不重叠的任务，一次提交全部委派进入现有队列，不要只派两项再等待整批；队列最多两个同时执行，完成自动补位，共享总预算。需要后续任务决策时用wait_subagents(wait=true,mode=any)先收取已完成项；最终整合用mode=all；UI子Agent须对授权blocks/<alias>目录执行check_rules(block)，修复后重新检查；同一违规连续两轮未改善以RULE_REPAIR_STALLED交回，父级定点接管，不原样重派；不能merge或检查越界目录。父Agent只负责自己的区域与组合，最后一次机械merge不重复深入子区域语义校验；全局单agent复验仅用户主动请求时执行。已知框架检查需要区块目录，与精确writePaths不兼容时保守拒绝，不能扩大写权限。task最多8000个UTF-8字节，中文通常每字3字节；只给目标nodeId、h5/rn、Skill/配置/全局清单/缓存/报告路径及必要约束，不复制源码、规则正文或节点JSON，详情由子Agent读取；rule_scan若平台提供原生扫描，只按待判断视图读取对应规则与节点并提交增量判断；无原生扫描时按rules/README.md原文读取全部规则（不硬编码数量）。不要在task中要求原生扫描重扫完整报告；ui读取扫描报告落实assets.txt消费证明；内层sub返回父级继续派发。',
             schema: z.object({
               role: z.enum(['design', 'review', 'rule_scan', 'ui']),
               resumeAgentId: z.string().uuid().nullable().optional(),
@@ -2539,6 +2600,20 @@ export async function runAgent(input: AgentRunInput): Promise<{
     ...(resources ? { backend: resources.backend } : {}),
     middleware: [
       createMiddleware({ name: 'FilesystemMiddleware', tools: controlledTools }),
+      ...(input.scanReviewPrompt
+        ? [
+            createMiddleware({
+              name: 'PixelPrintScanProgress',
+              wrapModelCall: (request, handler) =>
+                handler({
+                  ...request,
+                  systemMessage: request.systemMessage.concat(
+                    `\n当前待判断视图（仅本次请求）：\n${input.scanReviewPrompt!()}`,
+                  ),
+                }),
+            }),
+          ]
+        : []),
       createMiddleware({ name: 'subAgentMiddleware' }),
       createMiddleware({ name: 'SummarizationMiddleware' }),
       ...(!input.specialist && input.tools.preview ? [createVisualInspectionMiddleware()] : []),
@@ -2627,6 +2702,28 @@ export async function runAgent(input: AgentRunInput): Promise<{
               inspect: input.inspectDelivery,
               observe: input.onDeliveryRecovery,
               root: !input.specialist,
+            }),
+          ]
+        : []),
+      ...(input.scanComplete && input.inspectDelivery
+        ? [
+            createMiddleware({
+              name: 'PixelPrintScanCompletion',
+              beforeModel: {
+                canJumpTo: ['end'],
+                hook: async (state) => {
+                  if (!ToolMessage.isInstance(state.messages.at(-1)) || !input.scanComplete?.())
+                    return;
+                  await guard();
+                  if ((await input.inspectDelivery!()).problems.length) return;
+                  const message = new AIMessage(
+                    '授权范围的规则扫描已完整保存，平台已核对交付；代码生成后仍须规则校验。',
+                  );
+                  output = message.text;
+                  await input.onMessage?.(message);
+                  return { messages: [message], jumpTo: 'end' };
+                },
+              },
             }),
           ]
         : []),

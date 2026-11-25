@@ -207,10 +207,53 @@ export function nativeScanProblems(scan: NativeRuleScanResult, content: string):
   return problems;
 }
 
+/** 仅返回尚未交接的疑难项；完整报告留在文件中，不为查询进度重复传输程序命中。 */
+export function nativeScanPending(
+  scan: NativeRuleScanResult,
+  content: string,
+  offset = 0,
+  limit = 32,
+) {
+  const report = JSON.parse(content);
+  if (report?.nativeScan?.fingerprint !== scan.fingerprint)
+    throw new ScanReportError('SCAN_REPORT_SCOPE_MISMATCH', '待判断视图与当前扫描指纹不一致。');
+  const decisions = new Map(
+    reviews(report.nativeReview, candidates(scan)).map((item) => [
+      JSON.stringify([item.rule, item.nodeId]),
+      item,
+    ]),
+  );
+  const missing = new Set(nativeScanProblems(scan, content));
+  const pending = scan.pending.flatMap((item) =>
+    item.nodeIds.flatMap((nodeId) => {
+      const review = decisions.get(JSON.stringify([item.rule, nodeId]));
+      if (review && !missing.has(`疑难项缺少实际命中：${item.rule} ${nodeId}`)) return [];
+      return [{ rule: item.rule, nodeId, reason: item.reason, ...(review ? { review } : {}) }];
+    }),
+  );
+  const start = Math.max(0, Math.floor(offset));
+  const size = Math.max(1, Math.min(64, Math.floor(limit)));
+  const total = scan.pending.reduce((sum, item) => sum + item.nodeIds.length, 0);
+  return {
+    view: 'scan_pending' as const,
+    fingerprint: scan.fingerprint,
+    total,
+    reviewed: total - pending.length,
+    remaining: pending.length,
+    hitCount: report.hits.length,
+    complete: missing.size === 0,
+    pending: pending.slice(start, start + size),
+    offset: start,
+    nextOffset: start + size < pending.length ? start + size : null,
+    unsupportedRules: scan.unsupportedRules,
+  };
+}
+
 /** 新旧Skill规则保持冻结，平台仅替换确定性扫描，疑难项继续按对应原规则判断。 */
 export function nativeScanInstructions(paths: string[]) {
   return [
-    `平台已完成确定性规则扫描并保存${JSON.stringify(paths)}。先读这些报告的nativeScan.pending；只对其中的规则和节点补充判断，不重新全量扫描。`,
+    `平台已完成确定性规则扫描并保存${JSON.stringify(paths)}。下方待判断视图提供当前指纹与未完成项；只对其中的规则和节点补充判断，不重新全量扫描。`,
+    '需要后续待判断项时用read_file(path=报告路径,view="scan_pending",offset=回执nextOffset,length=32)，此视图的offset/length是条目数。完整报告仍可按普通read_file字符分页读取，仅在确需核对原文时使用。提交回执会直接返回剩余项与完成状态，不要为确认写入而重复读取完整报告。',
     '程序命中及报告头由平台保护；读取pending对应的真实规则和必要节点，不逐条重抄已计算的尺寸、填充、布局。未知或变更规则按原文完整判断，不能视为通过。',
     '每个pending中的nodeId都须在报告nativeReview中保存{rule,nodeId,decision:"hit"或"not_applicable",reason:"真实判断理由"}；hit还须保存对应hits项，未命中也要明确理由。分批用write_file(merge=true,complete=false)，最后complete=true。',
     '疑难项每批补交必须携带nativeScan:{fingerprint:当前报告的原值}，包括只追加hits的批次；不使用旧报告指纹或省略当前输入绑定。',

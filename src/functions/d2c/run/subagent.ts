@@ -122,7 +122,9 @@ export function subagentInstructions(role: SubagentRole, nativeScan = false) {
       : []),
     platformImageInstructions,
     '消费平台程序报告时同时读取hits、constraints与deferredChecks：hits是设计命中，constraints是实现约束，deferredChecks要在代码生成后核对，均不能当作已通过检查。程序报告仅在nativeScan.pending逐项判断完成后交付UI。',
-    '每完成一批规则或区块分析，调用report_progress保存phase、completed、remaining、nextStep；这是阶段说明，不冒充完整rule-hits.json。遇到阻塞或输出过大时先保存可确认的阶段成果，完整报告按授权路径分批写入；恢复时沿用已有分析只补未完成部分。',
+    nativeScan
+      ? '每批疑难判断的write_file回执已保存进度并提供剩余项；不为复述同一进度额外调用report_progress或重复读取报告。遇到真实阻塞时用report_progress保存阻塞与下一步。平台确认扫描完整后直接交付，无需再次调用模型生成口头收尾。'
+      : '每完成一批规则或区块分析，调用report_progress保存phase、completed、remaining、nextStep；这是阶段说明，不冒充完整rule-hits.json。遇到阻塞或输出过大时先保存可确认的阶段成果，完整报告按授权路径分批写入；恢复时沿用已有分析只补未完成部分。',
     role === 'rule_scan'
       ? nativeScan
         ? '每完成一批疑难判断用write_file(merge=true,complete=false)提交nativeScan.fingerprint和本批nativeReview；仅有新增命中时附带hits数组。报告头、程序命中和历史判断由平台合并，不复制整份报告；最后一批complete=true。不同block分别保存，空对象和口头说明不构成交付，沿用已有读取仅补pending。'
@@ -137,7 +139,7 @@ export function subagentInstructions(role: SubagentRole, nativeScan = false) {
       ? '同一子上下文已有的真实资料直接复用；疑难项只查询所需节点，未知规则保留按原文核查的范围，不重新逐叶读取整树。'
       : '同一上下文中已完整读取且版本未变的内容直接使用，不从偏移0重复读；小文件尽量一次读完，length=null 由平台按剩余Token预算自动选择页长，长文件按返回的 nextOffset 接续。内容被截断、摘要遗漏或资料变化时补读缺少部分。Rule-Scan优先figma(inspect-node,subtree=true,nodeId=区块,offset=0,limit=40)批量读取整个区块，沿nextOffset读至null；页中每个节点的attributes/childIds均为真实数据。不要读完子树后又逐叶重扫。节点属性优先使用本子会话已有真实结果，只在缺少尺寸、文字或样式等必要细节时定点 inspect-node；不假定继承父 Agent 或其他子 Agent 的读取结果。具体过程与报告格式服从固定 Skill。',
     execution
-      ? '可用 list_files/read_file/write_file/figma；写入仅限父 Agent 授予的精确 writePaths，默认空。figma 仅可 inspect-node 只读已有完整缓存，缺失或不完整时上报父 Agent 获取，不能自行拉取。'
+      ? '可用 list_files/read_file/write_file/figma；写入仅限父 Agent 授予的精确 writePaths，默认空。figma 仅可 inspect-node 只读已有完整缓存；只提供本次nodeId及必要分页，figmaUrl/rootNodeId须省略或null，不能照抄父任务的全局根参数。缺失或不完整时上报父 Agent 获取，不能自行拉取。'
       : '只有 list_files/read_file；不能写入文件或调用 figma。设计稿缓存缺失时告知父 Agent 获取。',
     role === 'ui'
       ? '可用 check_rules(path=授权的 blocks/<alias> 区块目录,mode=block)。完成本区块实现后必须真实检查、修复，再检查通过；任何写入后须重新检查，不得复用旧报告。不能 merge、检查祖先/兄弟/越界目录。已知框架的检查器需要目录，精确writePaths必须覆盖该区块实现文件；不兼容时如实上报并保守拒绝，不能扩大授权或发明脚本参数。'
