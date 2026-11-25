@@ -5,6 +5,7 @@ import { diagnoseGatewayFailure } from '../gatewayDiagnostics';
 import { beginFailureOccurrence, diagnoseRunFailure, runFailureSchema } from '../errors';
 import { performance } from 'node:perf_hooks';
 import { z } from 'zod';
+import { modelPreparationSchema } from './modelPreparation';
 
 /** 仅接受供应商明确返回的完整计数，缺失或非法值不估算为零。 */
 const tokenUsageSchema = z.object({
@@ -33,6 +34,8 @@ export const modelActivitySchema = z.object({
   requestedReasoningEffort: z.enum(['low', 'high']).optional(),
   reasoningEscalated: z.boolean().optional(),
   durationMs: durationSchema.optional(),
+  preparation: modelPreparationSchema.optional(),
+  startedSaveMs: durationSchema.optional(),
   gatewayRequestId: gatewayRequestIdSchema.optional(),
   firstChunkMs: durationSchema.optional(),
   afterFirstChunkMs: durationSchema.optional(),
@@ -49,7 +52,7 @@ export type ModelActivity = z.infer<typeof modelActivitySchema>;
 /** 提交给网关的请求参数，不表示供应商已采纳或实际使用的思考强度。 */
 export type ModelRequestMetadata = Pick<
   ModelActivity,
-  'requestedReasoningEffort' | 'reasoningEscalated' | 'retryIndex'
+  'requestedReasoningEffort' | 'reasoningEscalated' | 'retryIndex' | 'preparation'
 >;
 
 /** 异步请求各自隔离，仅保留单调时钟与安全编号，不保存任何分片正文。 */
@@ -107,10 +110,17 @@ export async function observeModelRequest<T>(
 ): Promise<T> {
   if (!publish) return action();
   const requestMetadata = modelActivitySchema
-    .pick({ requestedReasoningEffort: true, reasoningEscalated: true, retryIndex: true })
+    .pick({
+      requestedReasoningEffort: true,
+      reasoningEscalated: true,
+      retryIndex: true,
+      preparation: true,
+    })
     .parse(metadata ?? {});
   const operationId = randomUUID();
+  const saveStarted = performance.now();
   await publish({ operationId, scope, status: 'started', ...requestMetadata });
+  const startedSaveMs = Math.max(0, Math.round(performance.now() - saveStarted));
   const started = performance.now();
   const timing: NonNullable<ReturnType<typeof requestTiming.getStore>> = { started };
   /** 在持久化和重试分类前固定终点，诊断存储耗时不计入模型耗时。 */
@@ -152,6 +162,7 @@ export async function observeModelRequest<T>(
       status: 'failed',
       ...(diagnosticFailure ? { diagnosticFailure } : {}),
       ...requestMetadata,
+      startedSaveMs,
       ...(plan
         ? { retryAfterMs: plan.delayMs, retryAttempt: plan.attempt, rateLimited: plan.rateLimited }
         : {}),
@@ -184,6 +195,7 @@ export async function observeModelRequest<T>(
     scope,
     status: 'completed',
     ...requestMetadata,
+    startedSaveMs,
     ...measured,
     ...(usage.success ? { tokenUsage: usage.data } : {}),
     ...(['stop', 'length', 'tool_calls', 'content_filter'].includes(String(finishReason))

@@ -51,6 +51,7 @@ import { assertUiDelegation } from './delegation';
 import { describeToolActivity } from '../toolActivity';
 import { createSubagentTools, subagentToolsForRole, subagentReservations } from './subagentTools';
 import { observeModelRequest, type ModelActivity } from './modelActivity';
+import { createModelPreparation } from './modelPreparation';
 import { AsyncLocalStorageProviderSingleton } from '@langchain/core/singletons';
 import { createAgentTextStream, type AgentTextSnapshot } from './textStream';
 import { createDeepAgent, createSkillsMiddleware } from 'deepagents';
@@ -1792,12 +1793,20 @@ export async function runAgent(input: AgentRunInput): Promise<{
         ]
       : [];
   let visionRejected = false;
+  // 单个 Agent 的模型循环串行；子 Agent 各有独立闭包，重试从新边界计时。
+  let preparation: ReturnType<typeof createModelPreparation> | undefined;
   const supportedTools = coreTools.filter(
     (value) => value.name !== 'edit_file' || input.tools.edit,
   );
   const controlledTools = input.specialist
     ? supportedTools.filter((value) => subagentToolsForRole(input.specialist!).includes(value.name))
     : [...supportedTools, ...delegatedTools, ...waitingTools, ...questionTools, ...previewTools];
+  // 本轮工具契约固定，避免每次提示预算及请求预算重复转换同一 schema。
+  const modelToolSchemas = controlledTools.map((value) => ({
+    name: value.name,
+    description: value.description,
+    schema: z.toJSONSchema(value.schema),
+  }));
   const textStream =
     input.onText && !input.specialist
       ? createAgentTextStream({
@@ -1817,6 +1826,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
   async function prepareModelRequest<TState extends Record<string, unknown>>(
     request: ModelRequest<TState>,
   ): Promise<ModelRequest<TState>> {
+    preparation = createModelPreparation();
     await guard();
     if (incrementalVerification(request.state)) {
       request = {
@@ -1848,12 +1858,12 @@ export async function runAgent(input: AgentRunInput): Promise<{
         ),
       };
     }
-    const tools = controlledTools.map((value) => ({
-      name: value.name,
-      description: value.description,
-      schema: z.toJSONSchema(value.schema),
-    }));
-    promptOverhead = estimateTokens({ system: request.systemMessage.content, messages: [], tools });
+    promptOverhead = estimateTokens({
+      system: request.systemMessage.content,
+      messages: [],
+      tools: modelToolSchemas,
+    });
+    preparation.mark('promptMs');
     return request;
   }
 
@@ -1865,7 +1875,12 @@ export async function runAgent(input: AgentRunInput): Promise<{
     outputAttempts = 0,
     requestAttempts = 0,
   ): Promise<AIMessage> {
+    // 首次包含上游上下文/摘要装配；内部重试不沿用前一次模型耗时。
+    const timing = preparation ?? createModelPreparation();
+    preparation = undefined;
+    timing.mark('contextMs');
     await flushBackgroundObservations();
+    timing.mark('backgroundMs');
     const interaction = incrementalVerification(request.state);
     if (interaction?.pendingEdits?.length && interaction.baselineAttempted) {
       const edits = new AIMessage({
@@ -1966,6 +1981,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       await input.onMessage?.(check);
       return check;
     }
+    timing.mark('visualMs');
     if (!input.specialist) {
       const previewFeedback = await input.tools.preview?.feedback?.();
       if (previewFeedback) {
@@ -1976,24 +1992,24 @@ export async function runAgent(input: AgentRunInput): Promise<{
         };
       }
     }
+    timing.mark('previewMs');
     await beforeRequest();
+    timing.mark('guardMs');
     request = {
       ...request,
       messages: modelContextView(request.messages, input.contextBudgetTokens),
     };
-    const tools = controlledTools.map((value) => ({
-      name: value.name,
-      description: value.description,
-      schema: z.toJSONSchema(value.schema),
-    }));
+    timing.mark('contextViewMs');
     const tokens = estimateTokens({
       system: request.systemMessage.content,
       messages: request.messages.map((message) => message.toDict()),
-      tools,
+      tools: modelToolSchemas,
     });
     if (tokens > input.contextBudgetTokens) throw new Error('DEEP_CONTEXT_BUDGET');
+    timing.mark('tokenCountMs');
     const images = await prepareImageMessages(request.messages, input.resolveImage);
     const modelMessages = visionRejected ? withoutImagePayload(images.messages) : images.messages;
+    timing.mark('imagesMs');
     const decision = input.reasoningModels ? readReasoningDecision(request.state) : undefined;
     const selectedModel: BaseChatModel =
       decision && input.reasoningModels ? input.reasoningModels[decision.effort] : input.model;
@@ -2037,6 +2053,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           return retry;
         },
         {
+          preparation: timing.snapshot(),
           retryIndex: requestAttempts,
           ...(decision
             ? { requestedReasoningEffort: decision.effort, reasoningEscalated: decision.escalated }

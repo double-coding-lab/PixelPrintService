@@ -5,6 +5,7 @@ import type { D2cMessageAttachment } from '../../../models/D2cMessageAttachment'
 import { StorageError, type StorageFileClient } from '../../../hooks/tools/storage';
 import { ownedSession, requireIdentifier, SessionError } from './access';
 import { imageObjectName } from '../utils/imageObjectName';
+import { createRunImageCache, type RunImageCache } from '../run/agent/imageCache';
 
 export const attachmentMaxBytes = 10 * 1024 * 1024;
 export const attachmentBodyLimit = 4 * Math.ceil(attachmentMaxBytes / 3) + 4096;
@@ -418,7 +419,7 @@ export function createAttachmentService(
       );
     },
     /** 展示和模型边界共享鉴权及完整性校验；不会跟随客户端提供的 URL 下载。 */
-    async read(userId: string, sessionId: string, attachmentId: string) {
+    async read(userId: string, sessionId: string, attachmentId: string, cache?: RunImageCache) {
       requireIdentifier(attachmentId);
       const row = await attachmentDatabase(() =>
         mysql.transaction(async (transaction) => {
@@ -438,9 +439,20 @@ export function createAttachmentService(
           return row;
         }),
       );
-      let data;
+      // 始终先核对当前权限/归属/过期及行版本；不能按引用跳过这些检查。
+      const version = JSON.stringify([
+        sessionId,
+        attachmentId,
+        row.sha256,
+        row.objectLocator,
+        row.size,
+        row.mimeType,
+        row.width,
+        row.height,
+      ]);
+      let data = cache?.get(version);
       try {
-        data = await options.binary.downloadFile(row.objectLocator);
+        data ??= await options.binary.downloadFile(row.objectLocator);
       } catch (error) {
         throw new SessionError(503, 'ATTACHMENT_STORAGE_UNAVAILABLE', '附件存储暂不可用', error);
       }
@@ -457,12 +469,13 @@ export function createAttachmentService(
         image.height !== row.height
       )
         throw new SessionError(503, 'ATTACHMENT_CORRUPT', '附件元数据校验失败');
+      cache?.set(version, data);
       return { mimeType: row.mimeType, data };
     },
   };
 }
 
-/** 返回模型请求边界使用的 resolver；数据只在请求内存中存在，capture 由调用方分流。 */
+/** 每个 Run 创建独立有界缓存；附件行版本逐次重验，capture 由调用方分流。 */
 export function resolveAttachmentImages(
   mysql: Sequelize,
   binary: AttachmentBinary,
@@ -473,11 +486,12 @@ export function resolveAttachmentImages(
     binary,
     readUploadBytes: () => attachmentMaxBytes,
   });
+  const cache = createRunImageCache();
   return async (ref: string): Promise<{ mimeType: string; data: Buffer } | null> => {
     if (!ref.startsWith('attachment://')) return null;
     const id = ref.slice('attachment://'.length);
     requireIdentifier(id);
-    return service.read(userId, sessionId, id);
+    return service.read(userId, sessionId, id, cache);
   };
 }
 

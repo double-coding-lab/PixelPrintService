@@ -8,12 +8,15 @@ import type { SessionDiagnostics } from './types';
 import SubagentDiagnostics from './SubagentDiagnostics';
 import { ErrorDiagnosticsPanel } from './ErrorDiagnostics';
 import { readExecutionDiagnostics } from './executionDiagnostics';
+import type { ModelPreparation } from '../../../src/functions/d2c/run/agent/modelPreparation';
 
 /** 新增字段可缺省，兼容旧诊断接口；服务端只投影校验后的计时与编号。 */
 type ModelTimingStep = SessionDiagnostics['steps'][number] & {
   gatewayRequestId?: string | null;
   firstChunkMs?: number | null;
   afterFirstChunkMs?: number | null;
+  preparation?: ModelPreparation;
+  startedSaveMs?: number;
 };
 
 const statuses: Record<string, string> = {
@@ -361,6 +364,9 @@ export function DiagnosticsContent({
           工具含排队时间；缺少开始或结果的记录显示耗时未知。模型分段以客户端收到首个实际输出为界，
           包括正文、思考或工具调用分片；无输出和旧记录保持未知。失败或中断的耗时截至请求结束。
           无法测量网关内部排队，不能从首块耗时直接推断排队时间。
+          调用前装配只覆盖提示准备到模型事件发布前，不代表完整工具结束→模型开始间隙；
+          图检查点及范围外持久化尚未归因。上下文准备含摘要，勿与摘要请求或并行子任务重复相加。
+          模型开始事件保存单列，未计入模型请求耗时。
         </p>
         {!snapshot.steps.length ? (
           <Empty
@@ -406,6 +412,32 @@ export function DiagnosticsContent({
                   )}
                   {step.type !== 'tool' && (
                     <dl className="diagnostics-model-timing">
+                      <div>
+                        <dt>调用前装配（不含图检查点）</dt>
+                        <dd>{diagnosticDuration(step.preparation?.totalMs ?? null)}</dd>
+                      </div>
+                      {(
+                        [
+                          ['promptMs', '提示与契约预算'],
+                          ['contextMs', '上下文准备（含摘要）'],
+                          ['backgroundMs', '后台回执保存'],
+                          ['visualMs', '视觉前置准备'],
+                          ['previewMs', '预览反馈读取'],
+                          ['guardMs', '租约与请求额度'],
+                          ['contextViewMs', '上下文视图'],
+                          ['tokenCountMs', '请求 Token 估算'],
+                          ['imagesMs', '图片读取与物化'],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <div key={key}>
+                          <dt>{label}</dt>
+                          <dd>{diagnosticDuration(step.preparation?.[key] ?? null)}</dd>
+                        </div>
+                      ))}
+                      <div>
+                        <dt>模型开始事件保存</dt>
+                        <dd>{diagnosticDuration(step.startedSaveMs ?? null)}</dd>
+                      </div>
                       <div>
                         <dt>请求开始→首块</dt>
                         <dd>{diagnosticDuration(step.firstChunkMs ?? null)}</dd>

@@ -10,6 +10,7 @@ import { ownedSession, requireIdentifier, SessionError } from '../session/access
 import { toolFeedbackSchema } from './toolFeedback';
 import { runFailureSchema } from './errors';
 import { modelActivitySchema } from './agent/modelActivity';
+import type { ModelPreparation } from './agent/modelPreparation';
 import type { ExecutionDiagnostics, ExecutionScope } from '../../../../shared/executionDiagnostics';
 
 const tools = new Set([
@@ -37,6 +38,8 @@ type Step = {
   startedAt: string | null;
   endedAt: string | null;
   durationMs: number | null;
+  preparation?: ModelPreparation;
+  startedSaveMs?: number;
   feedbackCode?: string;
   /** 客户端观测分段；缺值保持未知，不能推断网关内部排队。 */
   gatewayRequestId?: string | null;
@@ -106,6 +109,8 @@ function executionSteps(rows: D2cTimeline[], status: string): Step[] {
       }
       if (event.requestedReasoningEffort !== undefined)
         step.requestedReasoningEffort = event.requestedReasoningEffort;
+      if (event.preparation !== undefined) step.preparation = event.preparation;
+      if (event.startedSaveMs !== undefined) step.startedSaveMs = event.startedSaveMs;
       if (event.reasoningEscalated !== undefined)
         step.reasoningEscalated = event.reasoningEscalated;
       if (event.gatewayRequestId !== undefined) step.gatewayRequestId = event.gatewayRequestId;
