@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 29
+revision: 30
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -194,3 +194,13 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 ## 默认页面输出目录
 
 - H5与RN新页面统一默认使用pages/home/index（按目标使用jsx或tsx），blocks位于pages/home/blocks。readTemplateResources仅在创建新包时将上游标准src/pages根归一为pages，固定资源配置与包摘要一起保存；验证旧包不归一，自定义根保留。已有源码沿用实际入口，旧工作区配置须显式改为pages后采用新根，不自动搬迁旧产物。
+
+## RN规则与扫描交接效率
+
+- RN样式数值只读取StyleSheet样式对象的直接属性，跳过嵌套shadowOffset、注释、字符串及函数/数组；后写声明覆盖前值，动态声明保守跳过。R19/R20/R23共用解析器，真实尺寸偏差和隐藏锚点仍按原规则拒绝。规则脚本随固定资源冻结，已有工作区须显式升级资源后使用修复。
+- 原生Rule-Scan初始提示提供当前指纹与有界待判断项；read_file的view=scan_pending按条目offset/length分页，默认32、最多64项，普通读取仍按字符返回完整原文。write_file只提交当前指纹、本批nativeReview及必要新增hits，回执显示剩余项，完整报告与程序命中继续保存。
+- 最后一批complete=true且平台核对授权文件、全部判断和真实命中完整时，扫描子图直接交付，省去仅生成口头收尾的请求。部分保存、缺理由、缺实际命中、旧指纹及存储失败不能触发完成；此完成仅代表生成前扫描，不代替生成后的规则和视觉验收。
+- 模型准备阶段及开始事件持久化记录独立耗时，复用现有模型事件；旧记录缺测保持未知。阶段范围不覆盖完整工具结束至下一模型开始间隙，模型耗时、摘要耗时和并行阶段不能重复相加；检查点和图调度等未测部分不能归因为数据库或模型排队。
+- 固定工具契约每个Agent只序列化一次；离线Token估算按固定算法的精确输入摘要复用有界计数，不保留用户原文、不改变预算及真实用量。单Run附件缓存仍逐次检查权限、有效期与行版本，摘要/定位等版本变化失效，失败不缓存，原字节继续校验。
+- 同一授权范围内，完整规则回执及同入口截图之后已有模型响应机会、且未发生新修改/引导/失败或未收取子任务时，仅提供收尾提示，建议复用证据并避免无依据修改。截图不等于视觉通过；首次视觉比较、高思考修复及交互门禁保持原策略，不自动降档或强制宣告完成。
+- 验证入口：rnStyleNumeric、nativeScanAgent/nativeScanPending、modelPreparation/tokenCountCache及generationFinishing相关回归。功能通过与端到端提速分开验收，部署后仍按同稿、同模型、同质量标准比较耗时与请求用量。
