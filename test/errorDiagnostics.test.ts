@@ -411,6 +411,38 @@ test('去重后的稳定逆序分页与筛选不改变会话总数，新增事�
   assert.equal(one.total, 8);
   assert.equal(one.filteredTotal, 7);
   assert.equal(one.nextBefore, 3);
+  assert.deepEqual(one.filteredCounts, {
+    total: 7,
+    executionErrors: 7,
+    toolCorrections: 0,
+    ruleFailures: 0,
+  });
+  assert.equal(one.facets?.categories.model, 7);
+  assert.equal(one.facets?.categories.tool ?? 0, 0);
+  assert.equal(one.facets?.scopes.subagent, 7);
+  assert.equal(one.facets?.allRuns, 7);
+  const correction = await f.read({ category: 'tool' });
+  assert.deepEqual(correction.filteredCounts, {
+    total: 1,
+    executionErrors: 0,
+    toolCorrections: 1,
+    ruleFailures: 0,
+  });
+  const rule = await f.read({ category: 'rule' });
+  assert.deepEqual(rule.filteredCounts, {
+    total: 0,
+    executionErrors: 0,
+    toolCorrections: 0,
+    ruleFailures: 1,
+  });
+  const empty = await f.read({ runId: 'other-run' });
+  assert.deepEqual(empty.filteredCounts, {
+    total: 0,
+    executionErrors: 0,
+    toolCorrections: 0,
+    ruleFailures: 0,
+  });
+  assert.equal(empty.facets?.allRuns, 9);
   f.event('model_status', {
     operationId: randomUUID(),
     scope: 'ui',

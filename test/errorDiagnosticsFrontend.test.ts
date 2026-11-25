@@ -295,7 +295,9 @@ test('生产面板初始 SSR 为全部会话且统计未知，无副作用请求
   );
   assert.match(html, /aria-label="执行错误诊断"/);
   assert.match(html, /<option value="session" selected="">会话全部轮次/);
-  assert.match(html, /当前所选轮次 · new-run/);
+  assert.match(html, /当前所选轮次（—） · new-run/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /hidden=""/);
   assert.match(html, /统计尚未确认/);
   assert.doesNotMatch(html, /<strong>0<|<details/);
 });
@@ -474,4 +476,30 @@ test('数据库未知及私有字段不进入安全投影、明细或复制；�
     assert.match(copy, /数据库事务阶段: 未记录（未知）/);
     assert.doesNotMatch(copy + render(value), /rollback|after_commit|提交成功|已提交/);
   }
+});
+
+test('筛选统计采用服务端整快照计数，分类和范围数量白名单投影', () => {
+  const value = fixture({
+    filteredCounts: { total: 7, executionErrors: 6, toolCorrections: 1, ruleFailures: 2 },
+    facets: {
+      categories: { model: 7 },
+      scopes: { subagent: 7 },
+      runs: { 'run-a': 7 },
+      allCategories: 7,
+      allScopes: 7,
+      allRuns: 7,
+    },
+  });
+  const projected = projectErrorDiagnostics(value, 'session/one');
+  assert.equal(projected.filteredCounts?.total, 7);
+  assert.equal(projected.facets?.categories.model, 7);
+  const html = render(value);
+  assert.match(html, />7</);
+  assert.doesNotMatch(html, />79</);
+  assert.throws(() =>
+    projectErrorDiagnostics(
+      { ...value, filteredCounts: { ...value.filteredCounts, total: -1 } },
+      'session/one',
+    ),
+  );
 });

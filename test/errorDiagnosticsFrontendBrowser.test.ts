@@ -152,6 +152,8 @@ test(
       }
       const before = url.searchParams.get('before');
       const runId = url.searchParams.get('runId');
+      const filteredCount =
+        url.searchParams.has('category') || url.searchParams.has('scope') ? 3 : runId ? 1 : 79;
       const snapshot: ErrorDiagnostics = {
         sessionId,
         observedAt: '2026-11-21T01:01:00Z',
@@ -161,7 +163,21 @@ test(
         executionErrors: 70,
         toolCorrections: 9,
         ruleFailures: 2,
-        filteredTotal: runId ? 1 : 81,
+        filteredTotal: filteredCount === 79 ? 81 : filteredCount,
+        filteredCounts: {
+          total: filteredCount,
+          executionErrors: filteredCount,
+          toolCorrections: 0,
+          ruleFailures: filteredCount === 79 ? 2 : 0,
+        },
+        facets: {
+          categories: { model: 70, tool: 3, rule: 2 },
+          scopes: { main: 70, subagent: 3, unknown: 0 },
+          runs: { 'run-a': 1, 'run-b': 1 },
+          allCategories: 81,
+          allScopes: 81,
+          allRuns: 81,
+        },
         items: before
           ? [
               row('stable-error', runId || 'run-old', 1000, url),
@@ -228,7 +244,23 @@ test(
     assert.equal(requests.length, 0);
     await update({ open: true });
     await waitReady();
+    const toggle = region.getByRole('button', { name: '执行错误', exact: true });
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+    assert.equal(await region.getByRole('combobox', { name: '错误分类' }).isVisible(), false);
+    const sections = await page
+      .locator('[aria-label="模型用量"], [aria-label="执行错误诊断"]')
+      .evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('aria-label')));
+    assert.deepEqual(sections, ['模型用量', '执行错误诊断']);
+    await toggle.click();
     assert.equal(errorCalls()[0].searchParams.has('runId'), false);
+    assert.match(
+      (await region.getByRole('combobox', { name: '错误分类' }).textContent()) ?? '',
+      /工具执行异常或纠正（3）/,
+    );
+    assert.match(
+      (await region.getByRole('combobox', { name: 'Agent 范围' }).textContent()) ?? '',
+      /子 Agent（3）/,
+    );
     assert.equal(await region.getByRole('combobox', { name: '错误轮次' }).inputValue(), 'session');
     assert.match(await metrics.innerText(), /错误总数（不含规则未通过）\s*79/);
     assert.match(await region.innerText(), /run-old|覆盖不完整|当前列表尚未完整加载/);
@@ -341,11 +373,14 @@ test(
     await waitRequest(previous + 2);
     await waitReady();
     assert.equal(errorCalls().at(-1)!.searchParams.get('runId'), 'run-a');
+    assert.match(await metrics.innerText(), /错误总数（不含规则未通过）\s*1/);
     // 父级切换 run 后默认回到 session；不受父菜单中只有两个最近 run 的限制。
     await page.getByRole('combobox', { name: '诊断轮次', exact: true }).click();
     await page.locator('.ant-select-item-option').filter({ hasText: 'run-b' }).click();
     await waitRequest(previous + 3);
     await waitReady();
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+    await toggle.click();
     assert.equal(await region.getByRole('combobox', { name: '错误轮次' }).inputValue(), 'session');
     assert.equal(errorCalls().at(-1)!.searchParams.has('runId'), false);
     await region.getByRole('combobox', { name: '错误轮次' }).selectOption('current');
@@ -363,6 +398,7 @@ test(
     await region.getByRole('combobox', { name: 'Agent 范围' }).selectOption('subagent');
     await waitRequest(raceCount + 3);
     await waitReady();
+    assert.match(await metrics.innerText(), /错误总数（不含规则未通过）\s*3/);
     assert.match(await region.locator('.error-diagnostic-meta').innerText(), /工具执行异常或纠正/);
     assert.match(
       await region.locator('.error-diagnostic-heading').innerText(),
@@ -407,6 +443,12 @@ test(
         (element: HTMLElement) => element.scrollWidth <= element.clientWidth + 1,
       ),
     );
+    const card = region.locator('.error-diagnostic-record').first();
+    assert.equal(
+      await card.evaluate((node: Element) => getComputedStyle(node).borderLeftWidth),
+      '3px',
+    );
+    await page.screenshot({ path: '/tmp/diagnostic-filters-mobile.png' });
     // 刷新时关闭 Drawer：晚到结果不重挂组件；关闭期间 revision 更新也不请求。
     hold = () => true;
     const closeCount = errorCalls().length;
@@ -432,6 +474,7 @@ test(
     for (const finish of held.splice(0)) finish();
     hold = null;
     await page.waitForLoadState('networkidle');
+    await toggle.click();
     await region.locator('summary').click();
     await region.getByRole('button', { name: '复制排查信息' }).click();
     assert.match(await page.evaluate(() => (window as any).copied), /sessionId: session-b/);
