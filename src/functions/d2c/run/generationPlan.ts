@@ -3,7 +3,12 @@ import { normalizeRelativePath } from '../utils/paths';
 
 /** 从固定配置与稳定文件生成本轮唯一的输出约定；历史产物不因默认值被搬迁。 */
 export function generationPlan(
-  config: { output?: { dir?: string }; images?: { assetsDir?: string }; merge?: { mode?: string } },
+  config: {
+    project?: { framework?: string };
+    output?: { dir?: string };
+    images?: { assetsDir?: string };
+    merge?: { mode?: string };
+  },
   files: string[],
 ) {
   const outputRoot = normalizeRelativePath(config.output?.dir ?? 'pages');
@@ -26,13 +31,13 @@ export function generationPlan(
       (dir, _, all) =>
         !all.some((parent) => parent !== dir && (parent === '.' || dir.startsWith(parent + '/'))),
     );
-  const pageDirectory = directories.length === 1 ? directories[0] : `${outputRoot}/page`;
+  const pageDirectory = directories.length === 1 ? directories[0] : `${outputRoot}/home`;
   const pagePrefix = pageDirectory === '.' ? '' : pageDirectory + '/';
   return [
     '[平台输出约定]',
     `固定配置 output.dir=${outputRoot}/；images.assetsDir=${imageRoot}/；merge.mode=${config.merge?.mode ?? 'flat'}。`,
     directories.length > 1
-      ? `当前已有多个页面目录：${directories.join('、')}。按用户指定目标沿用对应目录，不自动新增page或迁移其他页面。`
+      ? `当前已有多个页面目录：${directories.join('、')}。按用户指定目标沿用对应目录，不自动新增home或迁移其他页面。`
       : `本轮页面目录：${pageDirectory === '.' ? '当前会话根目录' : pagePrefix}；区块目录统一为 ${pagePrefix}blocks/<英文别名>/，不能误写为 ${outputRoot}/blocks/。`,
     `默认切图slug为page，图片目录及CDN地址以prepare_slices回执为准，不能由代码目录推算图片URL。`,
     directories.length

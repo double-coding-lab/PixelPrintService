@@ -177,5 +177,15 @@ export async function readTemplateResources(
   await walk(roots[0], '');
   /** 平台Skill随工作区资源一起冻结，独立于上游同步目录，升级时才替换。 */
   await walk(roots[1], 'platform-skills');
+  // 新资源包采用平台的 RN 输出默认值；旧冻结包仍按原字节验证和恢复。
+  // 仅归一上游的标准默认目录，自定义根目录保持原值。
+  const rnTemplate = files.find((file) => file.path === 'templates/pp-d2c.rn.config.json');
+  if (rnTemplate) {
+    const config = JSON.parse(Buffer.from(rnTemplate.content, 'base64').toString('utf8'));
+    if (config.project?.framework === 'rn' && /^src\/pages\/?$/.test(config.output?.dir ?? '')) {
+      config.output.dir = 'pages/';
+      rnTemplate.content = Buffer.from(JSON.stringify(config, null, 2) + '\n').toString('base64');
+    }
+  }
   return validateResourceBundle({ format: 1, files });
 }
