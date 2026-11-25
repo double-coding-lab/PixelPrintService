@@ -10,6 +10,7 @@ import {
 import { z } from 'zod';
 import type { SubagentRole } from '../subagent';
 import { readToolFeedback } from '../toolFeedback';
+import { generationFinishingEvidence, generationFinishingPrompt } from './generationFinishing';
 
 export type ReasoningEffort = 'low' | 'high';
 const reasonSchema = z.enum([
@@ -300,5 +301,24 @@ export function createReasoningMiddleware(input: ReasoningInput) {
     name: 'PixelPrintReasoning',
     stateSchema: reasoningStateSchema,
     beforeModel: (state) => ({ _pixelprintReasoning: updateReasoningState(input, state) }),
+    wrapModelCall: (request, handler) => {
+      const policy = policySchema.safeParse(request.state._pixelprintReasoning);
+      if (
+        !input.specialist &&
+        policy.success &&
+        policy.data.scope === 'root' &&
+        policy.data.decision.effort === 'high' &&
+        generationFinishingEvidence(
+          request.state.messages,
+          policy.data.admissionId,
+          request.state.guidanceApplied,
+        )
+      )
+        return handler({
+          ...request,
+          systemMessage: request.systemMessage.concat(`\n${generationFinishingPrompt}`),
+        });
+      return handler(request);
+    },
   });
 }
