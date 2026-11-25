@@ -212,6 +212,62 @@ export function listStyleKeys(styleText) {
 
 // ── 数值取用(统一 rpx 剥壳,供 R19/R20/R23 复用) ─────────────────
 
+// 注释替换为空白以保留 token 边界,字符串原样保留,不把文案当作声明。
+function withoutComments(text) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const j = skipComment(text, i);
+    if (j !== i) { out += ' '; i = j; continue; }
+    if (isStrOpen(text[i])) {
+      const end = skipString(text, i);
+      out += text.slice(i, end);
+      i = end;
+      continue;
+    }
+    out += text[i++];
+  }
+  return out;
+}
+
+// 按顶层逗号切分完整属性值,嵌套对象/数组/调用/函数体整体跳过。
+// 展开或计算 key 可能覆盖任意属性,后续明确声明才能恢复静态取值。
+function directPropertyValue(body, propName) {
+  const text = withoutComments(body);
+  let raw = null;
+  let i = 0;
+  while (i < text.length) {
+    if (/[\s,]/.test(text[i])) { i += 1; continue; }
+    const start = i;
+    let key = null;
+    if (text[i] === "'" || text[i] === '"') {
+      const end = skipString(text, i);
+      key = text.slice(i + 1, end - 1);
+      i = end;
+      // 转义 key 可能也是目标属性,不执行表达式来猜测。
+      if (key.includes('\\')) raw = '';
+    } else {
+      const match = text.slice(i).match(/^[A-Za-z_$][\w$]*/);
+      if (match) { key = match[0]; i += key.length; }
+    }
+    while (/\s/.test(text[i] || '') && i < text.length) i += 1;
+    const hasValue = text[i] === ':';
+    const valueStart = hasValue ? i + 1 : start;
+    const end = skipTopLevelValue(text, valueStart, text.length);
+    if (key === propName) {
+      raw = hasValue ? text.slice(valueStart, text[end - 1] === ',' ? end - 1 : end).trim() : '';
+    } else if (text.startsWith('...', start) || text[start] === '[') {
+      raw = '';
+    } else if (!hasValue && (key === 'get' || key === 'set')) {
+      // getter/setter 不是静态数值声明,仍会覆盖同名直接属性。
+      const accessorKey = text.slice(i).match(/^([A-Za-z_$][\w$]*|'[^']*'|"[^"]*")\s*\(/);
+      if (accessorKey && accessorKey[1].replace(/^['"]|['"]$/g, '') === propName) raw = '';
+    }
+    i = end;
+  }
+  return raw;
+}
+
 // 从规则体取某属性的数值声明(取最后一次,对齐"后写覆盖"直觉):
 //   propName: 16          → { value: 16, viaRpx: false }
 //   propName: rpx(16)     → { value: 16, viaRpx: true }(helperName 可配,默认 rpx)
@@ -220,10 +276,7 @@ export function listStyleKeys(styleText) {
 // 对账口径:期望 = Figma 原值 × config.unit.scale,rpx(x) 剥壳后的 x 与期望同域直接比
 // (rn 模板 config unit.scale=1、responsive.enabled=true,rpx 参数即 Figma 原值)。
 export function getNumeric(body, propName, helperName = 'rpx') {
-  const re = new RegExp(`(?:^|[,{\\s])${propName}\\s*:\\s*([^,\\n}]+)`, 'g');
-  let raw = null;
-  let m;
-  while ((m = re.exec(body)) !== null) raw = m[1].trim();
+  const raw = directPropertyValue(body, propName);
   if (raw == null) return null;
   if (/^-?\d+(?:\.\d+)?$/.test(raw)) return { value: parseFloat(raw), viaRpx: false };
   const rpxRe = new RegExp(`^${helperName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\(\\s*(-?\\d+(?:\\.\\d+)?)\\s*\\)$`);
@@ -233,17 +286,13 @@ export function getNumeric(body, propName, helperName = 'rpx') {
 }
 
 // 跨多个规则体取某属性数值(后出现的规则体覆盖先出现):
-// 任一规则体给出可解析值 → 取最后一个可解析值;仅出现 unparseable → { unparseable:true };都没写 → null。
+// 取最后一个声明(含 unparseable),后写动态值不能回退成先前静态数值;都没写 → null。
 export function getNumericAcross(bodies, propName, helperName = 'rpx') {
   let last = null;
-  let sawUnparseable = false;
   for (const b of bodies) {
     const r = getNumeric(b, propName, helperName);
     if (r == null) continue;
-    if (r.unparseable) { sawUnparseable = true; continue; }
     last = r;
   }
-  if (last) return last;
-  if (sawUnparseable) return { unparseable: true };
-  return null;
+  return last;
 }
