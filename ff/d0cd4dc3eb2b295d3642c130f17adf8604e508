@@ -1,0 +1,21 @@
+web/src/workspace/phonePreview.css
+  s_f084de538b079d::t_71d9ee822df766 147
+web/src/workspace/designReference.css
+  s_f084de538b079d::t_71d9ee822df766 76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "ffd0cd4dc3eb2b295d3642c130f17adf8604e508",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
