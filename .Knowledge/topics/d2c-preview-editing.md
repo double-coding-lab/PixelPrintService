@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 19
+revision: 20
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -112,3 +112,8 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 - focusSelector滚动到目标并截取该位置视口，适合长页面下方交互；截图仍受12000px、10MiB及现有网络、进程和时限保护。coverage记录page/focused、实际文档坐标及范围，区分height_limit、byte_limit和nested_scroll，覆盖限制与真实运行异常分别判断；截图局部覆盖不能作为整页验收。
 - 同previewId加归一动作/聚焦参数指纹缓存并构造附件身份：重复相同计划复用，不同操作或区域保留独立图片。聊天分别说明定点、内部滚动、高度或字节限制，历史缺覆盖信息仅说明局部截图，不推断为高度超限。
 - 原有无动作截图像素与隔离边界保持；交互收敛见执行主题。真实本地Chromium测试覆盖点击、双向手势、循环边界、聚焦下方、断言失败及网络阻断；Docker仅验证既有协议，不表示真实容器浏览器联调。
+
+## 手机预览边界滚动
+
+- 运行预览、在线编辑副本、版本预览共用的 `.phone-preview-stage`，以及设计稿长图的 `.design-reference-canvas` 使用原生 `overscroll-behavior: auto`；内部仍可滚动时先滚内部，达到顶部或底部后将同方向滚动传递给可滚动祖先。
+- 全屏继续沿用背景滚动锁定；视口尺寸、显示缩放和 iframe 隔离保持原有行为。样式位于 `phonePreview.css` 与 `designReference.css`。
