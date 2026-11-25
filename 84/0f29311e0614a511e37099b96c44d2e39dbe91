@@ -1,0 +1,21 @@
+src/functions/d2c/images/variants.ts
+  s_f084de538b079d::t_07a15537475444 251-269
+src/functions/d2c/images/variantStore.ts
+  s_f084de538b079d::t_07a15537475444 77-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "840f29311e0614a511e37099b96c44d2e39dbe91",
+  "prompts": {},
+  "sessions": {
+    "s_f084de538b079d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19aff-fd13-7993-9b73-a3179aabdd00",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
