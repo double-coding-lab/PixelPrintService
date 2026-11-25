@@ -126,17 +126,21 @@ export function completedWriteView(messages: BaseMessage[], budget: number) {
  * 每次请求重新计算只读结果视图：相同读取保留最近完整回执，旧回执仍保留工具配对和定位。
  * 不缓存“模型已经看过”的状态；摘要、恢复或单独查看一段历史时，唯一原文仍会保留。
  */
-export function repeatedReadView(messages: BaseMessage[]) {
+function repeatedResultView(messages: BaseMessage[], feedbackOnly: boolean) {
   const candidates: Array<{ index: number; key: string; id: string; path?: string; text: string }> =
     [];
   const ids = new Map<string, number>();
-  for (const message of messages)
+  const resultCounts = new Map<string, number>();
+  for (const message of messages) {
+    if (ToolMessage.isInstance(message))
+      resultCounts.set(message.tool_call_id, (resultCounts.get(message.tool_call_id) ?? 0) + 1);
     if (AIMessage.isInstance(message))
       for (const call of message.tool_calls ?? [])
         if (call.id) ids.set(call.id, (ids.get(call.id) ?? 0) + 1);
+  }
   for (let index = 0; index < messages.length; index++) {
     const request = messages[index];
-    if (!AIMessage.isInstance(request)) continue;
+    if (!AIMessage.isInstance(request) || AIMessageChunk.isInstance(request)) continue;
     const calls = new Map(
       (request.tool_calls ?? [])
         .filter((call) => call.id && ids.get(call.id) === 1)
@@ -158,9 +162,17 @@ export function repeatedReadView(messages: BaseMessage[]) {
     ) {
       const message = messages[next] as ToolMessage;
       const call = calls.get(message.tool_call_id);
-      if (!call || results.get(message.tool_call_id) !== 1 || message.status === 'error') continue;
+      if (
+        !call ||
+        results.get(message.tool_call_id) !== 1 ||
+        resultCounts.get(message.tool_call_id) !== 1 ||
+        ToolMessageChunk.isInstance(message) ||
+        (message.status === 'error' && !feedbackOnly)
+      )
+        continue;
       if (message.name && message.name !== call.name) continue;
       if (
+        !feedbackOnly &&
         call.name !== 'read_file' &&
         !(call.name === 'figma' && call.args.command === 'inspect-node')
       )
@@ -171,7 +183,9 @@ export function repeatedReadView(messages: BaseMessage[]) {
           : message.content.length === 1 && message.content[0].type === 'text'
             ? message.content[0].text
             : undefined;
-      if (typeof single !== 'string' || single.length < 1024 || readToolFeedback(single)) continue;
+      if (typeof single !== 'string' || single.length < 1024) continue;
+      const feedback = readToolFeedback(single);
+      if (feedbackOnly ? !feedback || feedback.action !== 'adjust' : !!feedback) continue;
       let value: Record<string, unknown>;
       try {
         value = JSON.parse(single);
@@ -182,15 +196,34 @@ export function repeatedReadView(messages: BaseMessage[]) {
         !value ||
         typeof value !== 'object' ||
         Array.isArray(value) ||
-        value.ok === false ||
-        value.success === false ||
         value.outcome === 'unknown' ||
-        value.error ||
+        value.error !== undefined ||
+        (feedbackOnly &&
+          Object.keys(value).some(
+            (key) =>
+              ![
+                'type',
+                'ok',
+                'code',
+                'retryAfterMs',
+                'path',
+                'resource',
+                'detail',
+                'needsNames',
+                'needsNamesTotal',
+                'hint',
+                'action',
+                'message',
+                'retryable',
+              ].includes(key),
+          )) ||
+        (!feedbackOnly && (value.ok === false || value.success === false)) ||
         value.imageRef ||
         value.type === 'context_reference'
       )
         continue;
       if (
+        !feedbackOnly &&
         call.name === 'read_file' &&
         (typeof value.content !== 'string' ||
           typeof value.offset !== 'number' ||
@@ -201,8 +234,9 @@ export function repeatedReadView(messages: BaseMessage[]) {
           value.totalCharacters < value.offset + value.content.length)
       )
         continue;
-      const identity =
-        call.name === 'read_file'
+      const identity = feedbackOnly
+        ? [call.name, call.args, message.name, message.status]
+        : call.name === 'read_file'
           ? [call.name, call.args.path, call.args.resource === true]
           : [call.name, call.args];
       const key = createHash('sha256')
@@ -227,12 +261,14 @@ export function repeatedReadView(messages: BaseMessage[]) {
     }
     const content = JSON.stringify({
       type: 'context_reference',
+      ...(feedbackOnly ? { ok: false, feedbackCode: readToolFeedback(candidate.text)!.code } : {}),
       duplicateOfToolCallId: current.id,
       ...(candidate.path ? { path: candidate.path } : {}),
       characters: candidate.text.length,
       resultSha256: createHash('sha256').update(candidate.text).digest('hex'),
-      message:
-        '相同读取结果已保留在本次上下文中较新的完整工具回执，请直接复用。此处仅省略重复正文，不表示文件变化或检查通过；若后续摘要未保留原文，可按原路径和分页重新读取。',
+      message: feedbackOnly
+        ? '严格相同工具参数与反馈的最新完整回执仍在本次上下文中，按duplicateOfToolCallId查看。这里只省略重复历史反馈，不表示成功、问题已修复或允许重放副作用；不同反馈与最新错误保持原文。'
+        : '相同读取结果已保留在本次上下文中较新的完整工具回执，请直接复用。此处仅省略重复正文，不表示文件变化或检查通过；若后续摘要未保留原文，可按原路径和分页重新读取。',
     });
     if (content.length + 256 >= candidate.text.length) continue;
     replacements.set(
@@ -255,9 +291,19 @@ export function repeatedReadView(messages: BaseMessage[]) {
     : messages;
 }
 
+/** 只折叠逐字相同的正常读取，最新完整证据继续保留。 */
+export function repeatedReadView(messages: BaseMessage[]) {
+  return repeatedResultView(messages, false);
+}
+
+/** 只折叠参数及正文逐字相同、唯一配对的结构化反馈；未知副作用及最新失败不折叠。 */
+export function repeatedFeedbackView(messages: BaseMessage[]) {
+  return repeatedResultView(messages, true);
+}
+
 /** 生成与摘要共用相同的无损定位视图，完整历史及真正工具输入继续原样保存。 */
 export function modelContextView(messages: BaseMessage[], budget: number) {
-  return repeatedReadView(completedWriteView(messages, budget));
+  return repeatedFeedbackView(repeatedReadView(completedWriteView(messages, budget)));
 }
 
 /** 读取工具直接返回可消费正文；按剩余Token预算缩小一页并重算nextOffset。 */

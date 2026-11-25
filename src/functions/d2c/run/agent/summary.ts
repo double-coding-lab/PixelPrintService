@@ -4,6 +4,7 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage, AIMessage, type BaseMessage } from '@langchain/core/messages';
 import { createSummarizationMiddleware } from 'deepagents';
 import { createMiddleware } from 'langchain';
+import { z } from 'zod';
 import type { HistoryArchive } from './archive';
 import { createHash } from 'node:crypto';
 import { LangChainTracer } from '@langchain/core/tracers/tracer_langchain';
@@ -89,7 +90,9 @@ export function createContextSummary(input: {
   transformMessage?: (message: BaseMessage) => BaseMessage;
   overhead?: () => number;
   view?: (messages: BaseMessage[]) => BaseMessage[];
-  /** 仅明确增量交互提供当前授权输入ID；实时guidance优先，平台Human通知不能推进边界。 */
+  /** 本次入口已授权的真实用户/委派消息；平台生成的 Human 通知不能推进边界。 */
+  historicalSourceInputId?: string;
+  /** 供可信调用方显式提供补充授权 ID；生产入口使用固定输入与 guidanceApplied，不猜测 Human 文案。 */
   historicalSourceBoundaryId?: (state: unknown) => string | undefined;
 }) {
   let sourceArchive: { path: string; characters: number } | undefined;
@@ -199,7 +202,11 @@ export function createContextSummary(input: {
   const wrap = native.wrapModelCall!;
   return createMiddleware({
     ...native,
-    stateSchema: native.stateSchema!.extend(incrementalVerificationStateSchema.shape),
+    stateSchema: native.stateSchema!.extend({
+      ...incrementalVerificationStateSchema.shape,
+      // 仅接受 guidance 中间件已经入图的授权 ID，不用普通 Human 通知推断新输入。
+      guidanceApplied: z.array(z.string()).optional(),
+    }),
     wrapModelCall: async (request, handler) => {
       input.signal.throwIfAborted();
       input.archive.assertHealthy();
@@ -208,9 +215,21 @@ export function createContextSummary(input: {
       const effective = event
         ? [event.summaryMessage, ...request.messages.slice(event.cutoffIndex)]
         : request.messages;
+      const guidanceApplied =
+        z.object({ guidanceApplied: z.array(z.string()).optional() }).parse(request.state)
+          .guidanceApplied ?? [];
+      const boundaryIds = new Set([
+        input.historicalSourceInputId,
+        input.historicalSourceBoundaryId?.(request.state),
+        ...guidanceApplied,
+      ]);
+      const boundaries = request.messages.filter(
+        (message) => message.type === 'human' && message.id && boundaryIds.has(message.id),
+      );
+      const boundaryId = boundaries.at(-1)?.id;
       const prepared = await historicalSourceView(
         request.messages,
-        input.historicalSourceBoundaryId?.(request.state),
+        boundaryId,
         event?.cutoffIndex ?? 0,
       );
       input.signal.throwIfAborted();

@@ -190,6 +190,8 @@ export async function runAgent(input: AgentRunInput): Promise<{
     : undefined;
   const controller = new AbortController();
   const signal = AbortSignal.any([input.signal, controller.signal]);
+  // 主入口只传本轮固定用户消息，子入口只传授权委派；业务回答 resume 时为空。
+  const currentInputId = input.messages.filter(HumanMessage.isInstance).at(-1)?.id;
   const delegationScheduler = createDelegationScheduler({
     concurrency: subagentLimits.concurrency,
     signal,
@@ -2526,11 +2528,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
         transformMessage: input.transformMessage,
         overhead: () => promptOverhead,
         view: (messages) => modelContextView(messages, input.contextBudgetTokens),
-        historicalSourceBoundaryId: (state) => {
-          if (!state || typeof state !== 'object') return;
-          const current = incrementalVerification(state as Record<string, unknown>);
-          return current?.guidance.at(-1) ?? current?.admissionId;
-        },
+        historicalSourceInputId: currentInputId,
       })
     : undefined;
   /** 同名中间件替换是 1.16.0 的公开定制机制，避免默认文件和通用子 Agent 越权。 */
