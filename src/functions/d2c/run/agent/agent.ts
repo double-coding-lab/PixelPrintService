@@ -787,7 +787,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       (recovery.inputChanged ||
         recovery.changedPaths.length > 0 ||
         recovery.missingPaths.length > 0);
-    const childTools = createSubagentTools(input.tools, role, writePaths);
+    const childTools = createSubagentTools(input.tools, role, writePaths, nodeId ?? undefined);
     const saved = new Set<string>(Object.keys(progress?.state.files ?? {}));
     const partialFiles = new Set(progress?.state.partialFiles ?? []);
     const nativeScans = new Map<string, NativeRuleScanResult>();

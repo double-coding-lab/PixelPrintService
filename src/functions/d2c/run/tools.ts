@@ -1408,7 +1408,13 @@ export async function createGenerationTools(input: {
       return result.output;
     },
     /** 执行规则检查并返回修复报告；仅 merge 报告用于最终结论，并绑定当前 mutation。 */
-    async rules(relative, mode) {
+    async rules(relative, mode, scope) {
+      if (scope && (mode !== 'block' || !/^I?\d+:\d+(?:;I?\d+:\d+)*$/.test(scope.rootNodeId)))
+        throw toolIssue('INVALID_ARGUMENT', 'VALIDATION_FAILED', {
+          stage: 'tool',
+          tool: 'check_rules',
+        });
+      const scopeArgs = scope ? ['--root', scope.rootNodeId] : [];
       const normalized = validate(() => assertArtifactPath(relative));
       const product = await resolveWorkspacePath(restored.workspace, normalized);
       if (!fileKey) throw new RunExecutionError('VALIDATION_FAILED', { stage: 'validation' });
@@ -1514,7 +1520,7 @@ export async function createGenerationTools(input: {
       }
       let result = await script(
         'check-rules.mjs',
-        [`--${mode}`, product, '--cache-key', fileKey],
+        [`--${mode}`, product, '--cache-key', fileKey, ...scopeArgs],
         false,
       );
       if (images.size) {
@@ -1530,7 +1536,7 @@ export async function createGenerationTools(input: {
           if (view.references) {
             const mapped = await script(
               'check-rules.mjs',
-              [`--${mode}`, view.product, '--cache-key', fileKey],
+              [`--${mode}`, view.product, '--cache-key', fileKey, ...scopeArgs],
               false,
               view.directory,
             );
@@ -1767,8 +1773,8 @@ export async function createGenerationTools(input: {
     remove: (relative: string) => runScriptAction(() => tools.remove(relative)),
     figma: (...[command, args]: Parameters<GenerationTools['figma']>) =>
       runScriptAction(() => tools.figma(command, args)),
-    rules: (...[relative, mode]: Parameters<GenerationTools['rules']>) =>
-      runScriptAction(() => tools.rules(relative, mode)),
+    rules: (...[relative, mode, scope]: Parameters<GenerationTools['rules']>) =>
+      runScriptAction(() => tools.rules(relative, mode, scope)),
     slices: (...[slug, options]: Parameters<GenerationTools['slices']>) =>
       runScriptAction(() => tools.slices(slug, options)),
   };

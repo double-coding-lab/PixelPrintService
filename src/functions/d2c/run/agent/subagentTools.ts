@@ -111,6 +111,7 @@ export function createSubagentTools(
   tools: GenerationTools,
   role: SubagentRole,
   writePaths: string[] = [],
+  nodeId?: string,
 ): GenerationTools & {
   pendingRuleChecks: () => string[];
   requiredRuleChecks: () => string[];
@@ -215,7 +216,10 @@ export function createSubagentTools(
         return denied(relative);
       checked.delete(relative);
       const revision = mutation;
-      const result = await tools.rules(relative, 'block');
+      // 绑定平台已核实的委派节点；调用方不能通过工具参数改写校验范围。
+      const result = nodeId
+        ? await tools.rules(relative, 'block', { rootNodeId: nodeId })
+        : await tools.rules(relative, 'block');
       if (readToolFeedback(result)) return result;
       let report;
       try {

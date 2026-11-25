@@ -2,7 +2,12 @@ import './helpers/projectFixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FakeToolCallingModel } from 'langchain';
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
+import { MemorySaver } from '@langchain/langgraph-checkpoint';
+import {
+  createSubagentProgress,
+  type AgentCheckpoint,
+} from '../src/functions/d2c/run/agent/subagentCheckpoint';
 import {
   createSubagentTools,
   subagentReservations,
@@ -83,6 +88,26 @@ test('UI只能检查授权区块目录，兼容尾斜杠并拒绝merge、祖先�
     await assert.rejects(other.rules(directory, 'block'), invalid);
   }
   assert.equal(f.checks.length, 1);
+});
+
+test('可信委派nodeId包含instance时也注入第三参，调用方伪造scope不能覆盖', async () => {
+  for (const nodeId of ['1:2', 'I1:2;3:4']) {
+    const f = fixture();
+    const child = createSubagentTools(f.tools, 'ui', [filename], nodeId);
+    const forged = { rootNodeId: '999:1' };
+    await child.write(filename, 'owned');
+    await child.rules(directory, 'block', forged);
+    assert.deepEqual(f.checks, [[directory, 'block', { rootNodeId: nodeId }]]);
+    assert.deepEqual(forged, { rootNodeId: '999:1' });
+    assert.deepEqual(child.pendingRuleChecks(), []);
+    await assert.rejects(child.rules(directory, 'merge', forged), invalid);
+    assert.equal(f.checks.length, 1);
+  }
+  const legacy = fixture();
+  await createSubagentTools(legacy.tools, 'ui', [filename]).rules(directory, 'block', {
+    rootNodeId: '999:1',
+  });
+  assert.deepEqual(legacy.checks, [[directory, 'block']], '旧直接调用保持两参，不信任伪造第三参');
 });
 
 test('检查目录与精确writePaths不兼容时保守拒绝，不扩大授权', async () => {
@@ -169,8 +194,9 @@ for (const thrown of [false, true])
     let childCalls = 0;
     let receipt: any;
     const events: SubagentEvent[] = [];
-    f.tools.rules = async (path, mode) => {
-      f.checks.push([path, mode]);
+    f.tools.rules = async (...args) => {
+      const [path] = args;
+      f.checks.push(args);
       if (++attempts === 1) {
         if (thrown)
           throw toolIssue(
@@ -241,8 +267,8 @@ for (const thrown of [false, true])
     assert.equal(receipt.success, true);
     assert.deepEqual(receipt.files, [filename]);
     assert.deepEqual(f.checks, [
-      [directory, 'block'],
-      [directory, 'block'],
+      [directory, 'block', { rootNodeId: '1:2' }],
+      [directory, 'block', { rootNodeId: '1:2' }],
     ]);
     assert.equal(
       events.filter((event) => event.tool === 'check_rules' && event.status === 'tool_started')
@@ -366,4 +392,115 @@ test('没有真实执行的规则、并发写入及最新检查故障均不能�
   };
   await assert.rejects(child.rules(directory, 'block'), /lease lost/);
   assert.deepEqual(child.pendingRuleChecks(), [directory]);
+});
+
+test('持久任务显式恢复后仍使用原委派nodeId，模型check_rules伪造scope不能扩大范围', async () => {
+  const f = fixture();
+  f.files.set(filename, 'saved before interruption');
+  f.tools.read = async (path) =>
+    JSON.stringify({ content: f.files.get(path) ?? '{}', nextOffset: null });
+  const checkpoint = Object.assign(new MemorySaver(), {
+    config(namespace = '', id?: string) {
+      return {
+        configurable: {
+          thread_id: 'rule-scope-recovery',
+          checkpoint_ns: namespace,
+          ...(id ? { checkpoint_id: id } : {}),
+        },
+      };
+    },
+  }) as AgentCheckpoint;
+  const first = await createSubagentProgress(checkpoint, {
+    continuation: false,
+    identity: 'scope-context',
+    messageId: 'before',
+  });
+  const task = { role: 'ui' as const, nodeId: '1:2', writePaths: [filename] };
+  const opened = await first.open(task, '', f.tools);
+  await opened.wrote(filename);
+  const resumed = await createSubagentProgress(checkpoint, {
+    continuation: true,
+    identity: 'scope-context',
+    messageId: 'resume',
+  });
+  let parentCalls = 0,
+    childCalls = 0;
+  let receipt: { success: boolean; files: string[] } | undefined;
+  const model = new FakeToolCallingModel();
+  model.bindTools = () => model;
+  model._generate = async (messages) => {
+    let message: AIMessage;
+    if (
+      messages.some(
+        (entry) => entry.type === 'system' && entry.text.includes('SCOPE_RECOVERY_PARENT'),
+      )
+    ) {
+      const last = messages.filter(ToolMessage.isInstance).at(-1);
+      if (parentCalls++ === 0)
+        message = new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'resume-ui',
+              name: 'delegate_agent',
+              args: { ...task, task: '继续原区块检查', resumeAgentId: opened.state.agentId },
+            },
+          ],
+        });
+      else if (last?.name === 'delegate_agent') {
+        const accepted = JSON.parse(last.text);
+        assert.equal(accepted.accepted, true, last.text);
+        assert.equal(accepted.agentId, opened.state.agentId);
+        message = new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'wait-ui',
+              name: 'wait_subagents',
+              args: { agentIds: [accepted.agentId], wait: true },
+            },
+          ],
+        });
+      } else {
+        assert.equal(last?.name, 'wait_subagents');
+        const result = JSON.parse(last!.text);
+        assert.equal(result.agents[0].agentId, opened.state.agentId);
+        receipt = JSON.parse(result.agents[0].result);
+        message = new AIMessage('整合原区块');
+      }
+    } else {
+      message =
+        childCalls++ === 0
+          ? new AIMessage({
+              content: '',
+              tool_calls: [
+                {
+                  id: 'forged-root',
+                  name: 'check_rules',
+                  args: { path: directory, mode: 'block', scope: { rootNodeId: '999:1' } },
+                },
+              ],
+            })
+          : new AIMessage('原区块检查完成');
+    }
+    return { generations: [{ text: message.text, message }] };
+  };
+  await runAgent({
+    model,
+    tools: f.tools,
+    subagentProgress: resumed,
+    instructions: 'SCOPE_RECOVERY_PARENT',
+    messages: [new HumanMessage('恢复区块')],
+    maxTurns: 8,
+    contextBudgetTokens: 24000,
+    signal: new AbortController().signal,
+    assertLease: async () => {},
+    recordSubagent: async () => {},
+  });
+  assert.equal(receipt?.success, true);
+  assert.deepEqual(receipt?.files, [filename]);
+  assert.ok(f.checks.length > 0);
+  for (const check of f.checks)
+    assert.deepEqual(check, [directory, 'block', { rootNodeId: '1:2' }]);
+  assert.equal(f.files.get(filename), 'saved before interruption');
 });
