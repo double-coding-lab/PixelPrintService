@@ -1,0 +1,23 @@
+test/errorDiagnostics.test.ts
+  s_a4e26e740c8ebc::t_90db205a3344c7 414-445
+test/errorDiagnosticsFrontend.test.ts
+  s_a4e26e740c8ebc::t_90db205a3344c7 298-300,480-504
+test/errorDiagnosticsFrontendBrowser.test.ts
+  s_a4e26e740c8ebc::t_90db205a3344c7 155-156,166-180,247-254,256-263,376,382-383,401,446-451,477
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "94dc579396590f4e15b1ea45e316b5245a066814",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
