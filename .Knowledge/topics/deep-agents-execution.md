@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 24
+revision: 27
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -76,6 +76,10 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 
 ## 子Agent执行诊断
 
+- 执行诊断分别展示所选轮次、显式关联恢复链及整会话的请求、已报告Token与区间耗时；恢复关系只认resumeFromRunId。子任务和步骤属于所选轮次，错误明细独立标注筛选范围，默认整会话并可切换所选轮次；恢复后当前轮没有子任务不表示此前从未委派。
+- 跨轮统计只读取有限元数据，最多2000轮和20000条状态事件，先按小标识排序再回读用量与事件。超限、缺失端点或旧用量累计口径无法确认时合计未知；并行子任务耗时不相加为整轮耗时。
+- 单轮与会话计时共用排队至终态的区间，明确恢复后的区间另计，中间空闲不计；保留进程中断、租约中断、实际失败和原因未知的区别。build_preview与inspect_preview显示真实工具名称。
+
 - 新模型事件由平台注入agentId：null为主Agent，UUID为对应子图；子图摘要沿用子图身份。历史generation仍可归主任务，缺身份的其他角色/摘要只列入未归属请求，不按时间或同角色猜测。
 - 子任务事件diagnosticVersion=1记录入队、启动、任务摘要、授权路径、交付文件和缺口。任务摘要来自已脱敏委派说明，模型名称来自本轮固定快照；只读诊断不回放工具或修改历史状态。
 - 请求按operationId去重，分别累计完成、失败、中断、未结束及实际retryIndex>0的重试请求；摘要计入其所属Agent。Token按明确报告累计，缺失显示未知；完整新采集明确零次请求时记零用量，部分用量标为不完整；重试安排不等于已发生请求。
@@ -87,6 +91,8 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - 回归覆盖test/subagentDiagnostics.test.ts、test/subagentDiagnosticsRead.test.ts、test/subagentDiagnosticsFrontend.test.ts及test/ruleRepair.test.ts：并行身份、用量未知、事件去重、交接继续、窗口完整性和窄屏展示。
 
 ## UI任务准入与编译反馈
+
+- UI区块检查范围绑定平台已核实的委派nodeId，原产物与图片地址映射视图共用显式根节点；模型不能改写此范围。整页merge保持完整范围，源码本区块违规与缓存完整性门禁继续执行。
 
 - 正式执行器具备scanRules时，UI启动前核对授权区块的rule-hits.json结构、当前原生扫描指纹与疑难判断完成情况。缺失或未完成报告返回UI_PREREQUISITES_REQUIRED、dependencies和逐区块rule_scan的nextActions，此时不启动UI模型、不消耗执行委派次数；父级收取区块报告后继续。整页报告不能替代区块报告。
 - 已持久化的旧后台任务经原身份保存依赖交接，保留源码、检查点和上下文。UI仍禁止修改规则报告，实际源码违规继续由真实检查和有界无进展交接处理。路径占用反馈要求先收取相关任务，授权范围保持不变。
@@ -138,6 +144,9 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - 实现见`agent/agent.ts`、`agent/fileVersions.ts`、`agent/delegationScheduler.ts`、`agent/subagentTools.ts`、`run/slices.ts`与`run/errorDiagnostics.ts`。回归覆盖副作用前拒绝、局部限额的完整/部分交付、版本回执隔离及真实冲突、目录授权和命名统计；无需新增数据库表或运行配置。预览去重见[生成期缺依赖等待](d2c-preview-editing.md#生成期缺依赖等待)。
 
 ## 上下文复用与资料读取
+
+- 普通继续执行及新轮次入口复用历史源码归档视图，按可信输入与实际已应用的引导消息定位边界；平台过程通知不推进边界。之前的成功大源码读写保存完整版本归档并提供短引用，当前读取、用户约束、未完成事项和未知副作用保留；已成功写入的参数沿用原有压缩回执，真实文件保持完整。
+- 结构化纠错只折叠唯一配对、参数和反馈正文逐字相同的adjust历史回执，最新完整反馈保留；不同反馈、结果未知、存储和取消故障保持原文。生成与摘要共用同一视图，完整持久历史及源码不改写。
 
 - 主、子Agent和原生摘要共用`modelContextView`。同一请求中，对工具配对完整、调用身份明确且结果逐字一致的`read_file`与`figma inspect-node`，保留最近一份完整回执，旧回执改为含工具调用号、原路径和结果摘要的短引用。不同文件、资源作用域、分页或版本，以及失败、未知、多媒体和歧义配对均保留原结果；用户输入及规则检查结果不按此折叠。
 - 视图按当前有效消息每次重算，摘要后原文不在上下文时可正常重读；没有跨请求“已经看过”的缓存。消息数量、ID和工具调用配对保持原顺序，图检查点与时间线仍保存真实调用及原始结果。触发摘要时先存完整JSON快照，再让摘要消费精简视图。
