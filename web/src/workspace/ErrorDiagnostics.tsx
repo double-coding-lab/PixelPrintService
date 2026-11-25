@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import type {
   DiagnosticError,
   DiagnosticErrorCategory,
@@ -180,8 +180,39 @@ export function projectErrorDiagnostics(
           : 'unknown',
     };
   });
+  const filteredCounts =
+    value.filteredCounts && typeof value.filteredCounts === 'object'
+      ? (Object.fromEntries(
+          ['total', 'executionErrors', 'toolCorrections', 'ruleFailures'].map((key) => [
+            key,
+            count((value.filteredCounts as Record<string, unknown>)[key]),
+          ]),
+        ) as NonNullable<ErrorDiagnostics['filteredCounts']>)
+      : undefined;
+  const rawFacets = value.facets as Record<string, unknown> | undefined;
+  const facetCounts = (input: unknown, allowed?: string[]) => {
+    if (!input || typeof input !== 'object' || Array.isArray(input))
+      throw new Error('错误诊断筛选计数无效');
+    return Object.fromEntries(
+      Object.entries(input)
+        .filter(([key]) => (allowed ? allowed.includes(key) : /^[a-zA-Z0-9_-]{1,128}$/.test(key)))
+        .map(([key, value]) => [key, count(value)]),
+    );
+  };
+  const facets = rawFacets
+    ? {
+        categories: facetCounts(rawFacets.categories, Object.keys(categories)),
+        scopes: facetCounts(rawFacets.scopes, Object.keys(scopes)),
+        runs: facetCounts(rawFacets.runs),
+        allCategories: count(rawFacets.allCategories),
+        allScopes: count(rawFacets.allScopes),
+        allRuns: count(rawFacets.allRuns),
+      }
+    : undefined;
   return {
     sessionId,
+    filteredCounts,
+    facets,
     observedAt: text(value.observedAt) ?? '',
     snapshotSeq,
     snapshotToken,
@@ -352,7 +383,9 @@ export function ErrorDiagnosticsResults({
   error,
   expanded,
   onToggle,
+  filtered = false,
 }: {
+  filtered?: boolean;
   snapshot: ErrorDiagnosticsSnapshot | null;
   loading: boolean;
   error: string;
@@ -360,23 +393,25 @@ export function ErrorDiagnosticsResults({
   onToggle: (id: string, open: boolean) => void;
 }) {
   const available = snapshot && !loading && !error;
+  const counts = snapshot?.filteredCounts ?? (filtered ? null : snapshot);
   return (
     <>
       <div className="diagnostics-metrics error-diagnostic-metrics" aria-label="错误统计">
         {[
-          ['错误总数（不含规则未通过）', snapshot?.total],
-          ['执行错误', snapshot?.executionErrors],
-          ['工具纠正数', snapshot?.toolCorrections],
-          ['规则未通过数', snapshot?.ruleFailures],
+          ['错误总数（不含规则未通过）', counts?.total],
+          ['执行错误', counts?.executionErrors],
+          ['工具纠正数', counts?.toolCorrections],
+          ['规则未通过数', counts?.ruleFailures],
         ].map(([key, value]) => (
           <div key={key}>
             <span>{key}</span>
-            <strong>{available ? value?.toLocaleString() : '—'}</strong>
+            <strong>{available && typeof value === 'number' ? value.toLocaleString() : '—'}</strong>
           </div>
         ))}
       </div>
       <p className="diagnostics-note">
-        历史按已保存事件统计，未保存的历史错误无法补回；不受最近 10
+        统计随当前筛选条件变化，选项数量含规则未通过记录。历史按已保存事件统计，未保存的历史错误无法补回；不受最近
+        10
         轮或已加载聊天事件限制。错误总数包含执行错误和工具纠正，规则未通过单独计数、不计入错误总数。
       </p>
       {loading && <p role="status">正在读取错误诊断，统计尚未确认…</p>}
@@ -458,6 +493,8 @@ export function ErrorDiagnosticsPanel(props: Props) {
 
 /** 单请求代次同时保护首屏和分页；卸载、筛选和刷新均取消旧请求。 */
 function SessionErrorDiagnostics({ sessionId, runId, revision }: Props) {
+  const contentId = useId();
+  const [open, setOpen] = useState(false);
   const [onlyRun, setOnlyRun] = useState(false);
   const [category, setCategory] = useState<DiagnosticErrorCategory | ''>('');
   const [scope, setScope] = useState<DiagnosticError['scope'] | ''>('');
@@ -534,6 +571,11 @@ function SessionErrorDiagnostics({ sessionId, runId, revision }: Props) {
   }, [key]);
   const snapshot = state.filterKey === filterKey ? state.snapshot : null;
   const loading = state.key !== key || state.loading;
+  const facets = !loading && !state.error ? snapshot?.facets : undefined;
+  const optionCount = (value: number | undefined) =>
+    `（${value === undefined ? '—' : value.toLocaleString()}）`;
+  const knownCount = (values: Record<string, number> | undefined, key: string) =>
+    values ? (Object.hasOwn(values, key) ? values[key] : 0) : undefined;
   /** 翻页只使用已展示快照的水位和游标，不从条目数量推算。 */
   async function loadMore() {
     if (
@@ -605,7 +647,17 @@ function SessionErrorDiagnostics({ sessionId, runId, revision }: Props) {
       aria-busy={loading || state.paging}
     >
       <div className="diagnostics-section-heading">
-        <h3>执行错误</h3>
+        <h3>
+          <button
+            type="button"
+            className="error-diagnostic-toggle"
+            aria-expanded={open}
+            aria-controls={contentId}
+            onClick={() => setOpen((value) => !value)}
+          >
+            <span aria-hidden="true">{open ? '▾' : '▸'}</span> 执行错误
+          </button>
+        </h3>
         {(!loading || snapshot) && (
           <button
             type="button"
@@ -617,87 +669,93 @@ function SessionErrorDiagnostics({ sessionId, runId, revision }: Props) {
           </button>
         )}
       </div>
-      <div className="error-diagnostic-filters">
-        <label>
-          错误轮次
-          <select
-            aria-label="错误轮次"
-            value={onlyRun ? 'current' : 'session'}
-            onChange={(event) => setOnlyRun(event.target.value === 'current')}
-          >
-            <option value="session">会话全部轮次</option>
-            <option value="current" disabled={!runId}>
-              当前所选轮次{runId ? ` · ${runId}` : '（暂无轮次）'}
-            </option>
-          </select>
-        </label>
-        <label>
-          错误分类
-          <select
-            aria-label="错误分类"
-            value={category}
-            onChange={(event) => setCategory(event.target.value as DiagnosticErrorCategory | '')}
-          >
-            <option value="">全部分类</option>
-            {Object.entries(categories).map(([value, name]) => (
-              <option key={value} value={value}>
-                {name}
+      <div id={contentId} hidden={!open}>
+        <div className="error-diagnostic-filters">
+          <label>
+            错误轮次
+            <select
+              aria-label="错误轮次"
+              value={onlyRun ? 'current' : 'session'}
+              onChange={(event) => setOnlyRun(event.target.value === 'current')}
+            >
+              <option value="session">会话全部轮次{optionCount(facets?.allRuns)}</option>
+              <option value="current" disabled={!runId}>
+                当前所选轮次{optionCount(runId ? knownCount(facets?.runs, runId) : undefined)}
+                {runId ? ` · ${runId}` : '（暂无轮次）'}
               </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Agent 范围
-          <select
-            aria-label="Agent 范围"
-            value={scope}
-            onChange={(event) => setScope(event.target.value as DiagnosticError['scope'] | '')}
+            </select>
+          </label>
+          <label>
+            错误分类
+            <select
+              aria-label="错误分类"
+              value={category}
+              onChange={(event) => setCategory(event.target.value as DiagnosticErrorCategory | '')}
+            >
+              <option value="">全部分类{optionCount(facets?.allCategories)}</option>
+              {Object.entries(categories).map(([value, name]) => (
+                <option key={value} value={value}>
+                  {name}
+                  {optionCount(knownCount(facets?.categories, value))}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Agent 范围
+            <select
+              aria-label="Agent 范围"
+              value={scope}
+              onChange={(event) => setScope(event.target.value as DiagnosticError['scope'] | '')}
+            >
+              <option value="">全部范围{optionCount(facets?.allScopes)}</option>
+              {Object.entries(scopes).map(([value, name]) => (
+                <option key={value} value={value}>
+                  {name}
+                  {optionCount(knownCount(facets?.scopes, value))}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <ErrorDiagnosticsResults
+          snapshot={snapshot}
+          filtered={onlyRun || !!category || !!scope}
+          loading={loading}
+          error={state.key === key ? state.error : ''}
+          expanded={expanded}
+          onToggle={(itemId, open) =>
+            setExpanded((current) => {
+              if (current.has(itemId) === open) return current;
+              const next = new Set(current);
+              if (open) next.add(itemId);
+              else next.delete(itemId);
+              return next;
+            })
+          }
+        />
+        {state.pageError && (
+          <p role="alert" className="error-diagnostic-warning">
+            {state.pageError}
+          </p>
+        )}
+        {snapshot?.hasMore && (
+          <button
+            type="button"
+            className="error-diagnostic-button"
+            onClick={state.pageExpired ? () => setRefresh((value) => value + 1) : loadMore}
+            disabled={loading || !!state.error || state.paging}
           >
-            <option value="">全部范围</option>
-            {Object.entries(scopes).map(([value, name]) => (
-              <option key={value} value={value}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
+            {state.paging
+              ? '正在加载更早错误…'
+              : state.pageExpired
+                ? '刷新并重新读取错误'
+                : state.pageError
+                  ? '重试加载更早错误'
+                  : '加载更早错误'}
+          </button>
+        )}
       </div>
-      <ErrorDiagnosticsResults
-        snapshot={snapshot}
-        loading={loading}
-        error={state.key === key ? state.error : ''}
-        expanded={expanded}
-        onToggle={(itemId, open) =>
-          setExpanded((current) => {
-            if (current.has(itemId) === open) return current;
-            const next = new Set(current);
-            if (open) next.add(itemId);
-            else next.delete(itemId);
-            return next;
-          })
-        }
-      />
-      {state.pageError && (
-        <p role="alert" className="error-diagnostic-warning">
-          {state.pageError}
-        </p>
-      )}
-      {snapshot?.hasMore && (
-        <button
-          type="button"
-          className="error-diagnostic-button"
-          onClick={state.pageExpired ? () => setRefresh((value) => value + 1) : loadMore}
-          disabled={loading || !!state.error || state.paging}
-        >
-          {state.paging
-            ? '正在加载更早错误…'
-            : state.pageExpired
-              ? '刷新并重新读取错误'
-              : state.pageError
-                ? '重试加载更早错误'
-                : '加载更早错误'}
-        </button>
-      )}
     </section>
   );
 }

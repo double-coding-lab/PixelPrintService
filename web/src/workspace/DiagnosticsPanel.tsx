@@ -159,6 +159,41 @@ export function DiagnosticsContent({
           累计当前会话全部轮次，含排队和等待回答；不计两轮之间的空闲时间。
         </p>
       </section>
+      <section className="diagnostics-section" aria-label="模型用量">
+        <div className="diagnostics-section-heading">
+          <h3>模型用量</h3>
+          <span className="diagnostics-caption">
+            已报告用量的请求 {diagnosticNumber(usage.reportedRequests)} /{' '}
+            {diagnosticNumber(usage.requests)}
+          </span>
+        </div>
+        <div className="diagnostics-token-grid">
+          {[
+            ['输入 Token', usage.inputTokens],
+            ['输出 Token', usage.outputTokens],
+            ['总 Token', usage.totalTokens],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <span>{label}</span>
+              <strong title={diagnosticNumber(value as number | null)}>
+                {diagnosticTokens(value as number | null)}
+              </strong>
+            </div>
+          ))}
+        </div>
+        <div className="diagnostics-outcomes">
+          {outcomes.map(([label, count]) => (
+            <span key={label}>
+              {label}
+              <b>{diagnosticNumber(count ?? null)}</b>
+            </span>
+          ))}
+        </div>
+        <p className="diagnostics-note">
+          {usage.usageComplete === false && '当前用量统计不完整，Token 数只包含网关已报告的部分。'}
+          未报告用量不代表零消耗。
+        </p>
+      </section>
       {snapshot.failure && (
         <Alert
           className="diagnostics-failure"
@@ -213,41 +248,7 @@ export function DiagnosticsContent({
           </div>
         </dl>
       </section>
-      <section className="diagnostics-section" aria-label="模型用量">
-        <div className="diagnostics-section-heading">
-          <h3>模型用量</h3>
-          <span className="diagnostics-caption">
-            已报告用量的请求 {diagnosticNumber(usage.reportedRequests)} /{' '}
-            {diagnosticNumber(usage.requests)}
-          </span>
-        </div>
-        <div className="diagnostics-token-grid">
-          {[
-            ['输入 Token', usage.inputTokens],
-            ['输出 Token', usage.outputTokens],
-            ['总 Token', usage.totalTokens],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <span>{label}</span>
-              <strong title={diagnosticNumber(value as number | null)}>
-                {diagnosticTokens(value as number | null)}
-              </strong>
-            </div>
-          ))}
-        </div>
-        <div className="diagnostics-outcomes">
-          {outcomes.map(([label, count]) => (
-            <span key={label}>
-              {label}
-              <b>{diagnosticNumber(count ?? null)}</b>
-            </span>
-          ))}
-        </div>
-        <p className="diagnostics-note">
-          {usage.usageComplete === false && '当前用量统计不完整，Token 数只包含网关已报告的部分。'}
-          未报告用量不代表零消耗。
-        </p>
-      </section>
+
       <SubagentDiagnostics
         diagnostics={snapshot.agentDiagnostics}
         observedAt={snapshot.observedAt}

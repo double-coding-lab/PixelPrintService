@@ -66,6 +66,7 @@ type Snapshot = {
   snapshotToken: string;
   items: DiagnosticError[];
   counts: Pick<ErrorDiagnostics, Bucket>;
+  buckets: Map<string, Bucket>;
   coverage: ErrorDiagnostics['coverage'];
   expires: number;
 };
@@ -669,6 +670,7 @@ export async function readSessionErrors(
     const result = deduplicate(collected.candidates, sessionId);
     snapshot = {
       snapshotToken: '',
+      buckets: new Map(result.map(({ item, bucket }) => [item.id, bucket])),
       counts: {
         executionErrors: result.filter((value) => value.bucket === 'executionErrors').length,
         toolCorrections: result.filter((value) => value.bucket === 'toolCorrections').length,
@@ -702,6 +704,7 @@ export async function readSessionErrors(
           snapshotSeq,
           items: snapshot.items,
           counts: snapshot.counts,
+          buckets: [...snapshot.buckets],
           coverage: snapshot.coverage,
         }),
       )
@@ -723,6 +726,36 @@ export async function readSessionErrors(
       (!query.category || item.category === query.category) &&
       (!query.scope || item.scope === query.scope),
   );
+  const filteredCounts = { total: 0, executionErrors: 0, toolCorrections: 0, ruleFailures: 0 };
+  for (const item of filtered) filteredCounts[snapshot.buckets.get(item.id)!]++;
+  filteredCounts.total = filteredCounts.executionErrors + filteredCounts.toolCorrections;
+  const categoryItems = snapshot.items.filter(
+    (item) =>
+      (!query.runId || item.runId === query.runId) && (!query.scope || item.scope === query.scope),
+  );
+  const scopeItems = snapshot.items.filter(
+    (item) =>
+      (!query.runId || item.runId === query.runId) &&
+      (!query.category || item.category === query.category),
+  );
+  const runItems = snapshot.items.filter(
+    (item) =>
+      (!query.category || item.category === query.category) &&
+      (!query.scope || item.scope === query.scope),
+  );
+  const countBy = (items: DiagnosticError[], field: 'category' | 'scope' | 'runId') => {
+    const counts: Record<string, number> = Object.create(null);
+    for (const item of items) counts[item[field]] = (counts[item[field]] ?? 0) + 1;
+    return counts;
+  };
+  const facets = {
+    categories: countBy(categoryItems, 'category'),
+    scopes: countBy(scopeItems, 'scope'),
+    runs: countBy(runItems, 'runId'),
+    allCategories: categoryItems.length,
+    allScopes: scopeItems.length,
+    allRuns: runItems.length,
+  };
   const before = query.before ?? 0;
   const pageSize = Math.min(query.pageSize ?? 50, 100);
   const items = filtered.slice(before, before + pageSize);
@@ -737,6 +770,8 @@ export async function readSessionErrors(
     toolCorrections,
     ruleFailures,
     filteredTotal: filtered.length,
+    filteredCounts,
+    facets,
     items: items.map((item) => ({ ...item })),
     hasMore,
     nextBefore: hasMore ? before + items.length : null,

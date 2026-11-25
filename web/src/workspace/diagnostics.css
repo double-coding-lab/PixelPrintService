@@ -754,3 +754,32 @@
   outline: 2px solid var(--accent, #426ec9);
   outline-offset: 3px;
 }
+
+.error-diagnostic-toggle {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.error-diagnostic-list {
+  display: grid;
+  gap: 16px;
+}
+.error-diagnostic-record {
+  padding: 16px;
+  border: 1px solid #dce3ed;
+  border-left: 3px solid #9aaec9;
+  border-radius: 10px;
+  background: #f8fafc;
+  box-shadow: 0 1px 3px rgb(31 49 76 / 4%);
+}
+.error-diagnostic-heading {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2e7ef;
+  margin-bottom: 10px;
+}
+.error-diagnostic-meta {
+  margin-bottom: 14px;
+}

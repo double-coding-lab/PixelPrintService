@@ -37,6 +37,21 @@ export type ErrorDiagnosticsQuery = {
   snapshotToken?: string;
   pageSize?: number;
 };
+export type DiagnosticErrorCounts = {
+  total: number;
+  executionErrors: number;
+  toolCorrections: number;
+  ruleFailures: number;
+};
+/** 各维度应用其他筛选条件后的数量；包括单列的规则未通过记录。 */
+export type DiagnosticErrorFacets = {
+  categories: Partial<Record<DiagnosticErrorCategory, number>>;
+  scopes: Partial<Record<DiagnosticError['scope'], number>>;
+  runs: Record<string, number>;
+  allCategories: number;
+  allScopes: number;
+  allRuns: number;
+};
 export type ErrorDiagnostics = {
   sessionId: string;
   observedAt: string;
@@ -47,6 +62,9 @@ export type ErrorDiagnostics = {
   toolCorrections: number;
   ruleFailures: number;
   filteredTotal: number;
+  /** 新接口返回，旧服务缺失时筛选统计保持未知。 */
+  filteredCounts?: DiagnosticErrorCounts;
+  facets?: DiagnosticErrorFacets;
   items: DiagnosticError[];
   nextBefore: number | null;
   hasMore: boolean;
