@@ -131,3 +131,7 @@ UI检查连续两轮无改善时，由平台以RULE_REPAIR_STALLED交回主Agent
 ## 区块校验范围与跨轮恢复诊断
 
 区块检查使用委派时已核实的节点范围，普通继续沿用完整历史归档与按需回读，诊断分别展示当前轮、关联恢复链与整会话。具体授权边界、计时与用量缺失口径见[执行专题](../topics/deep-agents-execution.md#子agent执行诊断)及[上下文复用](../topics/deep-agents-execution.md#上下文复用与资料读取)。真实耗时与生成质量按同稿、同模型和相同验收标准比较；离线回归不代表已取得固定提速幅度。无需新增表或运行配置。
+
+## 默认页面目录
+
+H5与RN首次生成的默认入口为pages/home/index（按目标使用jsx或tsx），旧包和已有页面保持原路径，自定义根按配置执行。已有工作区需显式调整output.dir；详见[输出约定](../topics/deep-agents-execution.md#局部编辑与输出约定)。
