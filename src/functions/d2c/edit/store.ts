@@ -67,16 +67,20 @@ return 1`;
  * 使用标准 Redis sendCommand 执行原子 Lua，不依赖客户端私有字段。
  * 不支持原生命令时明确失败，不降级成 GET/SET 或本地 Map。
  */
+export function createRedisCommand(redis: RedisClient, reason = 'REDIS_ATOMIC_UNAVAILABLE') {
+  return async (_key: string, args: string[]) => {
+    const client = redis;
+    if (!client || typeof client.sendCommand !== 'function') throw new Error(reason);
+    return client.sendCommand(args);
+  };
+}
+
+/** 编辑副本继续沿用原有 Redis 键与 CAS 语义，命令桥可供其他后台任务复用。 */
 export function createRedisEditStore(redis: RedisClient, prefix = 'pixelprint:edit:v1'): EditStore {
+  const command = createRedisCommand(redis, 'EDIT_REDIS_ATOMIC_UNAVAILABLE');
   const digest = (value: string) => createHash('sha256').update(value).digest('hex');
   const key = (kind: string, id: string) => `${prefix}:${kind}:${digest(id)}`;
-  /** 全部读取也走主节点，避免副本延迟破坏 CAS 和票据有效性判断。 */
-  async function command(key: string, args: string[]) {
-    const client = redis;
-    if (!client || typeof client.sendCommand !== 'function')
-      throw new Error('EDIT_REDIS_ATOMIC_UNAVAILABLE');
-    return client.sendCommand(args);
-  }
+
   /** 服务端构造的 JSON 保持键序，读后不原地修改 previous 才能用于 CAS。 */
   async function read<T>(name: string): Promise<T | null> {
     const value = await command(name, ['GET', name]);

@@ -5,19 +5,25 @@ import './workCover.css';
 /** 封面只显示服务端提供的安全地址；失败回退占位，点击与键盘均打开对应作品。 */
 export default function WorkCover({
   url,
+  fallbackUrl,
   name,
   onOpen,
   kind = 'runtime',
   className = '',
 }: {
   url?: string | null;
+  fallbackUrl?: string | null;
   name: string;
   onOpen: () => void;
   kind?: 'runtime' | 'work';
   className?: string;
 }) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const src = safeMarkdownImageUrl(url);
+  const [failed, setFailed] = useState<{ key: string; urls: string[] } | null>(null);
+  const key = `${url ?? ''}\n${fallbackUrl ?? ''}`;
+  const failedUrls = failed?.key === key ? failed.urls : [];
+  const src = [safeMarkdownImageUrl(url), safeMarkdownImageUrl(fallbackUrl)].find(
+    (value) => value && !failedUrls.includes(value),
+  );
   const label = kind === 'work' ? '作品图片' : '运行截图';
   return (
     <button
@@ -42,7 +48,7 @@ export default function WorkCover({
       aria-label={`打开作品：${name}`}
       title="滚动或用方向键查看长图，点击打开作品"
     >
-      {src && failedUrl !== src ? (
+      {src ? (
         <>
           <span className="work-cover-image">
             <img
@@ -51,7 +57,12 @@ export default function WorkCover({
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
-              onError={() => setFailedUrl(src)}
+              onError={() =>
+                setFailed((prior) => ({
+                  key,
+                  urls: [...(prior?.key === key ? prior.urls : []), src],
+                }))
+              }
             />
           </span>
           {kind === 'work' && <span className="work-cover-label">作品图片</span>}

@@ -110,12 +110,12 @@ export default async function sessionRoutes(
     if (options.worker !== false) {
       const [
         { createGenerationWorker },
-        { createStorageFileClient },
+        { createImageFileClient },
         { createStorageResourceStore },
         { getProxyUrl },
       ] = await Promise.all([
         import('./run/worker'),
-        import('@/hooks/tools/storage'),
+        import('@/hooks/tools/imageVariants'),
         import('./workspace/storage'),
         import('@/config'),
       ]);
@@ -128,7 +128,7 @@ export default async function sessionRoutes(
           });
         });
       });
-      const binary = createStorageFileClient(readConfig, 'pro');
+      const binary = createImageFileClient(app, readConfig, 'pro');
       const consumer = createGenerationWorker({
         mysql: app.mysql,
         preview: previews,
@@ -222,10 +222,10 @@ export default async function sessionRoutes(
   app.register(attachmentRoutes, {
     service: async () => {
       if (options.attachmentService) return options.attachmentService;
-      attachments ??= import('@/hooks/tools/storage')
-        .then(({ createStorageFileClient }) =>
+      attachments ??= import('@/hooks/tools/imageVariants')
+        .then(({ createImageFileClient }) =>
           createAttachmentService(app.mysql, {
-            binary: createStorageFileClient(readConfig, 'pro'),
+            binary: createImageFileClient(app, readConfig, 'pro'),
             readUploadBytes: () => readConfig().d2c.limits.uploadBytes,
           }),
         )
@@ -243,9 +243,9 @@ export default async function sessionRoutes(
   /** 延迟装配版本存储，后台恢复与HTTP入口共享同一实例。 */
   async function getVersions() {
     if (options.versionService) return options.versionService;
-    versions ??= import('@/hooks/tools/storage')
-      .then(({ createStorageFileClient }) => {
-        const binary = createStorageFileClient(readConfig, 'pro');
+    versions ??= import('@/hooks/tools/imageVariants')
+      .then(({ createImageFileClient }) => {
+        const binary = createImageFileClient(app, readConfig, 'pro');
         return createVersionService(app.mysql, {
           readLimits: () => readConfig().d2c.limits,
           binary: () => binary,

@@ -1,3 +1,5 @@
+import type { ImageVariants } from '../images/variants';
+import type { StorageFileObject } from '@/hooks/tools/storage';
 import { runtimeCoverIds } from './runtimeCover';
 import { forkPublishedSession, type ForkInput, type ForkOptions } from './fork';
 import { contentModel, resolveTextContent } from '../content/runtime';
@@ -44,7 +46,7 @@ function summary(
   return {
     shareId,
     coverUrl: coverAttachmentId
-      ? `/api/d2c/plaza/sessions/${shareId}/attachments/${encodeURIComponent(coverAttachmentId)}`
+      ? `/api/d2c/plaza/sessions/${shareId}/attachments/${encodeURIComponent(coverAttachmentId)}?view=cover`
       : null,
     sessionId: session.sessionId!,
     name: session.name,
@@ -172,7 +174,10 @@ function canManageSharing(eid: string, session: D2cSession, workspace: D2cWorksp
 /** 独立的广场只读服务；发布写入复查统一管理权限，binary 延迟取得，文本读取无需存储。 */
 export function createSharingService(
   mysql: Sequelize,
-  options: { binary: () => SharingBinary } & ForkOptions,
+  options: {
+    binary: () => SharingBinary;
+    imageVariants?: () => ImageVariants | undefined;
+  } & ForkOptions,
 ) {
   const shares = mysql.models.D2cSessionShare as typeof D2cSessionShare;
   const files = mysql.models.D2cFile as typeof D2cFile;
@@ -651,7 +656,12 @@ export function createSharingService(
       };
     },
     /** 仅消息已发送且明确引用的附件可读；未发上传、队列草稿和借用别会话附件全部拒绝。 */
-    async attachment(eid: string, shareId: string, attachmentId: string) {
+    async attachment(
+      eid: string,
+      shareId: string,
+      attachmentId: string,
+      view?: { cover: boolean; ifNoneMatch?: string },
+    ) {
       const { session } = await publishedSession(mysql, eid, shareId);
       requireIdentifier(attachmentId);
       const attachments = mysql.models.D2cMessageAttachment as typeof D2cMessageAttachment;
@@ -691,7 +701,68 @@ export function createSharingService(
         row.size > attachmentMaxBytes
       )
         throw new SessionError(503, 'ATTACHMENT_CORRUPT', '附件元数据无效');
-      const data = await download(row.objectLocator);
+      let variants: ImageVariants | undefined;
+      try {
+        variants = view?.cover ? options.imageVariants?.() : undefined;
+      } catch {
+        /* 派生服务不可用时原图仍可读。 */
+      }
+      const source = row.objectLocator as StorageFileObject;
+      /** 缩略图仍需先验证当前附件归属；原始元数据决定派生内容的身份。 */
+      if (
+        view?.cover &&
+        (!/^[a-f0-9]{64}$/.test(row.sha256 ?? '') ||
+          source.sha256 !== row.sha256 ||
+          source.size !== row.size ||
+          source.mimeType !== row.mimeType)
+      )
+        throw new SessionError(503, 'ATTACHMENT_CORRUPT', '附件元数据无效');
+      const etagFor = (digest: string) => `"cover-${digest}"`;
+      const matches = (etag: string) =>
+        view?.cover &&
+        view.ifNoneMatch
+          ?.split(',')
+          .some((value) => value.trim() === '*' || value.trim().replace(/^W\//, '') === etag);
+      if (variants) {
+        let optimized: StorageFileObject | null = null;
+        try {
+          optimized = await variants.find(source);
+        } catch {
+          /* 后台失败回退原图。 */
+        }
+        if (optimized) {
+          const etag = etagFor(optimized.sha256);
+          if (matches(etag)) {
+            await publishedSession(mysql, eid, shareId);
+            return { data: undefined, mimeType: 'image/webp', etag, notModified: true };
+          }
+          let content: Buffer | undefined;
+          try {
+            content = await variants.read(optimized);
+            const image = inspectAttachmentImage(content);
+            if (
+              image.mimeType !== 'image/webp' ||
+              image.width > 320 ||
+              image.height > 16383 ||
+              !verifyBytes(content, optimized.size, optimized.sha256)
+            )
+              throw new Error('COVER_CORRUPT');
+          } catch {
+            content = undefined;
+            void variants.invalidate(source).catch(() => {});
+          }
+          if (content) {
+            await publishedSession(mysql, eid, shareId);
+            return { data: content, mimeType: 'image/webp', etag, notModified: false };
+          }
+        }
+      }
+      const etag = view?.cover ? etagFor(row.sha256!) : undefined;
+      if (etag && matches(etag)) {
+        await publishedSession(mysql, eid, shareId);
+        return { data: undefined, mimeType: row.mimeType, etag, notModified: true };
+      }
+      const data = variants ? await variants.read(source) : await download(row.objectLocator);
       if (!verifyBytes(data, row.size, row.sha256))
         throw new SessionError(503, 'ATTACHMENT_CORRUPT', '附件完整性校验失败');
       let image;
@@ -707,7 +778,7 @@ export function createSharingService(
       )
         throw new SessionError(503, 'ATTACHMENT_CORRUPT', '附件元数据无效');
       await publishedSession(mysql, eid, shareId);
-      return { data, mimeType: row.mimeType };
+      return { data, mimeType: row.mimeType, ...(etag ? { etag, notModified: false } : {}) };
     },
   };
 }

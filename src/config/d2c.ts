@@ -84,6 +84,7 @@ const workRootSchema = z
 const runtimeSchema = z.object({
   modelConfigs: modelConfigsSchema,
   d2c: z.object({
+    imageVariants: z.object({ enabled: z.boolean().default(true) }).optional(),
     execution: z
       .object({
         workRoot: workRootSchema,

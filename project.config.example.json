@@ -47,6 +47,9 @@
       }
     ],
     "d2c": {
+      "imageVariants": {
+        "enabled": true
+      },
       "execution": {
         "workRoot": ".runtime/runs",
         "concurrency": 2,

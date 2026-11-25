@@ -4,7 +4,7 @@ import responseData from '@/common/response';
 import { createWorkspaceService, WorkspaceError, type WorkspaceService } from './workspace/service';
 import { TeamError } from './team/access';
 import { checkWriteRequest } from './utils/request';
-import { createStorageFileClient } from '@/hooks/tools/storage';
+import { createImageFileClient } from '@/hooks/tools/imageVariants';
 import { createStorageResourceStore } from './workspace/storage';
 
 const id = z.string().min(1).max(64);
@@ -36,7 +36,7 @@ export default async function workspaceRoutes(
     createWorkspaceService(app.mysql, {
       templateRoot: options.templateRoot,
       resourceStore: createStorageResourceStore(
-        createStorageFileClient(() => app.runtimeConfig.get(), options.environment),
+        createImageFileClient(app, () => app.runtimeConfig.get(), options.environment),
       ),
     });
   app.addHook('preHandler', async (request, reply) => {

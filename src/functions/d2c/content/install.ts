@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { createStorageFileClient } from '@/hooks/tools/storage';
+import { createImageFileClient } from '@/hooks/tools/imageVariants';
 import { createBinaryTextBackend } from './backend';
 import { createTextContentStore, TextContentError } from './store';
 import { contentStorageSchema, installTextContentRuntime } from './runtime';
@@ -30,7 +30,7 @@ export function installContentStorage(app: FastifyInstance): void {
     },
     store: () => {
       store ??= createTextContentStore(
-        createBinaryTextBackend(createStorageFileClient(read, 'pro'), maximum),
+        createBinaryTextBackend(createImageFileClient(app, read, 'pro'), maximum),
         {
           maxBytes: maximum - 36,
           concurrency: readSettings().concurrency,
@@ -59,7 +59,7 @@ export function installContentStorage(app: FastifyInstance): void {
     },
     store: () => {
       checkpointStore ??= createBinaryContentStore(
-        createBinaryTextBackend(createStorageFileClient(read, 'pro'), maximum),
+        createBinaryTextBackend(createImageFileClient(app, read, 'pro'), maximum),
         {
           maxBytes: maximum - 36,
           concurrency: readCheckpointSettings().concurrency,

@@ -74,6 +74,7 @@ export function createRunScreenshotWriter(input: {
       content: capture.image,
       fileName: objectNames.get(attachmentId)!,
       contentType: capture.mimeType,
+      webpRequired: true,
     });
     await input.assertLease();
     await commit(async (session, transaction) => {

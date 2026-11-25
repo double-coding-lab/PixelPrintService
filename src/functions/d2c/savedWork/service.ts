@@ -44,6 +44,7 @@ export type SaveSavedWorkInput = {
   draft: SavedWorkDraft;
 };
 export type SavedWorkOptions = {
+  readVariantCovers?: (urls: string[]) => Promise<Map<string, string>>;
   readCovers?: (userId: string, sourceIds: string[]) => Promise<Map<string, string>>;
   binary: () => { downloadFile(locator: Record<string, unknown>): Promise<Buffer> };
   readLimits: () => SavedWorkLimits;
@@ -415,12 +416,26 @@ export function createSavedWorkService(mysql: Sequelize, options: SavedWorkOptio
               missing.map((row) => row.sourceId),
             )
           : new Map<string, string>();
+      const covers = rows.map(
+        (row) =>
+          safeRuntimeCoverUrl(row.configSnapshot?.runtimeCoverUrl) ??
+          safeRuntimeCoverUrl(inherited.get(row.sourceId)),
+      );
+      let preferred = new Map<string, string>();
+      try {
+        preferred =
+          (await options.readVariantCovers?.(covers.filter((url): url is string => !!url))) ??
+          preferred;
+      } catch {
+        /* 派生图不可用时继续使用已冻结原图。 */
+      }
       return {
-        items: rows.map((row) => ({
+        items: rows.map((row, index) => ({
           ...metadata(row),
-          coverUrl:
-            safeRuntimeCoverUrl(row.configSnapshot?.runtimeCoverUrl) ??
-            safeRuntimeCoverUrl(inherited.get(row.sourceId)),
+          coverUrl: safeRuntimeCoverUrl(preferred.get(covers[index] ?? '')) ?? covers[index],
+          ...(safeRuntimeCoverUrl(preferred.get(covers[index] ?? ''))
+            ? { coverOriginalUrl: covers[index] }
+            : {}),
         })),
         total: await works.count({ where }),
         page,

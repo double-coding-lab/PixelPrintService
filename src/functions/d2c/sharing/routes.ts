@@ -167,9 +167,22 @@ export default async function sharingRoutes(app: FastifyInstance, options: Parti
     const { id, attachmentId } = z
       .object({ id: identifier, attachmentId: identifier })
       .parse(request.params);
+    const { view } = z.object({ view: z.literal('cover').optional() }).parse(request.query);
     const file = await (
       await services.sharing()
-    ).attachment((await request.getUser()).userId, id, attachmentId);
+    ).attachment(
+      (await request.getUser()).userId,
+      id,
+      attachmentId,
+      view === 'cover' ? { cover: true, ifNoneMatch: request.headers['if-none-match'] } : undefined,
+    );
+    if (view === 'cover' && file.etag) {
+      reply
+        .header('Cache-Control', 'private, no-cache')
+        .header('ETag', file.etag)
+        .header('Vary', 'Cookie');
+      if (file.notModified) return reply.code(304).send();
+    }
     return reply
       .header('X-Content-Type-Options', 'nosniff')
       .header('Content-Disposition', 'inline')

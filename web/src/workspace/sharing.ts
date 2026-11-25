@@ -6,6 +6,7 @@ export type Sharing = { public: boolean; shareId: string | null; canManage: bool
 export type SharedSession = {
   shareId: string;
   coverUrl?: string | null;
+  coverOriginalUrl?: string | null;
   sessionId: string;
   name: string;
   target: 'h5' | 'rn';
@@ -19,6 +20,7 @@ export type SharedSession = {
 };
 export type PersonalWork = {
   coverUrl?: string | null;
+  coverOriginalUrl?: string | null;
   workId: string;
   name: string;
   target: 'h5' | 'rn';

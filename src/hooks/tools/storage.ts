@@ -20,6 +20,8 @@ export type StorageFileClient = {
     contentType: string;
     /** 同名不同内容时追加数字后缀，同内容直接复用。 */
     renameOnConflict?: boolean;
+    /** 封面必须生成后台 WebP，不受普通图片开关影响。 */
+    webpRequired?: boolean;
     signal?: AbortSignal;
   }): Promise<StorageFileObject>;
   downloadFile(

@@ -597,6 +597,7 @@ export default function CommunityPanel({
                 <article className="work-card library-work-card" key={resource}>
                   <WorkCover
                     url={item.coverUrl}
+                    fallbackUrl={item.coverOriginalUrl}
                     name={item.name}
                     kind="runtime"
                     className="community-cover"

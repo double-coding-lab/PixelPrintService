@@ -1,3 +1,4 @@
+import { installImageVariants } from '@/hooks/tools/imageVariants';
 import { installSharingEditors } from '../sharing/runtime';
 import { previewAssetBase } from './assetPolicy';
 import { createD2cConfigReader } from '@/config/d2c';
@@ -27,6 +28,7 @@ export function installPreview(
     notify?: (sessionId: string) => void;
   } = {},
 ) {
+  installImageVariants(app);
   installSharingEditors(app);
   let service: Promise<PreviewService> | undefined;
   let edits: Promise<EditService> | undefined;
@@ -35,10 +37,10 @@ export function installPreview(
   let editCleanup: ReturnType<typeof startEditCleanup> | undefined;
   app.decorate('getPreviewService', async () => {
     if (options.service) return options.service;
-    service ??= Promise.all([import('@/hooks/tools/storage'), import('./runner')])
-      .then(([{ createStorageFileClient }, { runPreviewBuild }]) => {
+    service ??= Promise.all([import('@/hooks/tools/imageVariants'), import('./runner')])
+      .then(([{ createImageFileClient }, { runPreviewBuild }]) => {
         const readConfig = createD2cConfigReader(() => app.runtimeConfig.get());
-        const binary = createStorageFileClient(readConfig, 'pro');
+        const binary = createImageFileClient(app, readConfig, 'pro');
         return createPreviewService(app.mysql, {
           binary: () => binary,
           run: runPreviewBuild,
@@ -63,13 +65,13 @@ export function installPreview(
     if (notifyFiles) notifyEditedFiles = notifyFiles;
     if (options.editService) return options.editService;
     edits ??= Promise.all([
-      import('@/hooks/tools/storage'),
+      import('@/hooks/tools/imageVariants'),
       import('../edit/service'),
       import('../edit/store'),
     ])
-      .then(([{ createStorageFileClient }, { createEditService }, { createRedisEditStore }]) => {
+      .then(([{ createImageFileClient }, { createEditService }, { createRedisEditStore }]) => {
         const readConfig = createD2cConfigReader(() => app.runtimeConfig.get());
-        const binary = createStorageFileClient(readConfig, 'pro');
+        const binary = createImageFileClient(app, readConfig, 'pro');
         return createEditService(app.mysql, {
           store: createRedisEditStore(app.redis),
           report: (details) =>

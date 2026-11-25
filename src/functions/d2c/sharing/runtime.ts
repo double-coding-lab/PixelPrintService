@@ -1,3 +1,4 @@
+import { imageVariantsFor } from '@/hooks/tools/imageVariants';
 import { createModelCredentialService } from '../credential/model';
 import { SessionError } from '../session/access';
 import { publishedRuntimeCoverUrls } from './runtimeCover';
@@ -38,14 +39,14 @@ export function installSharingEditors(app: FastifyInstance) {
 
   /** 客户端仅在首次实际访问时初始化，注册路由不会触发数据库或存储请求。 */
   async function initialize() {
-    const [{ createStorageFileClient }, { createSharingService }, { createSavedWorkService }] =
+    const [{ createImageFileClient }, { createSharingService }, { createSavedWorkService }] =
       await Promise.all([
-        import('@/hooks/tools/storage'),
+        import('@/hooks/tools/imageVariants'),
         import('./service'),
         import('../savedWork/service'),
       ]);
     const readConfig = createD2cConfigReader(() => app.runtimeConfig.get());
-    const binary = createStorageFileClient(readConfig, 'pro');
+    const binary = createImageFileClient(app, readConfig, 'pro');
     const options = { binary: () => binary, readLimits: () => readConfig().d2c.limits };
     return {
       ...options,
@@ -69,6 +70,8 @@ export function installSharingEditors(app: FastifyInstance) {
       }),
       works: createSavedWorkService(app.mysql, {
         ...options,
+        readVariantCovers: (urls) =>
+          imageVariantsFor(app)?.preferredUrls(urls) ?? Promise.resolve(new Map()),
         readCovers: (userId, sourceIds) => publishedRuntimeCoverUrls(app.mysql, userId, sourceIds),
       }),
     };
