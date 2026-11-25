@@ -1,6 +1,6 @@
 ---
 id: d2c-session-plaza
-revision: 16
+revision: 17
 summary: "登录用户会话广场、个人分支续聊与隔离作品副本"
 primary: feature
 confidence: inferred
@@ -128,3 +128,13 @@ sourceDoc: ".Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md"
 - 社区版先在顶栏分别保存个人Figma与模型Token；创建分支必须绑定本人的active模型凭据。模型Token按现有密钥配置加密保存，前端仅获配置状态；新轮次快照记录凭据标识，主模型、子模型及摘要统一使用发起人的密钥，失效明确报错。普通历史会话的NULL绑定沿平台配置。
 - 模型服务地址及模型名取管理员默认项，随个人Token修订加密绑定；默认连接改变后须重新保存，旧Token不会发往新地址。已有库发布前执行docs/sql/personal-model-credentials-migration.sql；新库db:init按模型建表。执行前须先读依赖主题`project-config`。
 - 实现：sharing/fork.ts、sharing/routes.ts、ForkSession和CommunityPanel；回归：plazaFork、sharingRoutes和plazaForkBrowser。个人模型额外见credential/model.ts、ModelCredentialSettings和modelCredentials回归。
+
+## 后台 WebP 封面
+
+- 原图成功后异步登记真实对象回执，后台用已准备的 Pillow 生成等比 WebP（宽度最多320px、质量80、不放大），使用原文件名加 `_.webp` 上传；上传回执确认后才发布派生地址。支持的栅格格式或编解码失败均保留原图；派生文件独立于产物清单。
+- Redis 保存有租约的待办、源对象元数据和成功索引，多实例竞争领取；失败最多尝试三次。缓存按URL和SHA校验、限额256MiB；停止/重启后待办可重领。队列、转换和上传故障不加入原图请求等待链。
+- 运行截图上传携带 `webpRequired`，广场和已保存作品封面缺少派生时强制补生成；封面任务不受普通图片开关影响，复用已成功结果，待生成或失败时显示原图。旧作品只有URL时，补生成依赖已登记的真实回执；广场附件读取可从原附件回执补登记。
+- 广场封面经 `?view=cover` 的已登录附件接口优先返回已校验WebP；原图读取保持原语义。封面使用私有ETag条件缓存，每次返回图片或304前复查发布状态。已保存作品按页批量匹配WebP并保留 `coverOriginalUrl`；前端坏图只回退原图一次，仍失败显示占位。
+- 实现为 `images/variants.ts`、`images/variantStore.ts`、`hooks/tools/imageVariants.ts` 和 `utils/webpThumbnail.ts`；后台日志只含固定阶段与图片摘要标识。回归见 `imageVariants`、`webpThumbnail`、`sharingRoutes`、`savedWork` 与 `workCoverFallbackBrowser`。
+
+- 普通图片由项目配置 `runtime.d2c.imageVariants.enabled`控制，省略默认true；false时不再排入普通任务，已排队可选任务在领取时丢弃，已就绪派生继续复用。封面强制任务保持后台执行。

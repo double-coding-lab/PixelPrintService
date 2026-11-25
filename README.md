@@ -100,3 +100,7 @@ npm run pixelprint:update
 此目录是独立副本，不含原项目 Git 历史、内部知识库原文、真实配置、用户产物或聊天数据。未替项目作者选择开源许可证；正式公开发布前，应确认自有代码和上游资源的授权，并补充 LICENSE。
 
 数据库结构与历史升级统一见 [docs/sql](docs/sql/README.md)，完整工具及执行链路见[文档目录](docs/README.md)。
+
+### 后台WebP封面
+
+`project.config.json` 的 `runtime.d2c.imageVariants.enabled` 控制普通图片上传后的后台WebP生成，省略默认true。原图成功后后台生成宽度最多320px、质量80的WebP并上传，名称为原文件名加 `_.webp`；运行截图封面不受此开关影响。需要已准备的图片压缩Python环境和Redis。缩图失败不阻塞原图或正常流程；广场和已保存作品优先使用就绪WebP，未就绪或坏图回退原图。
