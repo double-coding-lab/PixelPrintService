@@ -1,0 +1,39 @@
+src/functions/d2c/run/agent/modelPreparation.ts
+  s_e16f52fd1de115::t_1f14846a482377 1-38
+src/functions/d2c/session/attachments.ts
+  s_e16f52fd1de115::t_1f14846a482377 8,422,442-453,455,472,478,489,494
+src/functions/d2c/run/diagnostics.ts
+  s_e16f52fd1de115::t_1f14846a482377 13,41-42,112-113
+test/runAttachmentCache.test.ts
+  s_e16f52fd1de115::t_1f14846a482377 1-106
+src/functions/d2c/run/agent/imageCache.ts
+  s_e16f52fd1de115::t_1f14846a482377 1-30
+src/functions/d2c/run/agent/tokens.ts
+  s_e16f52fd1de115::t_1f14846a482377 3,6-31,35-36,40-42,47-48,51,55
+src/functions/d2c/run/agent/modelActivity.ts
+  s_e16f52fd1de115::t_1f14846a482377 8,37-38,55,113-118,121,123,165,198
+test/tokenCountCache.test.ts
+  s_e16f52fd1de115::t_1f14846a482377 1-59
+web/src/workspace/DiagnosticsPanel.tsx
+  s_e16f52fd1de115::t_1f14846a482377 11,18-19,367-369,415-440
+test/modelPreparation.test.ts
+  s_e16f52fd1de115::t_1f14846a482377 1-224
+src/functions/d2c/run/agent/agent.ts
+  s_e16f52fd1de115::t_1f14846a482377 54,1796-1797,1804-1809,1829,1861-1866,1878-1881,1883,1984,1995,1997,2002,2006,2009,2012,2056
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "b326e1f0f13599892eb1a93a9c440a0b5c42af6a",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
