@@ -112,6 +112,18 @@ test(
       const send = (data: unknown) => res.end(JSON.stringify({ success: true, data }));
       const sessionId = url.pathname.split('/')[4];
       if (url.pathname.endsWith('/diagnostics')) {
+        const scope = (runCount: number) => ({
+          runCount,
+          elapsedMs: runCount * 1000,
+          runningCount: 0,
+          complete: true,
+          usage: {
+            requests: runCount,
+            reportedRequests: runCount,
+            totalTokens: runCount * 10,
+            usageComplete: true,
+          },
+        });
         send({
           sessionId,
           observedAt: '2026-11-21T01:01:00Z',
@@ -125,6 +137,13 @@ test(
           lease: { expiresAt: null, expired: false },
           current: null,
           failure: null,
+          execution: {
+            selected: scope(1),
+            recoveryChain: scope(3),
+            session: scope(4),
+            resumeFromRunId: url.searchParams.get('runId') === 'run-parent' ? null : 'run-parent',
+            interruption: null,
+          },
           steps: [],
           hasMore: false,
           runs: ['run-a', 'run-b'].map((runId) => ({
@@ -478,6 +497,28 @@ test(
     await region.locator('summary').click();
     await region.getByRole('button', { name: '复制排查信息' }).click();
     assert.match(await page.evaluate(() => (window as any).copied), /sessionId: session-b/);
+    // 前序轮次不在最近10轮菜单中，仍沿只读runId查询进入，不发任何恢复或模型请求。
+    const parentRead = page.waitForResponse((response: any) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname.endsWith('/diagnostics') && url.searchParams.get('runId') === 'run-parent'
+      );
+    });
+    await page.getByRole('button', { name: '查看前序轮次', exact: true }).click();
+    await parentRead;
+    await page.getByText('所选历史轮次 · run-parent', { exact: true }).waitFor();
+    await page
+      .getByRole('region', { name: '跨轮统计范围', exact: true })
+      .getByText('旧记录未采集范围摘要。')
+      .waitFor({ state: 'hidden' });
+    assert.equal(
+      requests
+        .filter((url) => url.pathname.endsWith('/diagnostics'))
+        .at(-1)!
+        .searchParams.get('runId'),
+      'run-parent',
+    );
+    assert.equal(await page.getByRole('button', { name: '查看前序轮次', exact: true }).count(), 0);
     assert.equal(errors.length, 0, errors.join('\n'));
     assert.deepEqual(external, []);
   },

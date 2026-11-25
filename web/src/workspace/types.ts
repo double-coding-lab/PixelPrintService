@@ -230,6 +230,7 @@ export type DiagnosticsStep = {
   durationMs: number | null;
 };
 export type SessionDiagnostics = {
+  execution?: import('../../../shared/executionDiagnostics').ExecutionDiagnostics;
   agentDiagnostics?: AgentDiagnostics;
   sessionElapsedMs?: number | null;
   sessionRunningCount?: number;

@@ -7,6 +7,7 @@ import { getEventFailure } from './timeline';
 import type { SessionDiagnostics } from './types';
 import SubagentDiagnostics from './SubagentDiagnostics';
 import { ErrorDiagnosticsPanel } from './ErrorDiagnostics';
+import { readExecutionDiagnostics } from './executionDiagnostics';
 
 /** 新增字段可缺省，兼容旧诊断接口；服务端只投影校验后的计时与编号。 */
 type ModelTimingStep = SessionDiagnostics['steps'][number] & {
@@ -67,7 +68,7 @@ export function sessionElapsed(snapshot: SessionDiagnostics, now: number): numbe
 
 /** 累计和本轮耗时采用时分秒，省略不足的高位单位。 */
 export function totalDuration(value: number | null): string {
-  if (value === null) return '耗时未知';
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return '耗时未知';
   const seconds = Math.floor(value / 1000);
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -91,10 +92,23 @@ function stepDuration(step: SessionDiagnostics['steps'][number], now: number): n
 export function DiagnosticsContent({
   snapshot,
   now,
+  onSelectRun,
 }: {
   snapshot: SessionDiagnostics;
   now: number;
+  onSelectRun?: (runId: string) => void;
 }) {
+  const execution = readExecutionDiagnostics(snapshot.execution);
+  const selectedElapsed = execution?.selected.elapsedMs === null ? null : snapshot.elapsedMs;
+  const selectedRunning = execution?.selected.runningCount ?? 0;
+  const observed = Date.parse(snapshot.observedAt);
+  const selectedDuration =
+    selectedElapsed === null
+      ? null
+      : selectedElapsed +
+        (Number.isFinite(observed) ? Math.max(0, now - observed) * selectedRunning : 0);
+  const interruption =
+    execution?.interruption ?? (snapshot.failure?.code === 'WORKER_INTERRUPTED' ? 'worker' : null);
   const failure = snapshot.failure
     ? getEventFailure({
         entryId: 'diagnostics',
@@ -138,14 +152,14 @@ export function DiagnosticsContent({
             <small>会话全部轮次</small>
           </div>
           <div>
-            <span>本轮耗时</span>
-            <strong>{totalDuration(snapshot.elapsedMs)}</strong>
+            <span>所选轮次耗时</span>
+            <strong>{totalDuration(selectedDuration)}</strong>
             <small>含排队及等待回答</small>
           </div>
           <div>
             <span>模型请求</span>
             <strong>{diagnosticNumber(usage.requests)}</strong>
-            <small>主模型、子 Agent 与摘要</small>
+            <small>所选轮次：主模型、子 Agent 与摘要</small>
           </div>
           <div>
             <span>总 Token</span>
@@ -156,14 +170,80 @@ export function DiagnosticsContent({
           </div>
         </div>
         <p className="diagnostics-note">
-          累计当前会话全部轮次，含排队和等待回答；不计两轮之间的空闲时间。
+          耗时含排队和等待回答，以明确的结束事件结算。同轮中断后再次排队另开区间，不计两轮之间的空闲时间，同轮中断后的空闲也不计入；
+          缺少历史端点时保持未知，不使用清理记录的更新时间代替结束时间。
         </p>
+      </section>
+      <section className="diagnostics-section" aria-label="跨轮统计范围">
+        <h3>选中轮次、恢复链与整会话</h3>
+        {(
+          [
+            ['所选轮次', execution?.selected],
+            ['关联恢复链', execution?.recoveryChain],
+            ['整会话', execution?.session],
+          ] as const
+        ).map(([name, scope]) => {
+          const elapsed =
+            scope?.elapsedMs === null || !scope
+              ? null
+              : scope.elapsedMs +
+                (Number.isFinite(observed) ? Math.max(0, now - observed) * scope.runningCount : 0);
+          return (
+            <div key={name} className="diagnostics-section" aria-label={`${name}统计`}>
+              <strong>{name}</strong>
+              <dl className="diagnostics-facts">
+                <div>
+                  <dt>轮次数</dt>
+                  <dd>{diagnosticNumber(scope?.runCount ?? null)}</dd>
+                </div>
+                <div>
+                  <dt>累计区间耗时</dt>
+                  <dd>{totalDuration(elapsed)}</dd>
+                </div>
+                <div>
+                  <dt>模型请求</dt>
+                  <dd>{diagnosticNumber(scope?.usage.requests ?? null)}</dd>
+                </div>
+                <div>
+                  <dt>总 Token</dt>
+                  <dd>{diagnosticTokens(scope?.usage.totalTokens ?? null)}</dd>
+                </div>
+              </dl>
+              <p className="diagnostics-note">
+                {!scope
+                  ? '旧记录未采集范围摘要。'
+                  : !scope.complete
+                    ? '范围不完整，所列轮次数仅为已读取部分，合计保持未知。'
+                    : scope.usage.usageComplete === true
+                      ? '网关用量已完整报告。'
+                      : '用量未完整报告或历史口径未知，已报告部分不代表全部消耗。'}
+              </p>
+            </div>
+          );
+        })}
+        <p className="diagnostics-note">
+          恢复链仅按已保存的 resumeFromRunId 关联，可能含人工继续，不代表自动恢复成功。
+          跨轮仅累计平台逐轮采集的用量，历史累计值不重复求和。最多读取 2,000 轮和 20,000
+          条状态事件，超限合计未知。
+          子任务并行耗时不能相加作为轮次耗时；下方子任务与步骤均属于所选轮次。
+          跨轮是非原子观测，其他轮次可能继续变化；所选轮次在三个范围内使用同一版数据。
+        </p>
+        {execution?.resumeFromRunId && (
+          <p>
+            前序轮次：<code>{execution.resumeFromRunId}</code>{' '}
+            {onSelectRun ? (
+              <Button onClick={() => onSelectRun(execution.resumeFromRunId!)}>查看前序轮次</Button>
+            ) : (
+              '可在诊断接口使用此 runId 查询同会话前序轮次。'
+            )}
+          </p>
+        )}
       </section>
       <section className="diagnostics-section" aria-label="模型用量">
         <div className="diagnostics-section-heading">
           <h3>模型用量</h3>
           <span className="diagnostics-caption">
-            已报告用量的请求 {diagnosticNumber(usage.reportedRequests)} /{' '}
+            所选轮次已报告用量的请求 {diagnosticNumber(usage.reportedRequests)} /{' '}
             {diagnosticNumber(usage.requests)}
           </span>
         </div>
@@ -194,7 +274,25 @@ export function DiagnosticsContent({
           未报告用量不代表零消耗。
         </p>
       </section>
-      {snapshot.failure && (
+      {(interruption === 'worker' || interruption === 'lease' || interruption === 'unknown') && (
+        <Alert
+          type="info"
+          showIcon
+          title={
+            interruption === 'worker'
+              ? '进程或服务中断'
+              : interruption === 'lease'
+                ? '租约过期中断'
+                : '中断原因未知'
+          }
+          description={
+            interruption === 'worker'
+              ? '可能由发布重启或进程退出引起，不等同执行故障；是否已恢复以关联轮次的实际状态为准。'
+              : '仅展示已有生命周期记录，不推断具体故障或恢复结果。'
+          }
+        />
+      )}
+      {snapshot.failure && interruption !== 'worker' && (
         <Alert
           className="diagnostics-failure"
           type="warning"
@@ -408,7 +506,7 @@ export async function readDiagnostics(
   if (signal.aborted) return null;
   if (result.sessionId !== sessionId || (runId && result.runId !== runId))
     throw new Error('诊断记录不匹配');
-  return result;
+  return { ...result, execution: readExecutionDiagnostics(result.execution) };
 }
 
 /** Drawer 关闭时不请求；切换轮次、会话或 revision 时中止并隔离旧响应。 */
@@ -494,6 +592,9 @@ export default function DiagnosticsPanel({
             }}
             options={[
               { value: '', label: '当前或最新轮次' },
+              ...(runId && !runs.some((run) => run.runId === runId)
+                ? [{ value: runId, label: `所选历史轮次 · ${runId}` }]
+                : []),
               ...runs.map((run) => ({
                 value: run.runId,
                 label: `${timeLabel(run.createdAt)} · ${statusLabel(run.status)} · ${run.runId.slice(0, 8)}`,
@@ -525,7 +626,16 @@ export default function DiagnosticsPanel({
             <span>读取执行诊断…</span>
           </div>
         )}
-        {open && visibleSnapshot && <DiagnosticsContent snapshot={visibleSnapshot} now={now} />}
+        {open && visibleSnapshot && (
+          <DiagnosticsContent
+            snapshot={visibleSnapshot}
+            now={now}
+            onSelectRun={(previousId) => {
+              setSnapshot(null);
+              setRunId(previousId);
+            }}
+          />
+        )}
       </div>
     </Drawer>
   );
