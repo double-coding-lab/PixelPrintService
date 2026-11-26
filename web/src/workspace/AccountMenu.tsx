@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { App, Button, Dropdown, Tooltip } from 'antd';
 import { redirectToLogin } from '../auth';
+import { useHeaderPanel } from '../components/HeaderPanels';
 import { useConfirm } from '../components/useConfirm';
 
 type Account = {
@@ -14,6 +15,7 @@ type Account = {
 /** 展示经服务端验证的当前身份；退出访客前说明临时数据的可找回边界。 */
 export default function AccountMenu() {
   const [account, setAccount] = useState<Account>();
+  const { open, setOpen } = useHeaderPanel('account');
   const { message } = App.useApp();
   const confirm = useConfirm();
   useEffect(() => {
@@ -61,6 +63,8 @@ export default function AccountMenu() {
   }
   return (
     <Dropdown
+      open={open}
+      onOpenChange={setOpen}
       trigger={['click']}
       menu={{
         items: [
@@ -78,7 +82,7 @@ export default function AccountMenu() {
       }}
     >
       <Tooltip title={account.provider === 'guest' ? '本浏览器的临时访客身份' : '当前登录账号'}>
-        <Button>
+        <Button data-header-panel-trigger="account" aria-expanded={open}>
           {account.provider === 'guest'
             ? '访客 · '
             : account.provider === 'github'

@@ -3,6 +3,7 @@ import { Alert, App, Modal, Popover } from 'antd';
 import { data, errorMessage, id } from './api';
 import { useConfirm } from '../components/useConfirm';
 import {
+  openTeamCreation,
   TeamSelect,
   useTeams,
   useWorkspaceList,
@@ -11,6 +12,7 @@ import {
 } from './TeamSettings';
 import type { Workspace } from './types';
 import Icon from '../components/Icon';
+import { useHeaderPanel, useCloseHeaderPanels } from '../components/HeaderPanels';
 
 /** 顶部工作区切换器保留分页、创建和删除入口，页面仅常驻会话导航。 */
 export default function WorkspaceSwitcher({
@@ -33,7 +35,8 @@ export default function WorkspaceSwitcher({
   const [teamId, setTeamId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = useHeaderPanel('workspace');
+  const closeHeaderPanels = useCloseHeaderPanels();
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const currentWorkspace =
     list.rows.find((workspace) => workspace.workspaceId === selected) ??
@@ -57,6 +60,7 @@ export default function WorkspaceSwitcher({
   useEffect(() => {
     /** 欢迎页入口只打开本地创建表单，不触发业务写入。 */
     const open = () => {
+      closeHeaderPanels();
       setOpen(false);
       setTeamId(
         directory.workspaceScope.startsWith('team:') ? directory.workspaceScope.slice(5) : null,
@@ -65,7 +69,7 @@ export default function WorkspaceSwitcher({
     };
     window.addEventListener('pixelprint:create-workspace', open);
     return () => window.removeEventListener('pixelprint:create-workspace', open);
-  }, [directory.workspaceScope]);
+  }, [directory.workspaceScope, closeHeaderPanels]);
   useEffect(() => {
     if (
       !directory.loading &&
@@ -115,6 +119,7 @@ export default function WorkspaceSwitcher({
     setPending(true);
     onBusy(true);
     setError('');
+    let created: Workspace | undefined;
     try {
       const workspace = await data<Workspace>('/workspaces', {
         method: 'POST',
@@ -124,7 +129,7 @@ export default function WorkspaceSwitcher({
       setCreating(false);
       list.first();
       directory.workspaceChanged();
-      onSelect(workspace.workspaceId);
+      created = workspace;
       void message.success('工作区已创建');
     } catch (reason) {
       setError(errorMessage(reason));
@@ -132,6 +137,7 @@ export default function WorkspaceSwitcher({
       setPending(false);
       onBusy(false);
     }
+    if (created) onSelect(created.workspaceId);
   }
 
   return (
@@ -145,6 +151,17 @@ export default function WorkspaceSwitcher({
         styles={{ container: { padding: 0 } }}
         content={
           <div className="workspace-switcher-panel">
+            <button
+              type="button"
+              className="quiet workspace-list-link"
+              aria-label="返回工作区列表"
+              onClick={() => {
+                setOpen(false);
+                onSelect('');
+              }}
+            >
+              全部工作区 <Icon name="arrow" />
+            </button>
             <div className="section-heading">
               <h2>
                 工作区 <span className="count">{list.total}</span>
@@ -265,6 +282,7 @@ export default function WorkspaceSwitcher({
         <button
           type="button"
           className="workspace-switcher-trigger"
+          data-header-panel-trigger="workspace"
           aria-label="切换工作区"
           aria-expanded={open}
         >
@@ -296,7 +314,27 @@ export default function WorkspaceSwitcher({
             disabled={pending}
           />
           <label>工作区归属</label>
-          <TeamSelect value={teamId} onChange={setTeamId} disabled={pending || !!directory.error} />
+          <div className="workspace-team-choice">
+            <TeamSelect
+              value={teamId}
+              onChange={setTeamId}
+              disabled={pending || !!directory.error}
+            />
+            <button
+              type="button"
+              className="quiet"
+              disabled={pending}
+              onClick={() => {
+                setCreating(false);
+                openTeamCreation((team) => {
+                  if (team) setTeamId(team.teamId);
+                  setCreating(true);
+                });
+              }}
+            >
+              新建团队
+            </button>
+          </div>
           <button
             disabled={
               pending ||

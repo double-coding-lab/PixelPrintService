@@ -13,6 +13,7 @@ import { Alert, App, Button, Modal, Select } from 'antd';
 import { data, errorMessage, id, page } from './api';
 import { useConfirm } from '../components/useConfirm';
 import Icon from '../components/Icon';
+import { useCloseHeaderPanels } from '../components/HeaderPanels';
 import type { Team, TeamDetail, Workspace, WorkspaceScope } from './types';
 
 /** 完整读取可访问团队，不能因分页漏项而误判当前团队已失效。 */
@@ -253,8 +254,16 @@ export function TeamMembers({
   );
 }
 
+type TeamCreationReturn = (team: Team | null) => void;
+/** 工作区表单可暂存本地输入，借用团队创建后再带回新归属。 */
+export function openTeamCreation(onCreated?: TeamCreationReturn) {
+  window.dispatchEvent(new CustomEvent('pixelprint:create-team', { detail: { onCreated } }));
+}
+
 /** 团队管理保留当前工作台，通过账号添加成员，不展示或修改其他人的凭据。 */
 export default function TeamSettings() {
+  const closeHeaderPanels = useCloseHeaderPanels();
+  const creationReturn = useRef<TeamCreationReturn | null>(null);
   const directory = useTeams();
   const { message } = App.useApp();
   const confirm = useConfirm();
@@ -269,6 +278,27 @@ export default function TeamSettings() {
   const [pending, setPending] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const active = useRef(false);
+  useEffect(() => {
+    const openCreation = (event: Event) => {
+      if (active.current) return;
+      closeHeaderPanels();
+      creationReturn.current =
+        (event as CustomEvent<{ onCreated?: TeamCreationReturn }>).detail?.onCreated ?? null;
+      setError('');
+      setCreating(true);
+      setOpen(true);
+      directory.reload();
+    };
+    window.addEventListener('pixelprint:create-team', openCreation);
+    return () => window.removeEventListener('pixelprint:create-team', openCreation);
+  }, [closeHeaderPanels, directory.reload]);
+  function close() {
+    if (pending) return;
+    setOpen(false);
+    const done = creationReturn.current;
+    creationReturn.current = null;
+    done?.(null);
+  }
   const team = !directory.loading && detail?.teamId === selected ? detail : null;
   useEffect(() => {
     if (directory.loading || directory.error) return;
@@ -339,6 +369,12 @@ export default function TeamSettings() {
       setName('');
       setCreating(false);
       void message.success('团队已创建');
+      const done = creationReturn.current;
+      creationReturn.current = null;
+      if (done) {
+        setOpen(false);
+        done(created);
+      }
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -366,19 +402,14 @@ export default function TeamSettings() {
       <Button
         type="text"
         onClick={() => {
+          closeHeaderPanels();
           setOpen(true);
           directory.reload();
         }}
       >
         团队管理
       </Button>
-      <Modal
-        title="团队管理"
-        open={open}
-        onCancel={() => !pending && setOpen(false)}
-        footer={null}
-        width={520}
-      >
+      <Modal title="团队管理" open={open} onCancel={close} footer={null} width={520}>
         <div className="team-toolbar">
           <Select
             aria-label="选择团队"

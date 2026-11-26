@@ -81,3 +81,28 @@
     flex: 1 1 100%;
   }
 }
+
+/* 创建入口并列，归属选择旁可直接建团队；小屏允许换行。 */
+.workspace-create-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.workspace-team-choice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.workspace-team-choice > .ant-select {
+  flex: 1;
+  min-width: 0;
+}
+.workspace-team-choice > .quiet {
+  flex: none;
+}
+.workspace-switcher-panel > .workspace-list-link {
+  width: 100%;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}

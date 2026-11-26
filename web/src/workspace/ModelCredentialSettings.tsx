@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Alert, App } from 'antd';
+import { Alert, App, Popover } from 'antd';
+import { useHeaderPanel } from '../components/HeaderPanels';
 import { data, errorMessage } from './api';
 import Icon from '../components/Icon';
 
@@ -13,10 +14,14 @@ type Credential = {
 /** Token 仅在密码输入框短暂保留，成功后清空；浏览器不持久化和回显凭据。 */
 export default function ModelCredentialSettings() {
   const { message } = App.useApp();
+  const { open, setOpen } = useHeaderPanel('model');
   const [status, setStatus] = useState<Credential | null>(null);
   const [baseUrl, setBaseUrl] = useState('');
   const [modelName, setModelName] = useState('');
   const [token, setToken] = useState('');
+  useEffect(() => {
+    if (!open) setToken('');
+  }, [open]);
   const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
@@ -64,85 +69,94 @@ export default function ModelCredentialSettings() {
   }
 
   return (
-    <details
-      className="credential"
-      onToggle={(event) => {
-        if (!event.currentTarget.open) setToken('');
-      }}
-    >
-      <summary>
-        <Icon name="key" /> 模型凭据
-        <span className={status?.configured ? 'credential-dot ready' : 'credential-dot'} />
-      </summary>
-      <form className="compact-form" onSubmit={save}>
-        <h3>连接模型</h3>
-        <span className="muted">
-          {status
-            ? status.configured
-              ? `已配置模型：${status.modelName}`
-              : '尚未配置个人模型'
-            : loading
-              ? '正在查询模型配置'
-              : '模型配置查询失败，可重试或填写后保存'}
-        </span>
-        <button
-          type="button"
-          disabled={loading || pending}
-          onClick={() => {
-            setError('');
-            setLoading(true);
-            setRefresh((value) => value + 1);
-          }}
-        >
-          {loading ? '查询中…' : '刷新模型配置'}
-        </button>
-        <p className="muted">
-          每个人的模型设置独立，凭据加密保存，仅本人可用。新建会话采用当前凭据，既有会话继续绑定旧修订。
-        </p>
-        <label htmlFor="model-base-url">模型 Base URL</label>
-        <input
-          id="model-base-url"
-          type="text"
-          autoComplete="off"
-          placeholder="https://api.example.com/v1"
-          maxLength={2048}
-          required
-          disabled={loading || pending}
-          value={baseUrl}
-          onChange={(event) => setBaseUrl(event.target.value)}
-        />
-        <label htmlFor="model-name">模型名称</label>
-        <input
-          id="model-name"
-          type="text"
-          autoComplete="off"
-          placeholder="model-name"
-          maxLength={200}
-          required
-          disabled={loading || pending}
-          value={modelName}
-          onChange={(event) => setModelName(event.target.value)}
-        />
-        <label htmlFor="model-token">模型 Token</label>
-        <div className="inline">
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      trigger="click"
+      placement="bottomRight"
+      arrow={false}
+      styles={{ container: { padding: 0 } }}
+      content={
+        <form className="compact-form credential-panel" onSubmit={save}>
+          <h3>连接模型</h3>
+          <span className="muted">
+            {status
+              ? status.configured
+                ? `已配置模型：${status.modelName}`
+                : '尚未配置个人模型'
+              : loading
+                ? '正在查询模型配置'
+                : '模型配置查询失败，可重试或填写后保存'}
+          </span>
+          <button
+            type="button"
+            disabled={loading || pending}
+            onClick={() => {
+              setError('');
+              setLoading(true);
+              setRefresh((value) => value + 1);
+            }}
+          >
+            {loading ? '查询中…' : '刷新模型配置'}
+          </button>
+          <p className="muted">
+            每个人的模型设置独立，凭据加密保存，仅本人可用。新建会话采用当前凭据，既有会话继续绑定旧修订。
+          </p>
+          <label htmlFor="model-base-url">模型 Base URL</label>
           <input
-            id="model-token"
-            type="password"
+            id="model-base-url"
+            type="text"
             autoComplete="off"
-            maxLength={8192}
+            placeholder="https://api.example.com/v1"
+            maxLength={2048}
             required
             disabled={loading || pending}
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
+            value={baseUrl}
+            onChange={(event) => setBaseUrl(event.target.value)}
           />
-          <button
-            disabled={pending || loading || !token.trim() || !baseUrl.trim() || !modelName.trim()}
-          >
-            {pending ? '保存中…' : '保存凭据'}
-          </button>
-        </div>
-        {error && <Alert type="error" showIcon title={error} className="feedback-alert" />}
-      </form>
-    </details>
+          <label htmlFor="model-name">模型名称</label>
+          <input
+            id="model-name"
+            type="text"
+            autoComplete="off"
+            placeholder="model-name"
+            maxLength={200}
+            required
+            disabled={loading || pending}
+            value={modelName}
+            onChange={(event) => setModelName(event.target.value)}
+          />
+          <label htmlFor="model-token">模型 Token</label>
+          <div className="inline">
+            <input
+              id="model-token"
+              type="password"
+              autoComplete="off"
+              maxLength={8192}
+              required
+              disabled={loading || pending}
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+            />
+            <button
+              disabled={pending || loading || !token.trim() || !baseUrl.trim() || !modelName.trim()}
+            >
+              {pending ? '保存中…' : '保存凭据'}
+            </button>
+          </div>
+          {error && <Alert type="error" showIcon title={error} className="feedback-alert" />}
+        </form>
+      }
+    >
+      <button
+        type="button"
+        className="credential-trigger"
+        aria-expanded={open}
+        data-header-panel-trigger="model"
+      >
+        <Icon name="key" /> 模型凭据
+        <span className={status?.configured ? 'credential-dot ready' : 'credential-dot'} />
+      </button>
+    </Popover>
   );
 }

@@ -3,7 +3,7 @@ import CommunityPanel from './workspace/CommunityPanel';
 import './components/fileTypeIcon.css';
 import './workspace/editorSearch.css';
 import './workspace/editableFileTree.css';
-import { StrictMode, useEffect, useRef, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App as AntApp, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
@@ -17,6 +17,8 @@ import ModelCredentialSettings from './workspace/ModelCredentialSettings';
 import AccountMenu from './workspace/AccountMenu';
 import TeamSettings, { TeamProvider } from './workspace/TeamSettings';
 import Icon from './components/Icon';
+import { HeaderPanelsProvider } from './components/HeaderPanels';
+import { nonBlockingMessages } from './components/uiFeedback';
 import WorksPanel from './workspace/WorksPanel';
 import './workspace/works.css';
 import './styles.css';
@@ -36,6 +38,7 @@ import './workspace/appNavigation.css';
 /** 工作台统一组织导航、会话和凭据入口；业务操作继续使用同源接口。 */
 function App() {
   const confirm = useConfirm();
+  const leavingPage = useRef(false);
   const [initialRoute] = useState(() => readAppRoute(new URL(window.location.href)));
   const [selection, setSelection] = useState({
     workspaceId: initialRoute.workspaceId ?? '',
@@ -56,7 +59,7 @@ function App() {
   useEffect(() => {
     /** 浏览器刷新或关闭时保护未保存源码，任务生命周期与此提醒无关。 */
     function beforeUnload(event: BeforeUnloadEvent) {
-      if (dirty || busy) {
+      if (!leavingPage.current && (dirty || busy)) {
         event.preventDefault();
         event.returnValue = '';
       }
@@ -68,6 +71,29 @@ function App() {
   const navigation = useRef<ReturnType<typeof createAppHistory> | null>(null);
   const guard = useRef({ dirty, busy, confirm });
   guard.current = { dirty, busy, confirm };
+  /** 写入结束后同步释放导航锁，避免同一批更新中的创建跳转仍读到旧 busy。 */
+  const changeBusy = useCallback((value: boolean) => {
+    guard.current.busy = value;
+    setBusy(value);
+  }, []);
+  async function openHome(event: React.MouseEvent<HTMLAnchorElement>) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const current = guard.current;
+    if (current.busy) return;
+    if (
+      current.dirty &&
+      !(await current.confirm({
+        title: '返回首页？',
+        content: '尚未保存的编辑会丢失，请先保存。',
+        okText: '放弃修改并返回',
+        danger: true,
+      }))
+    )
+      return;
+    leavingPage.current = true;
+    window.location.assign('/');
+  }
   useEffect(() => {
     const history = createAppHistory(window, {
       isBlocked: () => guard.current.dirty || guard.current.busy,
@@ -118,12 +144,12 @@ function App() {
     <main className="app-shell">
       <header className="app-header">
         <div className="header-leading">
-          <button
-            type="button"
+          <a
+            href="/"
             className="brand"
-            disabled={busy}
-            onClick={() => void select('')}
-            aria-label="返回工作区列表"
+            aria-disabled={busy || undefined}
+            onClick={(event) => void openHome(event)}
+            aria-label="返回首页"
           >
             <span className="brand-mark">
               <Icon name="code" />
@@ -131,7 +157,7 @@ function App() {
             <div>
               <strong>PixelPrint</strong>
             </div>
-          </button>
+          </a>
           <nav className="primary-navigation" aria-label="主导航">
             <button
               type="button"
@@ -167,7 +193,7 @@ function App() {
               selected={selection.workspaceId}
               onSelect={(workspaceId) => select(workspaceId)}
               blocked={busy}
-              onBusy={setBusy}
+              onBusy={changeBusy}
               onDeleted={(workspaceId) => {
                 if (selection.workspaceId === workspaceId) navigate('');
               }}
@@ -199,7 +225,7 @@ function App() {
                 navigationDisabled={busy}
                 resourceId={works.resourceId}
                 onDirty={setDirty}
-                onBusy={setBusy}
+                onBusy={changeBusy}
                 onSelect={(value) => void openWorks('', works.view, value)}
                 onOpenSession={(workspaceId, sessionId) => void select(workspaceId, sessionId)}
                 onDeleted={
@@ -225,7 +251,7 @@ function App() {
             sessionId={selection.sessionId}
             onSelect={(sessionId) => select(selection.workspaceId, sessionId)}
             onDirty={setDirty}
-            onBusy={setBusy}
+            onBusy={changeBusy}
             blocked={busy}
             onDeleted={(sessionId) => {
               if (selection.sessionId === sessionId) navigate(selection.workspaceId);
@@ -268,10 +294,12 @@ createRoot(document.getElementById('root')!).render(
         },
       }}
     >
-      <AntApp>
-        <TeamProvider>
-          <App />
-        </TeamProvider>
+      <AntApp message={nonBlockingMessages}>
+        <HeaderPanelsProvider>
+          <TeamProvider>
+            <App />
+          </TeamProvider>
+        </HeaderPanelsProvider>
       </AntApp>
     </ConfigProvider>
   </StrictMode>,

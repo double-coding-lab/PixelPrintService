@@ -4,6 +4,7 @@ import { page as readPage, errorMessage } from './api';
 import type { ActiveSessionSummary } from '../../../shared/activeSessions';
 import { useTeams } from './TeamSettings';
 import Icon from '../components/Icon';
+import { useHeaderPanel } from '../components/HeaderPanels';
 import './activeSessions.css';
 
 const labels = {
@@ -23,7 +24,7 @@ export default function ActiveSessions({
   currentSessionId: string;
   onSelect: (workspaceId: string, sessionId: string) => Promise<boolean>;
 }) {
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = useHeaderPanel('active');
   const [page, setPage] = useState(1);
   const [refresh, setRefresh] = useState(0);
   const [rows, setRows] = useState<ActiveSessionSummary[]>([]);
@@ -193,6 +194,7 @@ export default function ActiveSessions({
     >
       <button
         ref={trigger}
+        data-header-panel-trigger="active"
         type="button"
         className="active-sessions-trigger"
         disabled={blocked}

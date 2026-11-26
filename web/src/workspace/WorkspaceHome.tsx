@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Button, Input, Pagination } from 'antd';
 import Icon from '../components/Icon';
 import {
+  openTeamCreation,
   useTeams,
   useWorkspaceList,
   WorkspaceScopeSelect,
@@ -26,9 +27,14 @@ export default function WorkspaceHome({
     <section className="workspace-home" aria-label="工作区">
       <div className="workspace-home-heading">
         <h1>工作区</h1>
-        <Button type="primary" icon={<Icon name="plus" />} disabled={disabled} onClick={onCreate}>
-          新建工作区
-        </Button>
+        <div className="workspace-create-actions">
+          <Button disabled={disabled} onClick={() => openTeamCreation()}>
+            新建团队
+          </Button>
+          <Button type="primary" icon={<Icon name="plus" />} disabled={disabled} onClick={onCreate}>
+            新建工作区
+          </Button>
+        </div>
       </div>
       <div className="workspace-home-toolbar">
         <WorkspaceScopeSelect />

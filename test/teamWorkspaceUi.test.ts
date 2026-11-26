@@ -640,12 +640,24 @@ test(
       await evaluate(`document.querySelector('[aria-label="测试会话草稿"]').value`),
       '保留的草稿',
     );
+    await click('工作台');
+    await wait('!!document.querySelector(".workspace-switcher-trigger")');
+    await evaluate('document.querySelector(".workspace-switcher-trigger").click()');
+    await wait(
+      `!!document.querySelector('[aria-label="返回工作区列表"]')?.getClientRects().length`,
+    );
     await evaluate(`document.querySelector('[aria-label="返回工作区列表"]').click()`);
     await wait(`document.querySelector('.ant-modal-confirm')`);
     await click('取消');
     await wait(`!document.querySelector('.ant-modal-confirm')`);
     assert.equal(await evaluate('location.pathname'), '/workbench/w1/sessions/s1');
     await input('[aria-label="测试会话草稿"]', '');
+    await click('工作台');
+    await wait('!!document.querySelector(".workspace-switcher-trigger")');
+    await evaluate('document.querySelector(".workspace-switcher-trigger").click()');
+    await wait(
+      `!!document.querySelector('[aria-label="返回工作区列表"]')?.getClientRects().length`,
+    );
     await evaluate(`document.querySelector('[aria-label="返回工作区列表"]').click()`);
     await wait(`!!document.querySelector('.workspace-home-list')`);
     await select('工作区范围', '个人工作区');
@@ -678,10 +690,8 @@ test(
     assert.equal(await evaluate(`document.querySelector('#workspace-name').value`), '新页面');
     failCreate = false;
     await click('创建');
-    await wait(
-      `document.querySelector('.workspace-home-list')?.textContent.includes('新页面（研发组）')`,
-    );
-    await click('新页面（研发组）');
+    // 创建成功自动进入新工作区，无需再点击列表。
+
     await wait(`location.pathname==='/workbench/w3'`);
     assert.deepEqual(
       calls.filter((call) => call.path === '/workspaces' && call.method === 'POST').at(-1)?.body,
@@ -695,7 +705,7 @@ test(
     await wait(`document.body.innerText.includes('共享作品')`);
     await click('查看版本');
     await wait(
-      `location.pathname==='/works/versions/v1' && document.body.innerText.includes('版本详情')`,
+      `location.pathname==='/works/versions/v1' && document.querySelector('.works-heading h1')?.textContent==='共享作品'`,
     );
     assert.equal(await evaluate('location.pathname'), '/works/versions/v1');
     assert.equal(await evaluate(`new URLSearchParams(location.search).has('teamId')`), false);
@@ -739,6 +749,12 @@ test(
         `[...document.querySelectorAll('.ant-segmented-item')].find(e=>e.querySelector('input')?.checked)?.textContent`,
       ),
       '我的版本',
+    );
+    await click('工作台');
+    await wait('!!document.querySelector(".workspace-switcher-trigger")');
+    await evaluate('document.querySelector(".workspace-switcher-trigger").click()');
+    await wait(
+      `!!document.querySelector('[aria-label="返回工作区列表"]')?.getClientRects().length`,
     );
     await evaluate(`document.querySelector('[aria-label="返回工作区列表"]').click()`);
     await wait(
