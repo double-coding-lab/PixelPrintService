@@ -1,0 +1,40 @@
+web/index.html
+  s_e16f52fd1de115::t_c0fe697bac40b0 6
+web/src/components/HeaderPanels.tsx
+  s_e16f52fd1de115::t_c0fe697bac40b0 1-7,9-20,22-47,49-54,56
+test/teamWorkspaceUi.test.ts
+  s_e16f52fd1de115::t_20e2bdd515a4e0 693-694
+web/src/workspace/AccountMenu.tsx
+  s_e16f52fd1de115::t_c0fe697bac40b0 4,18,66-67,85
+web/src/main.tsx
+  s_e16f52fd1de115::t_c0fe697bac40b0 20-21,74,76-77,79-93,95-96,147-148,150-152,160,196,228,254,297-302
+  s_e16f52fd1de115::t_20e2bdd515a4e0 41,62,94
+web/src/workspace/CredentialSettings.tsx
+  s_e16f52fd1de115::t_c0fe697bac40b0 2-3,11,14-16,55-95,98-99
+web/src/components/uiFeedback.ts
+  s_e16f52fd1de115::t_c0fe697bac40b0 1-10
+web/src/workspace/ModelCredentialSettings.tsx
+  s_e16f52fd1de115::t_c0fe697bac40b0 2-3,17,22-24,72-105,107-108,110-111,114-115,117-160
+web/src/styles.css
+  s_e16f52fd1de115::t_c0fe697bac40b0 153,197-199,214,228,230-232,234
+web/src/workspace/ActiveSessions.tsx
+  s_e16f52fd1de115::t_c0fe697bac40b0 7,27,197
+web/src/workspace/WorkspaceSwitcher.tsx
+  s_e16f52fd1de115::t_c0fe697bac40b0 15,38-39,63,72,122,132,140,154-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "bb52fca47e033259c184b2cf8de0952ba1b52d1f",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
