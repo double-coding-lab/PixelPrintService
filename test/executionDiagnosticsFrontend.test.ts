@@ -128,3 +128,23 @@ test('缺失或非法范围摘要不回显私有字段，旧数据不生成零�
   };
   assert.match(render(value), /范围不完整/);
 });
+
+test('等待回答期间本轮、恢复链和会话秒表均冻结，回答重新入队后才递增', () => {
+  const value = fixture();
+  value.status = 'waiting_input';
+  value.sessionElapsedMs = 4000;
+  value.sessionRunningCount = 0;
+  const now = Date.parse(value.observedAt) + 3600000;
+  let html = render(value, now);
+  assert.match(html, /所选轮次耗时<\/span><strong>1 秒/);
+  assert.match(html, /累计执行时间<\/span><strong>4 秒/);
+  assert.match(html, /关联恢复链统计[\s\S]*?累计区间耗时<\/dt><dd>2 秒/);
+  assert.match(html, /等待回答暂停计时/);
+  value.status = 'running';
+  value.execution!.selected.runningCount = 1;
+  value.execution!.recoveryChain.runningCount = 1;
+  value.sessionRunningCount = 1;
+  html = render(value, Date.parse(value.observedAt) + 5000);
+  assert.match(html, /所选轮次耗时<\/span><strong>6 秒/);
+  assert.match(html, /累计执行时间<\/span><strong>9 秒/);
+});

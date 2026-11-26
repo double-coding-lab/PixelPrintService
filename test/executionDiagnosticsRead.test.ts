@@ -314,3 +314,47 @@ test('两次查询间新增请求，后读所选轮次回填会话与链，避�
   assert.equal(result.execution.session.usage.totalTokens, 20);
   assert.equal(result.execution.session.complete, true);
 });
+
+test('等待回答冻结所选轮次、恢复链和整会话；多次回答与等待结束均扣除空闲', async () => {
+  const f = await fixture();
+  const run = f.tables.D2cRun[0];
+  Object.assign(run, { status: 'waiting_input', resumeFromRunId: null });
+  f.event(1, 'run_status', { status: 'waiting_input' }, 10);
+  f.event(2, 'run_status', { status: 'waiting_input' }, 100);
+  let result = await readRunDiagnostics(f.mysql, 'employee-a', f.id);
+  assert.equal(result.elapsedMs, 10000);
+  assert.equal(result.finishedAt, null);
+  assert.equal(result.execution.selected.runningCount, 0);
+  assert.equal(result.execution.recoveryChain.elapsedMs, 10000);
+  assert.equal(result.sessionElapsedMs, 10000);
+  assert.equal(result.sessionRunningCount, 0);
+  f.event(3, 'stage', { stage: 'queued', status: 'queued' }, 200);
+  f.event(4, 'run_status', { status: 'waiting_input' }, 205);
+  result = await readRunDiagnostics(f.mysql, 'employee-a', f.id);
+  assert.equal(result.elapsedMs, 15000);
+  f.event(5, 'stage', { stage: 'queued', status: 'queued' }, 300);
+  Object.assign(run, { status: 'running' });
+  result = await readRunDiagnostics(f.mysql, 'employee-a', f.id);
+  assert.equal(result.execution.selected.runningCount, 1);
+  assert.equal(
+    result.elapsedMs,
+    15000 + Date.parse(result.observedAt) - Date.parse('2026-01-01T00:05:00Z'),
+  );
+  f.event(6, 'run_status', { status: 'waiting_input' }, 308);
+  f.event(7, 'run_status', { status: 'cancelled' }, 800);
+  Object.assign(run, { status: 'cancelled' });
+  result = await readRunDiagnostics(f.mysql, 'employee-a', f.id);
+  assert.equal(result.elapsedMs, 23000);
+  assert.equal(result.sessionElapsedMs, 23000);
+  assert.equal(result.finishedAt, '2026-01-01T00:13:20.000Z');
+});
+
+test('等待记录缺时间时耗时保持未知，不将等待计作执行', async () => {
+  const f = await fixture();
+  Object.assign(f.tables.D2cRun[0], { status: 'waiting_input' });
+  f.event(1, 'run_status', { status: 'waiting_input' }, 10);
+  f.tables.D2cTimeline[0].createdAt = null;
+  const result = await readRunDiagnostics(f.mysql, 'employee-a', f.id);
+  assert.equal(result.elapsedMs, null);
+  assert.equal(result.sessionRunningCount, 0);
+});
