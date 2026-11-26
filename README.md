@@ -1,106 +1,77 @@
-# PixelPrint Community
+# PixelPrint
 
-前后端一体的设计转代码工作台：Fastify 提供 API、React 页面和静态文件，Deep Agents / LangGraph 执行生成任务。
+把 Figma 设计稿生成可预览、可编辑的页面代码。支持 H5、React Native Web、持续对话修改、截图对比、交互验收、团队协作和作品分享。
 
-保留工作区、会话、团队协作、Figma 切图、子 Agent、暂停与继续、实时进度、文件编辑、H5 / React Native Web 预览、截图对比和版本 ZIP 下载。运行配置直接读取 `project.config.json`，无需远程配置中心、企业 SDK 或外部 Sandbox 服务。
+**在线体验：[pp.lantao.work](https://pp.lantao.work/)**
 
-## 使用与部署文档
+支持 GitHub 登录和临时访客。登录后，在“模型凭据”填写自己的 **模型地址、模型名称和 API Key**，并配置个人 Figma Token，再创建工作区开始生成。访客身份有有效期，需要长期保留的工作建议使用 GitHub 登录。个人密钥仅在服务端加密保存。
 
-- [文档目录](docs/README.md)：按使用者与部署者需要阅读。
-- [使用指南](docs/使用指南.md)：创建会话、持续修改、交互验收和保存作品。
-- [功能说明](docs/使用指南.md)与[架构与流程图](docs/架构与流程图.md)。
-- [D2C 生成与验收流程](docs/D2C生成与验收流程.md)：扫描、素材、规则、出码与验收证据。
-- [部署与配置](docs/deployment/部署与配置.md)及[完整配置字段](docs/deployment/configuration.md)。
+## 可以做什么
 
-## 快速部署
+- 从设计稿读取节点、导出切图，生成页面及组件代码。
+- 持续对话调整样式和交互，查看任务进度、子任务诊断和模型用量。
+- 在浏览器运行预览、在线编辑源码、截图对比并下载版本 ZIP。
+- 保存会话版本和作品，在广场分享，也可创建自己的分支继续修改。
+- 查看源码和资源，图片支持后台 WebP 缩略图与历史图片补生成。
 
-准备 Node.js 24 和 Docker Compose。在本目录执行：
+操作步骤见[使用指南](docs/使用指南.md)，生成与验收机制见[D2C 流程](docs/D2C生成与验收流程.md)。
+
+## 自己部署
+
+一台服务器即可运行完整应用。默认 Compose 同时启动 **应用、MySQL、Redis**，文件保存在本地持久卷；也支持接入自己的数据库、缓存和 S3 兼容对象存储。
+
+准备 Git、Node.js 24、Docker Engine 和 Docker Compose 插件，然后执行：
 
 ```bash
+git clone https://github.com/double-coding-lab/PixelPrintService.git
+cd PixelPrintService
 node scripts/setup.mjs --docker
 ```
 
-终端会显示首次登录账号和随机密码。编辑生成的 `project.config.json`：
+保存终端输出的首次登录账号和随机密码。编辑生成的私有文件 `project.config.json`：
 
-- `runtime.modelConfigs[0]`：保留平台预算和可选默认模型连接；用户可登录后在“模型凭据”独立填写支持工具调用的服务地址、模型名和 API Key，新会话使用个人设置。
-- `server.publicUrl`：用户实际访问的地址。默认 `http://localhost:8080`。
-- `storage.publicUrl`：同一地址加 `/files`，例如 `https://your-domain.example/files`。
-- `database.password`：与 Compose 的 `PIXELPRINT_DB_PASSWORD` 一致；上线时替换示例密码。
+1. `server.publicUrl` 填自己的访问地址；`storage.publicUrl` 填同一地址加 `/files`。
+2. `database.password` 替换为自己的数据库密码；在仓库根目录创建 `.env`，写入相同的 `PIXELPRINT_DB_PASSWORD=你的密码`。
+3. 每位用户登录后单独设置模型连接和 Figma Token；管理员可按需配置平台默认模型。
 
 ```bash
-# 如修改数据库密码，在启动前设置相同值。
-export PIXELPRINT_DB_PASSWORD='你的数据库密码'
+chmod 600 project.config.json .env
+docker compose config --quiet
 docker compose up --build -d
+docker compose logs --tail=100 app
 ```
 
-访问 `http://localhost:8080`，登录后在页面保存 Figma Token、创建工作区和会话。容器首次启动会创建缺失的数据表，不会删除现有数据。请为此发行版使用独立数据库。
+访问自己配置的地址，默认端口为 `8080`。首次构建会下载系统依赖、npm/Python 包和 Chromium，耗时取决于网络；后续构建复用缓存。新库启动时创建缺失表，已有库升级请按[SQL 说明](docs/sql/README.md)执行迁移。
 
-新建配置默认将 `runtime.d2c.contentStorage` 和 `runtime.d2c.checkpointStorage` 设置为 `external`、`schemaReady: true`，初始化脚本会分别生成正文加密密钥。首次启动或 `npm run db:init` 创建的新表包含引用列；小于阈值或超过单对象限额的正文仍留库。已有 `project.config.json` 不会被覆盖；已有数据库升级时需先执行两个阶段的增量 SQL，再调整对应配置并重启。
+**公网使用请配置域名和 HTTPS**，再提交个人 API Key。完整步骤、GitHub OAuth 配置、备份和故障排查见[部署指南](docs/deployment/部署与配置.md)。
 
-首次构建需要下载 npm 包、Python 包、Chromium 和系统依赖。构建网络需能访问公共软件源；可按部署网络配置标准 HTTP_PROXY / HTTPS_PROXY。后续预览和截图不在请求中下载依赖。
+## 部署方式与依赖
 
-容器内的 `localhost` 指向容器自身；模型运行在宿主机时，填写可从容器访问的地址。macOS / Windows Docker Desktop 通常可用 `host.docker.internal`。
+| 项目       | 单机默认                             | 可外接方式                                                    |
+| ---------- | ------------------------------------ | ------------------------------------------------------------- |
+| MySQL      | Compose 内 MySQL 8.4                 | 配置已有 MySQL 的地址、数据库及账号                           |
+| Redis      | Compose 内 Redis 7                   | 配置 `redis://` 或 `rediss://` 连接串                         |
+| 图片与文件 | 本地 `.data` 持久卷                  | S3 兼容对象存储，如 AWS S3、MinIO；OSS 等需核对 S3 接口兼容性 |
+| 运行配置   | 私有 `project.config.json`，重启生效 | 可由自己的发布系统挂载该文件；当前没有远程配置中心适配器      |
+| 模型       | 用户在应用内设置连接                 | 支持工具调用的 OpenAI 兼容接口                                |
+| 编译与截图 | 应用容器内 Node/Vite、Chromium       | 当前部署方案使用本机进程                                      |
 
-## 本地开发
+MySQL 和 Redis 是必需的服务，可以使用 Compose 提供的实例，也可以使用已有服务；对象存储按需外接。外部服务部署使用独立的 [`compose.external.yaml`](compose.external.yaml)，具体配置见[外接服务](docs/deployment/部署与配置.md#外接-mysqlredis-和对象存储)。
 
-```bash
-npm ci
-npm run setup
-# 编辑 project.config.json 中的模型配置
-# 启动本地数据库和缓存，或改为已有的 MySQL / Redis 地址
-docker compose up -d mysql redis
-npm run db:init
-npm run prepare:images
-npm run prepare:preview
-npm run dev
-```
+下载代理与应用运行代理分别配置。提供的 [`compose.build-proxy.yaml`](compose.build-proxy.yaml) **仅作用于构建下载**，不会把代理写入运行中的应用。说明见[部署代理](docs/deployment/部署与配置.md#下载代理与运行代理)。
 
-开发默认访问 `http://localhost:8080`。前端变更自动重建，后端由 tsx 监听重启。Linux 预览安装脚本面向 Debian / Ubuntu，安装浏览器系统依赖需要 root 或 sudo；也可直接使用提供的部署镜像。
+## 文档入口
 
-```bash
-npm run typecheck
-npm test
-npm run build
-npm start
-```
+- [文档目录](docs/README.md)：按使用、部署和实现查找资料。
+- [配置字段](docs/deployment/configuration.md)：账号、模型、存储、超时和并发设置。
+- [架构与流程图](docs/架构与流程图.md)：应用、任务、数据和预览之间的关系。
+- [本地开发](docs/deployment/部署与配置.md#本地开发)：依赖安装、开发启动与检查。
+- [知识库](.Knowledge/index.md)：维护实现约定与故障定位入口。
 
-## 配置和数据
+配置、数据库、文件和加密密钥应一起备份；历史密钥丢失会影响已保存凭据和正文的读取。预览与主应用共享机器资源，适合受信团队使用，隔离边界见[部署指南](docs/deployment/部署与配置.md#资源与访问边界)。
 
-完整字段见 [配置说明](docs/deployment/configuration.md)，系统关系见 [架构说明](docs/架构与流程图.md)。
+## PixelPrint 资源与分发
 
-| 能力 | 本发行版实现 |
-| --- | --- |
-| 数据库 | 标准 MySQL 8 + Sequelize / mysql2 |
-| 缓存与通知 | 标准 Redis，持久任务和时间线仍以 MySQL 为准 |
-| 日志 | Pino，输出到 stdout / stderr，由部署环境采集 |
-| 登录 | GitHub OAuth、临时访客、本地账号与签名 Cookie |
-| 图片和文件 | 默认本地磁盘；可改为 S3 兼容对象存储 |
-| 运行配置 | 项目内 JSON，重启生效 |
-| Agent | Deep Agents / LangGraph，MySQL 检查点 |
-| 预览和截图 | 本地 Node/Vite 编译、Playwright Chromium |
+`npm run pixelprint:update` 从公开上游更新 Skill 和脚本。已有工作区保留创建时的资源，升级方式见部署指南。
 
-Compose 持久卷保存 MySQL、Redis、文件和临时执行数据。`project.config.json` 单独保管并备份，不会进入镜像或 Git；容器启动时复制为仅应用用户可读的文件，然后以非 root 用户运行应用。凭据加密密钥必须与数据库一起备份，不能随意重置。
-
-本地文件默认经 `/files` 公开读取；S3 使用配置的公开文件 URL。不要把私密文档当公开图片上传。预览采用本地进程，保留 iframe sandbox、CSP 和资源校验；此部署方式适合受信团队，不能把它视为可运行任意不可信代码的强隔离平台。
-
-## 更新 PixelPrint 资源
-
-```bash
-npm run pixelprint:update
-```
-
-从公开 GitHub 源更新 Skill 和脚本，记录上游版本与修订，更新时应用公开资源处理策略。工作区固定使用创建时复制的资源，已有工作区需手动升级。发行版模板经过通用化处理，不等同于未经修改的上游原件。
-
-## 项目知识库
-
-[知识库索引](.Knowledge/index.md) 提供架构、配置、工作区、Agent 执行、预览编辑与团队协作的阅读入口。内容按社区版实现整理，已移除内部接入方式和运行数据，并接入本仓库的 Flow2Spec 路由。脱敏范围见 [知识库说明](.Knowledge/README.md)。
-
-## 分发说明
-
-此目录是独立副本，不含原项目 Git 历史、内部知识库原文、真实配置、用户产物或聊天数据。未替项目作者选择开源许可证；正式公开发布前，应确认自有代码和上游资源的授权，并补充 LICENSE。
-
-数据库结构与历史升级统一见 [docs/sql](docs/sql/README.md)，完整工具及执行链路见[文档目录](docs/README.md)。
-
-### 后台WebP封面
-
-`project.config.json` 的 `runtime.d2c.imageVariants.enabled` 控制普通图片上传后的后台WebP生成，省略默认true。原图成功后后台生成宽度最多320px、质量80的WebP并上传，名称为原文件名加 `_.webp`；运行截图封面不受此开关影响。需要已准备的图片压缩Python环境和Redis。缩图失败不阻塞原图或正常流程；广场和已保存作品优先使用就绪WebP，未就绪或坏图回退原图。
+本仓库为独立社区版，不包含真实配置、用户产物或聊天数据。项目尚未提供自有代码的 LICENSE；使用和再分发前应核实项目及上游资源的授权条件。
