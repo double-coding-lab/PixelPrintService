@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 37
+revision: 38
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -210,11 +210,11 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 
 ## 工具调用思考字段回传
 
-- 对要求 `reasoning_content` 的 Chat Completions 网关，模型真实返回的思考内容随后续助手工具调用历史回传；缺失会触发 `invalid_request_error` / HTTP 400。
-- `model.ts` 在实际发送前补全 SDK 转换遗漏字段，普通流、原生流及非流式请求共用入口。调用选项以私有 Symbol 关联当前消息，发送前移除，不跨并发请求共享历史。
-- 普通流读取 `additional_kwargs.reasoning_content`，原生流读取标准 `reasoning` 内容块；私有 sdkItem 使用可选 `reasoningContent` 保存，工具批次仅首条保存一次，重建历史恢复到助手消息。检查点沿原消息序列化保留字段。
-- 思考字段与用户可见正文分离，沿既有脱敏和私有历史权限保存。旧历史缺失时保留缺失事实，不补造思考或重放工具。普通消息没有该字段时沿 SDK 原协议发送。
-- 回归入口为 `test/modelReasoningReplay.test.ts`，通过真实 SDK 与本地 HTTP 服务核对出站字段、恢复、并发隔离和多工具配对。
+- DeepSeek 工具请求为每条助手消息提供字符串 `reasoning_content`，包括未调用工具的助手回复；已有真实思考原样回传，历史缺失或平台新建消息在出站时使用空字符串。
+- `agent/model.ts` 在实际发送前处理普通流、原生流和非流式协议；当前模型识别包含 DeepSeek 版本后缀及 `deepseek/` 前缀。补空仅用于携带工具定义的 DeepSeek 请求，其他模型和无工具请求沿原协议；调用选项按请求隔离。
+- `agent/reasoningContent.ts` 同时读取供应商字段及标准思考块。私有 `sdkItem.reasoningContent`、检查点和摘要保留真实思考；平台裁剪工具、插入检查和交接时保留关联模型的真实字段，清除失效原始调用参数。
+- 兼容补空只改变出站请求，不回写历史或凭空补造思考内容，不删除用户要求、工具配对或已成功回执，也不重放工具；新版本可直接继续旧会话，无需改表或新增配置。
+- 回归通过真实 SDK 与本地严格网关核对缺字段拒绝、摘要后继续、检查点恢复、多工具与并发隔离；`modelReasoningCompatibility`、`modelReasoningReplay`、`incrementalInteraction` 和 `visualInspectionProgress` 为验证入口。
 
 ## 摘要复用与压缩空间
 
