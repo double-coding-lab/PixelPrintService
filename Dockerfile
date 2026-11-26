@@ -4,7 +4,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund --registry=https://registry.npmjs.org
 COPY . .
-RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build && npm run prepare:images && npm run prepare:preview && mkdir -p .runtime .data && chown -R node:node /app
+RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
+RUN npm run prepare:images
+RUN npm run prepare:preview
+RUN mkdir -p .runtime .data && chown -R node:node /app
 ENTRYPOINT ["sh", "/app/scripts/docker-entrypoint.sh"]
 EXPOSE 8080
 CMD ["npm", "start"]
