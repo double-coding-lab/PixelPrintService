@@ -1,0 +1,56 @@
+name: Check and deploy
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pixelprint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check:templates
+      - run: npm run prepare:preview
+      - run: npm run typecheck
+      - run: node --import tsx --test --test-concurrency=2 test/*.test.ts
+      - run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+      - name: Deploy main to the configured server
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.DEPLOY_HOST != ''
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY" && test -n "$DEPLOY_KNOWN_HOSTS"
+          install -d -m 700 "$HOME/.ssh"
+          trap 'rm -f "$HOME/.ssh/pixelprint_deploy"' EXIT
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/pixelprint_deploy"
+          chmod 600 "$HOME/.ssh/pixelprint_deploy"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          printf '{"commit":"%s"}\n' "$RELEASE_SHA" > dist/release.json
+          tar -czf "$RUNNER_TEMP/pixelprint-build.tgz" dist
+          ssh -T -i "$HOME/.ssh/pixelprint_deploy" \
+            -p "${DEPLOY_PORT:-22}" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 \
+            "${DEPLOY_USER:-root}@$DEPLOY_HOST" "deploy $RELEASE_SHA" \
+            < "$RUNNER_TEMP/pixelprint-build.tgz"
