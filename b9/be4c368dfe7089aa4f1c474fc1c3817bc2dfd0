@@ -1,0 +1,23 @@
+.Knowledge/topics/d2c-workspace-foundation.md
+  s_e16f52fd1de115::t_ed935f5e99d6d5 3,14
+.Knowledge/stock-docs/d2c-workspace-foundation.md
+  s_e16f52fd1de115::t_ed935f5e99d6d5 111-115
+docs/deployment/部署与配置.md
+  s_e16f52fd1de115::t_ed935f5e99d6d5 63-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "b9be4c368dfe7089aa4f1c474fc1c3817bc2dfd0",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
