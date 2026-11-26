@@ -1,6 +1,6 @@
 ---
 id: d2c-workspace-foundation
-revision: 22
+revision: 23
 summary: "工作区、会话、代码存储、数据库大字段、切图、凭据和版本"
 primary: module
 confidence: inferred
@@ -11,7 +11,7 @@ confidence: inferred
 
 ## 核心流程
 
-1. 创建工作区时从 `pixelprint` 复制完整 Skill、脚本与目标配置，保存资源修订与摘要；工作区可选择升级资源。
+1. 创建工作区时从 `pixelprint` 复制完整 Skill、脚本与目标配置，保存资源修订与摘要；工作区可选择升级资源。默认根目录skills扩展可缺省，存在时随包冻结；显式扩展路径、核心资源、权限与符号链接继续严格校验。镜像构建执行check:templates检查实际发布目录，详见[模板读取](../stock-docs/d2c-workspace-foundation.md#发布模板读取)。
 2. 会话有独立 Agent 上下文，冻结工作区配置和资源；Figma 凭据关联实际发起用户。设计稿链接、默认命名和消息创建由服务检查。
 3. 消息与 queued Run 在数据库事务中保存，Worker 在请求结束后继续执行；关闭浏览器不会取消任务。
 4. 稳定文本、图片定位、摘要和修订持久保存；文件变更经事务写时间线，提交后通知 SSE 按游标补读。
