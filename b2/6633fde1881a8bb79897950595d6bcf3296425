@@ -1,0 +1,23 @@
+.dockerignore
+  s_e16f52fd1de115::t_d01cdc567a2c96 15-17
+compose.external.yaml
+  s_e16f52fd1de115::t_e1a033f9ef7a05 1-15
+compose.build-proxy.yaml
+  s_e16f52fd1de115::t_e1a033f9ef7a05 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "b26633fde1881a8bb79897950595d6bcf3296425",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
