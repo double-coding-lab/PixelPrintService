@@ -62,14 +62,14 @@ test('旧schema默认投影/INSERT不含新列，显式scope仅在开关就绪�
   }
 });
 
-test('旧BLOB、shadow、external与回退inline均保留任意二进制字节，第一阶段不自动启用', async () => {
+test('历史BLOB可读，所有旧写模式均统一文件写入，未配置文件存储时拒绝写入', async () => {
   const mysql = fake();
-  assert.deepEqual(await prepareCheckpointPayload(mysql, scope, bytes), { payload: bytes });
+  await assert.rejects(prepareCheckpointPayload(mysql, scope, bytes), TextContentError);
   assert.deepEqual(await resolveCheckpointPayload(mysql, { payload: bytes }, scope), bytes);
   assert.deepEqual(checkpointAttributes(mysql, ['metadata'], ['metadataRef']), ['metadata']);
   const memory = enableCheckpointStorage(mysql, 'shadow');
   const shadow = await prepareCheckpointPayload(mysql, scope, bytes);
-  assert.deepEqual(shadow.payload, bytes);
+  assert.equal(shadow.payload, null);
   assert.ok(shadow.reference);
   memory.configure({ mode: 'external' });
   const external = await prepareCheckpointPayload(mysql, scope, bytes);
@@ -79,11 +79,10 @@ test('旧BLOB、shadow、external与回退inline均保留任意二进制字节�
   memory.configure({ mode: 'inline' });
   assert.deepEqual(await resolveCheckpointPayload(mysql, external, scope), bytes);
   const puts = memory.operations.filter((x) => x === 'put').length;
-  assert.deepEqual(await prepareCheckpointPayload(mysql, scope, bytes), {
-    payload: bytes,
-    reference: null,
-  });
-  assert.equal(memory.operations.filter((x) => x === 'put').length, puts);
+  const afterLegacyMode = await prepareCheckpointPayload(mysql, scope, bytes);
+  assert.equal(afterLegacyMode.payload, null);
+  assert.ok(afterLegacyMode.reference);
+  assert.equal(memory.operations.filter((x) => x === 'put').length, puts + 1);
   assert.equal('encryption' in checkpointContentPolicy(mysql), false);
 });
 
@@ -114,19 +113,17 @@ test('旧writer的BLOB优先，空载荷合法，失效/跨行引用不能变成
   assert.equal(await resolveCheckpointPayload(mysql, { payload: null }, scope), null);
 });
 
-test('阈值/物理限额保留inline路径，取消不做上传，schemaReady变更要求重启', async () => {
+test('小正文也外置，超出逻辑总限额明确失败，取消不上传，schemaReady变更要求重启', async () => {
   const mysql = fake();
   const memory = enableCheckpointStorage(mysql, 'external', 8);
-  assert.deepEqual(await prepareCheckpointPayload(mysql, scope, bytes), {
-    payload: bytes,
-    reference: null,
-  });
-  assert.equal(memory.operations.length, 0);
+  const small = await prepareCheckpointPayload(mysql, scope, bytes);
+  assert.equal(small.payload, null);
+  assert.ok(small.reference);
+  assert.ok(memory.operations.length > 0);
   const oversized = Buffer.alloc(2097153);
-  assert.deepEqual(await prepareCheckpointPayload(mysql, scope, oversized), {
-    payload: oversized,
-    reference: null,
-  });
+  const operations = memory.operations.length;
+  await assert.rejects(prepareCheckpointPayload(mysql, scope, oversized), TextContentError);
+  assert.equal(memory.operations.length, operations);
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(prepareCheckpointPayload(mysql, scope, bytes, controller.signal), {

@@ -4,7 +4,7 @@ import { createBinaryTextBackend } from './backend';
 import { createTextContentStore, TextContentError } from './store';
 import { contentStorageSchema, installTextContentRuntime } from './runtime';
 import { checkpointStorageSchema, installCheckpointContentRuntime } from './checkpointRuntime';
-import { createBinaryContentStore } from './binaryStore';
+import { createCheckpointContentStore, checkpointMaximumBytes } from './checkpointStore';
 
 /** 只在真正外置或读取引用时创建存储；默认配置不触及新列、密钥或对象服务。 */
 export function installContentStorage(app: FastifyInstance): void {
@@ -44,24 +44,24 @@ export function installContentStorage(app: FastifyInstance): void {
       return store;
     },
   });
-  /** 执行状态独立装配；默认关闭且不触及对象服务，旧BLOB继续原样读取。 */
+  /** 执行状态独立装配；新正文统一文件存储，旧BLOB继续原样读取。 */
   const readCheckpointSettings = () =>
     checkpointStorageSchema.parse(read()?.d2c?.checkpointStorage ?? {});
-  let checkpointStore: ReturnType<typeof createBinaryContentStore> | undefined;
+  let checkpointStore: ReturnType<typeof createCheckpointContentStore> | undefined;
   installCheckpointContentRuntime(app.mysql, {
     readSettings: readCheckpointSettings,
-    maxBytes: maximum - 36,
-    writeMaxBytes: () => {
-      const configured = read()?.d2c?.limits?.uploadBytes;
-      if (!Number.isSafeInteger(configured) || configured! < 1)
-        throw new TextContentError('INVALID_CONFIG');
-      return Math.max(0, Math.min(maximum, configured!) - 36);
-    },
+    maxBytes: checkpointMaximumBytes,
     store: () => {
-      checkpointStore ??= createBinaryContentStore(
+      checkpointStore ??= createCheckpointContentStore(
         createBinaryTextBackend(createImageFileClient(app, read, 'pro'), maximum),
         {
-          maxBytes: maximum - 36,
+          maxBytes: checkpointMaximumBytes,
+          maxObjectBytes: () => {
+            const configured = read()?.d2c?.limits?.uploadBytes;
+            if (!Number.isSafeInteger(configured) || configured! <= 36)
+              throw new TextContentError('INVALID_CONFIG');
+            return Math.min(maximum, configured!);
+          },
           concurrency: readCheckpointSettings().concurrency,
           readKeys: () => {
             const keys = readCheckpointSettings().encryption;

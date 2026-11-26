@@ -20,6 +20,7 @@ import { readTemplateResources } from '../src/functions/d2c/workspace/resources'
 import { initD2cSession } from '../src/models/D2cSession';
 import { initD2cCredential } from '../src/models/D2cCredential';
 import { messageFixture } from './helpers/messages';
+import { enableCheckpointStorage } from './helpers/checkpointStorage';
 import { createMessageQueueService } from '../src/functions/d2c/session/queue';
 
 const keys = {
@@ -229,6 +230,7 @@ test('凭据路由只接受 Token；拒绝自定 URL、模型和他人 ID；鉴�
 /** 本地 HTTP 模型记录实际 Authorization；返回流中故意回显密钥以验证稳定历史脱敏。 */
 async function executionFixture(t: TestContext, independent = false, shared = false) {
   const f = await fixture();
+  enableCheckpointStorage(f.mysql);
   const headers: string[] = [];
   const server = createServer((request, response) => {
     headers.push(request.headers.authorization ?? '');

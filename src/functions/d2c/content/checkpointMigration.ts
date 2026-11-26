@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { Op, Transaction, type Model, type ModelStatic, type Sequelize } from 'sequelize';
-import { parseBinaryContentReference } from './binaryStore';
+import { parseCheckpointContentReference } from './checkpointStore';
 import {
   checkpointContentPolicy,
   checkpointModel,
@@ -270,7 +270,7 @@ async function runBatch(
           ...(kind === 'write' ? { taskHash: old.taskHash as string, idx: old.idx as number } : {}),
         });
         if (dryRun && reference != null) {
-          const checked = parseBinaryContentReference(reference);
+          const checked = parseCheckpointContentReference(reference);
           if (checked.scope !== binding) throw new MigrationError('INVALID_REFERENCE');
         }
         if (action === 'restore') {

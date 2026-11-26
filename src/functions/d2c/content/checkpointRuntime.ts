@@ -4,31 +4,30 @@ import { z } from 'zod';
 import { contentStorageSchema, type ContentStorageSettings } from './runtime';
 import { TextContentError } from './store';
 import {
-  parseBinaryContentReference,
-  type BinaryContentReference,
-  type createBinaryContentStore,
-} from './binaryStore';
+  parseCheckpointContentReference,
+  type CheckpointContentReference,
+  type createCheckpointContentStore,
+} from './checkpointStore';
 
-/** 检查点与文件正文独立灰度；不能因第一阶段启用而自动改变执行恢复格式。 */
+/** 执行状态与源码正文独立配置，旧模式字段保留解析兼容；新正文统一外置。 */
 export const checkpointStorageSchema = contentStorageSchema;
-type BinaryStore = ReturnType<typeof createBinaryContentStore>;
+type BinaryStore = ReturnType<typeof createCheckpointContentStore>;
 type Runtime = {
   readSettings: () => ContentStorageSettings;
   store: BinaryStore | (() => BinaryStore);
   maxBytes: number;
-  writeMaxBytes?: () => number;
 };
 const runtimes = new WeakMap<Sequelize, Runtime & { schemaReady?: boolean }>();
 const disabled = checkpointStorageSchema.parse({});
 
-/** 只装配依赖，不连接存储或查询新列，保持旧schema默认可用。 */
+/** 只装配依赖；旧schema仍可读取历史，新增正文必须先就绪文件存储和引用列。 */
 export function installCheckpointContentRuntime(mysql: Sequelize, runtime: Runtime): void {
   if (!Number.isSafeInteger(runtime.maxBytes) || runtime.maxBytes < 1)
     throw new TextContentError('INVALID_CONFIG');
   runtimes.set(mysql, { ...runtime });
 }
 
-/** schemaReady在进程内固定，写模式回退时继续允许历史引用读取。 */
+/** schemaReady在进程内固定；历史模式取值不改变新正文的文件写入要求。 */
 function settings(mysql: Sequelize): ContentStorageSettings {
   const runtime = runtimes.get(mysql);
   if (!runtime) return disabled;
@@ -63,13 +62,12 @@ export function checkpointAttributes(
 export function checkpointContentPolicy(mysql: Sequelize) {
   const config = settings(mysql);
   const runtime = runtimes.get(mysql);
-  const cap = runtime?.writeMaxBytes ? runtime.writeMaxBytes() : (runtime?.maxBytes ?? 0);
-  if (!Number.isSafeInteger(cap) || cap < 0) throw new TextContentError('INVALID_CONFIG');
   return {
     schemaReady: config.schemaReady,
-    mode: config.mode,
-    thresholdBytes: config.thresholdBytes,
-    maxBytes: Math.min(cap, runtime?.maxBytes ?? 0),
+    mode: config.schemaReady ? ('external' as const) : ('inline' as const),
+    configuredMode: config.mode,
+    thresholdBytes: 0,
+    maxBytes: runtime?.maxBytes ?? 0,
   };
 }
 
@@ -121,26 +119,29 @@ export async function prepareCheckpointPayload(
   scope: string,
   bytes: Uint8Array,
   signal?: AbortSignal,
-): Promise<{ payload: Buffer | null; reference?: BinaryContentReference | null }> {
+): Promise<{ payload: Buffer | null; reference?: CheckpointContentReference | null }> {
   if (signal?.aborted) throw new DOMException('检查点操作已取消', 'AbortError');
   if (!(bytes instanceof Uint8Array)) throw new TextContentError('INVALID_TEXT');
-  const payload = Buffer.from(bytes);
   const config = settings(mysql);
-  if (!config.schemaReady) return { payload };
-  if (config.mode === 'inline' || payload.length < config.thresholdBytes)
-    return { payload, reference: null };
+  if (
+    !config.schemaReady ||
+    !config.encryption ||
+    !Object.hasOwn(config.encryption.keys, config.encryption.activeKeyId)
+  )
+    throw new TextContentError('INVALID_CONFIG');
   const policy = checkpointContentPolicy(mysql);
-  if (payload.length > policy.maxBytes) return { payload, reference: null };
+  if (bytes.byteLength > policy.maxBytes) throw new TextContentError('INVALID_TEXT');
+  const payload = Buffer.from(bytes);
   const runtime = runtimes.get(mysql)!;
   const store = typeof runtime.store === 'function' ? runtime.store() : runtime.store;
-  const reference = parseBinaryContentReference(await store.put(scope, payload, { signal }));
+  const reference = parseCheckpointContentReference(await store.put(scope, payload, { signal }));
   if (
     reference.scope !== scope ||
     reference.size !== payload.length ||
     reference.sha256 !== createHash('sha256').update(payload).digest('hex')
   )
     throw new TextContentError('INTEGRITY_FAILED');
-  return { payload: config.mode === 'shadow' ? payload : null, reference };
+  return { payload: null, reference };
 }
 
 /** 旧BLOB优先，外置引用严格绑定行和typed编码；损坏不返回空状态或静默重建。 */
@@ -155,7 +156,7 @@ export async function resolveCheckpointPayload(
   if (row.payload != null) throw new TextContentError('INVALID_TEXT');
   if (row.reference == null) return null;
   if (!settings(mysql).schemaReady) throw new TextContentError('INVALID_CONFIG');
-  const reference = parseBinaryContentReference(row.reference);
+  const reference = parseCheckpointContentReference(row.reference);
   if (reference.scope !== expectedScope) throw new TextContentError('INVALID_REFERENCE');
   const runtime = runtimes.get(mysql)!;
   const store = typeof runtime.store === 'function' ? runtime.store() : runtime.store;

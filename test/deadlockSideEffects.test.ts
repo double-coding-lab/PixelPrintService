@@ -15,6 +15,7 @@ import { executeGenerationRun } from '../src/functions/d2c/run/execute';
 import { createRunLeases, type RunLease } from '../src/functions/d2c/run/leases';
 import { readTemplateResources } from '../src/functions/d2c/workspace/resources';
 import { messageFixture } from './helpers/messages';
+import { enableCheckpointStorage } from './helpers/checkpointStorage';
 
 const bundleTask = (async () => {
   const platformSkills = await fs.mkdtemp(path.join(os.tmpdir(), 'deadlock-platform-skills-'));
@@ -31,6 +32,7 @@ const bundleTask = (async () => {
 /** 仅使用离线数据库、固定本地资源及确定性模型，不访问模型、Figma 或对象存储。 */
 async function executionFixture(t: TestContext) {
   const f = await messageFixture();
+  enableCheckpointStorage(f.mysql);
   const bundle = await bundleTask;
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'lease-lifecycle-')));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

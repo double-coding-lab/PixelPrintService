@@ -12,8 +12,8 @@ import {
   resolveCheckpointPayload,
 } from '../src/functions/d2c/content/checkpointRuntime';
 
-/** 启动级回归：没有第二阶段配置/密钥/文件服务时，旧checkpoint路径仍只使用BLOB。 */
-test('仅启用第一阶段不会启用检查点外置，也不要求第二阶段密钥或存储配置', async () => {
+/** 启动级回归：无文件服务时保持旧BLOB可读，新写入必须明确拒绝。 */
+test('仅启用源码外置时旧检查点仍可读，新检查点不会回退数据库', async () => {
   const scope = checkpointPayloadScope({
     sessionId: '12345678-1234-1234-1234-123456789abc',
     namespaceHash: createHash('sha256').update('').digest('hex'),
@@ -44,8 +44,7 @@ test('仅启用第一阶段不会启用检查点外置，也不要求第二阶�
     const model = {} as ModelStatic<Model>;
     assert.equal(checkpointModel(mysql, model), model);
     const payload = Buffer.from([0, 255, 1]);
-    const saved = await prepareCheckpointPayload(mysql, scope, payload);
-    assert.deepEqual(saved, { payload });
-    assert.deepEqual(await resolveCheckpointPayload(mysql, saved, scope), payload);
+    await assert.rejects(prepareCheckpointPayload(mysql, scope, payload));
+    assert.deepEqual(await resolveCheckpointPayload(mysql, { payload }, scope), payload);
   }
 });

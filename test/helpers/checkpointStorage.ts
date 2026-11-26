@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { Sequelize } from 'sequelize';
-import { createBinaryContentStore } from '../../src/functions/d2c/content/binaryStore';
+import { createCheckpointContentStore } from '../../src/functions/d2c/content/checkpointStore';
 import {
   checkpointStorageSchema,
   installCheckpointContentRuntime,
@@ -11,6 +11,7 @@ export function enableCheckpointStorage(
   mysql: Sequelize,
   mode: 'inline' | 'shadow' | 'external' = 'external',
   thresholdBytes = 1,
+  limits: { maxBytes?: number; maxObjectBytes?: number } = {},
 ) {
   let settings = checkpointStorageSchema.parse({
     schemaReady: true,
@@ -24,7 +25,7 @@ export function enableCheckpointStorage(
   const objects = new Map<string, Buffer>();
   const operations: Array<'put' | 'get'> = [];
   const backend = {
-    maxObjectBytes: 2097152 + 36,
+    maxObjectBytes: limits.maxObjectBytes ?? 2097152 + 36,
     async put(input: { key: string; bytes: Uint8Array; signal?: AbortSignal }) {
       if (input.signal?.aborted) throw new DOMException('cancelled', 'AbortError');
       operations.push('put');
@@ -40,8 +41,9 @@ export function enableCheckpointStorage(
       return Buffer.from(bytes);
     },
   };
-  const store = createBinaryContentStore(backend, {
-    maxBytes: 2097152,
+  const store = createCheckpointContentStore(backend, {
+    maxObjectBytes: () => backend.maxObjectBytes,
+    maxBytes: limits.maxBytes ?? 2097152,
     readKeys: () => settings.encryption!,
   });
   for (const name of ['D2cAgentCheckpoint', 'D2cAgentWrite']) {
@@ -50,7 +52,7 @@ export function enableCheckpointStorage(
   }
   installCheckpointContentRuntime(mysql, {
     readSettings: () => settings,
-    maxBytes: 2097152,
+    maxBytes: limits.maxBytes ?? 2097152,
     store,
   });
   return {

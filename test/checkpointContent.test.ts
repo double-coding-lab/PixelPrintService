@@ -51,7 +51,11 @@ const copy = <T>(value: T): T => deserialize(serialize(value));
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 
 /** 专用MVCC/租约事务替身；读取、排序投影、scope和回滚独立验证，不连接MySQL/存储。 */
-function fixture(mode?: 'inline' | 'shadow' | 'external', threshold = 1) {
+function fixture(
+  mode?: 'inline' | 'shadow' | 'external',
+  threshold = 1,
+  limits?: { maxBytes?: number; maxObjectBytes?: number },
+) {
   let tables: Tables = { D2cAgentCheckpoint: [], D2cAgentWrite: [] };
   const context = new AsyncLocalStorage<Tx>();
   const queries: Array<{
@@ -235,7 +239,7 @@ function fixture(mode?: 'inline' | 'shadow' | 'external', threshold = 1) {
       return deserialize(payload.subarray(3));
     },
   };
-  const storage = mode === undefined ? undefined : enableCheckpointStorage(mysql, mode, threshold);
+  const storage = enableCheckpointStorage(mysql, mode ?? 'external', threshold, limits);
   const signals: Array<AbortSignal | undefined> = [];
   let onPut: (() => void | Promise<void>) | undefined;
   let onGet: (() => void | Promise<void>) | undefined;
@@ -324,7 +328,7 @@ async function history(saver: D2cMySQLCheckpointSaver, namespace?: string, optio
   return result;
 }
 
-for (const mode of [undefined, 'inline', 'shadow', 'external'] as const) {
+for (const mode of ['inline', 'shadow', 'external'] as const) {
   test(`checkpoint ${mode ?? 'disabled'}: 任意typed bytes、metadata及writes跨saver还原，IO/serde不在事务内`, async () => {
     const f = fixture(mode);
     const saver = f.make();
@@ -344,13 +348,10 @@ for (const mode of [undefined, 'inline', 'shadow', 'external'] as const) {
       'a',
     );
     const row = f.rows().D2cAgentCheckpoint[0];
-    assert.equal(row.checkpoint === null, mode === 'external');
-    assert.equal(row.metadata === null, mode === 'external');
-    if (mode === 'shadow' || mode === 'external') {
-      assert.ok(row.checkpointRef && row.metadataRef);
-      assert.equal(f.storage!.objects.size, 4);
-    }
-    if (mode === undefined) assert.equal(Object.hasOwn(row, 'checkpointRef'), false);
+    assert.equal(row.checkpoint, null);
+    assert.equal(row.metadata, null);
+    assert.ok(row.checkpointRef && row.metadataRef);
+    assert.equal(f.storage!.objects.size, 4);
     const tuple = await f.make().getTuple(config);
     assert.deepEqual(tuple!.checkpoint.channel_values, {
       blob: Buffer.from([255, 0, 128]),
@@ -367,7 +368,7 @@ for (const mode of [undefined, 'inline', 'shadow', 'external'] as const) {
   });
 }
 
-test('同库混合三模式、阈值和旧writer的inline覆盖过期refs；再次写入inline清理引用', async () => {
+test('所有新正文外置，旧writer的BLOB优先可读，再次写入更新引用且忽略旧阈值', async () => {
   const f = fixture('external');
   const saver = f.make();
   const external = await saver.put(
@@ -411,13 +412,12 @@ test('同库混合三模式、阈值和旧writer的inline覆盖过期refs；再�
     metadata,
     {},
   );
-  assert.equal(
-    f.rows().D2cAgentCheckpoint.find((row) => row.checkpointId === 'external')!.checkpointRef,
-    null,
-  );
+  const rewritten = f.rows().D2cAgentCheckpoint.find((row) => row.checkpointId === 'external')!;
+  assert.equal(rewritten.checkpoint, null);
+  assert.notEqual(rewritten.checkpointRef.objectId, oldRef.objectId);
   f.storage!.configure({ mode: 'external', thresholdBytes: 2097152 });
   await saver.put(saver.config(), checkpoint('small'), metadata, {});
-  assert.equal(f.rows().D2cAgentCheckpoint.at(-1)!.checkpointRef, null);
+  assert.ok(f.rows().D2cAgentCheckpoint.at(-1)!.checkpointRef);
 });
 
 test('external pending普通first-wins，特殊negative last-wins；失败整批回滚不改历史', async () => {
@@ -1053,4 +1053,27 @@ test('checkpoint update、最后write和delete执行后取消仍在租约事务�
       });
     }
   }
+});
+
+/** 正式保存器经真实typed序列化、分块协议和租约事务，只把小引用提交到两张表。 */
+test('checkpoint metadata and pending writes use files across saver reconstruction, with multipart large typed values', async () => {
+  const f = fixture('external', 2097152, { maxBytes: 4194304, maxObjectBytes: 1048576 });
+  const saver = f.make();
+  const data = randomBytes(2500000);
+  const config = await saver.put(saver.config(), checkpoint('large', { data }), metadata, {});
+  await saver.putWrites(config, [['large-value', data]], 'large-task');
+  const row = f.rows().D2cAgentCheckpoint[0];
+  assert.equal(row.checkpoint, null);
+  assert.equal(row.metadata, null);
+  assert.equal(row.checkpointRef.format, 'pixelprint.checkpoint.v2');
+  assert.ok(row.metadataRef);
+  assert.ok(Buffer.byteLength(JSON.stringify(row.checkpointRef)) < 3000);
+  for (const write of f.rows().D2cAgentWrite) {
+    assert.equal(write.value, null);
+    assert.ok(write.valueRef);
+  }
+  const restored = await f.make().getTuple(config);
+  assert.deepEqual(restored!.checkpoint.channel_values.data, data);
+  assert.deepEqual(restored!.metadata, metadata);
+  assert.deepEqual(restored!.pendingWrites, [['large-task', 'large-value', data]]);
 });

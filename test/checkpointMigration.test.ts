@@ -136,7 +136,7 @@ test('dry-run严格校验ref格式及scope，坏ref不伪装成可直接外置�
   }
 });
 
-test('两个checkpoint载荷同提交，shadow复用必须回读验证，external/restore保持原始二进制和refs', async () => {
+test('两个checkpoint载荷同提交，全量文件写入幂等，显式restore保持原始二进制和refs', async () => {
   const f = fixture();
   for (const method of ['put', 'get'] as const) {
     const original = f.storage.backend[method];
@@ -149,8 +149,8 @@ test('两个checkpoint载荷同提交，shadow复用必须回读验证，externa
     (await migrateCheckpointBatch(f.mysql, { table: 'checkpoints', dryRun: false })).written,
     1,
   );
-  assert.deepEqual(f.checkpoint().checkpoint, payload);
-  assert.deepEqual(f.checkpoint().metadata, metadata);
+  assert.equal(f.checkpoint().checkpoint, null);
+  assert.equal(f.checkpoint().metadata, null);
   const refs = structuredClone([f.checkpoint().checkpointRef, f.checkpoint().metadataRef]);
   const puts = f.storage.operations.filter((operation) => operation === 'put').length;
   const gets = f.storage.operations.filter((operation) => operation === 'get').length;
@@ -159,11 +159,11 @@ test('两个checkpoint载荷同提交，shadow复用必须回读验证，externa
     0,
   );
   assert.equal(f.storage.operations.filter((operation) => operation === 'put').length, puts);
-  assert.equal(f.storage.operations.filter((operation) => operation === 'get').length, gets + 2);
+  assert.equal(f.storage.operations.filter((operation) => operation === 'get').length, gets);
   f.storage.configure({ mode: 'external' });
   assert.equal(
     (await migrateCheckpointBatch(f.mysql, { table: 'checkpoints', dryRun: false })).written,
-    1,
+    0,
   );
   assert.equal(f.checkpoint().checkpoint, null);
   assert.equal(f.checkpoint().metadata, null);
@@ -372,6 +372,10 @@ test('取消贯穿上传、restore/reuse读取、锁后与update后，数据库�
     const f = fixture();
     if (phase === 'restore' || phase === 'reuse') {
       await migrateCheckpointBatch(f.mysql, { table: 'checkpoints', dryRun: false });
+      if (phase === 'reuse') {
+        f.checkpoint().checkpoint = Buffer.from(payload);
+        f.checkpoint().metadata = Buffer.from(metadata);
+      }
       if (phase === 'restore') {
         f.storage.configure({ mode: 'external' });
         await migrateCheckpointBatch(f.mysql, { table: 'checkpoints', dryRun: false });
@@ -492,7 +496,16 @@ test('CLI原子0600游标、resume/跨动作拒绝、external确认及冲突退�
     },
   });
   const output: string[] = [];
-  const args = ['--apply', '--table', 'checkpoints', '--state-file', state, '--batch-size', '1'];
+  const args = [
+    '--apply',
+    '--confirm-external',
+    '--table',
+    'checkpoints',
+    '--state-file',
+    state,
+    '--batch-size',
+    '1',
+  ];
   assert.equal(await runCheckpointMigrationCli(args, open, (value) => output.push(value)), 0);
   assert.equal(JSON.parse(await readFile(state, 'utf8')).nextAfterId, '1');
   assert.equal((await stat(state)).mode & 0o077, 0);
@@ -507,10 +520,14 @@ test('CLI原子0600游标、resume/跨动作拒绝、external确认及冲突退�
   );
   f.storage.configure({ mode: 'external' });
   await assert.rejects(
-    runCheckpointMigrationCli(args, open, () => {}),
+    runCheckpointMigrationCli(
+      args.filter((arg) => arg !== '--confirm-external'),
+      open,
+      () => {},
+    ),
     /EXTERNAL_CONFIRMATION_REQUIRED/,
   );
-  assert.equal(await runCheckpointMigrationCli([...args, '--confirm-external'], open, () => {}), 0);
+  assert.equal(await runCheckpointMigrationCli(args, open, () => {}), 0);
   assert.equal(f.checkpoint().checkpoint, null);
   assert.doesNotMatch(
     output.join('') + (await readFile(state, 'utf8')),
@@ -563,7 +580,14 @@ test('CLI SIGINT取消当前对象操作并关闭连接，不推进未提交正�
   };
   await assert.rejects(
     runCheckpointMigrationCli(
-      ['--apply', '--table', 'checkpoints', '--state-file', path.join(folder, 'state.json')],
+      [
+        '--apply',
+        '--confirm-external',
+        '--table',
+        'checkpoints',
+        '--state-file',
+        path.join(folder, 'state.json'),
+      ],
       async () => ({
         mysql: f.mysql,
         close: async () => {
