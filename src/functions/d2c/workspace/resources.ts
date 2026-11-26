@@ -128,14 +128,23 @@ export function validateResourceBundle(
  * 读取发布携带的完整 pixelprint 目录，供创建工作区和显式模板升级使用。
  * 检查目录祖先及文件的符号链接，读取前后复核文件身份和时间，拒绝读取中被替换的资源。
  * @param root 本项目携带的模板根目录。
- * @param platformSkillsRoot 平台自有Skill目录；与上游资源一起形成不可变工作区副本。
+ * @param platformSkillsRoot 可选平台扩展目录；显式指定时必须存在，缺省skills目录存在时一并冻结。
  * @returns 校验通过的内存资源包；持久化由 ResourceBundleStore 负责。
  */
 export async function readTemplateResources(
   root: string,
-  platformSkillsRoot = path.resolve('skills'),
+  platformSkillsRoot?: string,
 ): Promise<ResourceBundle> {
-  const roots = [path.resolve(root), path.resolve(platformSkillsRoot)];
+  const roots = [path.resolve(root)];
+  const extensions = path.resolve(platformSkillsRoot ?? 'skills');
+  // 社区发行包可以只携带核心模板；显式扩展路径与其他读取错误仍严格校验。
+  try {
+    await fs.lstat(extensions);
+    roots.push(extensions);
+  } catch (error) {
+    if (platformSkillsRoot !== undefined || (error as NodeJS.ErrnoException).code !== 'ENOENT')
+      throw error;
+  }
   for (const absolute of roots) {
     let ancestor = path.parse(absolute).root;
     for (const segment of absolute.slice(ancestor.length).split(path.sep).filter(Boolean)) {
@@ -176,7 +185,7 @@ export async function readTemplateResources(
   }
   await walk(roots[0], '');
   /** 平台Skill随工作区资源一起冻结，独立于上游同步目录，升级时才替换。 */
-  await walk(roots[1], 'platform-skills');
+  if (roots[1]) await walk(roots[1], 'platform-skills');
   // 新资源包采用平台的 RN 输出默认值；旧冻结包仍按原字节验证和恢复。
   // 仅归一上游的标准默认目录，自定义根目录保持原值。
   const rnTemplate = files.find((file) => file.path === 'templates/pp-d2c.rn.config.json');

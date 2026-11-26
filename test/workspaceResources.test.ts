@@ -38,3 +38,37 @@ test('RN新资源使用pages，旧冻结包与自定义根目录保持原配置'
     'custom/screens/',
   );
 });
+
+/** 复现社区发布目录，缺少可选扩展不影响创建，核心资源及显式路径仍严格检查。 */
+test('community template loads without optional extensions and rejects broken required resources', async (t) => {
+  const previous = process.cwd();
+  const directory = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), 'community-template-')),
+  );
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const root = path.join(directory, 'pixelprint');
+  await fs.cp(path.resolve('pixelprint'), root, { recursive: true });
+  process.chdir(directory);
+  try {
+    const core = await readTemplateResources(root);
+    assert.ok(core.files.some((file) => file.path === 'templates/skills/pp-d2c/SKILL.md'));
+    assert.ok(!core.files.some((file) => file.path.startsWith('platform-skills/')));
+    await assert.rejects(readTemplateResources(root, path.join(directory, 'missing')), {
+      code: 'ENOENT',
+    });
+    await fs.mkdir('skills');
+    await fs.writeFile('skills/demo.md', 'platform extension');
+    const extended = await readTemplateResources(root);
+    assert.ok(extended.files.some((file) => file.path === 'platform-skills/demo.md'));
+    assert.notEqual(core.hash, extended.hash);
+    assert.equal(validateResourceBundle(core).hash, core.hash);
+    await fs.rm('skills', { recursive: true });
+    await fs.symlink(root, 'skills', 'dir');
+    await assert.rejects(readTemplateResources(root), /符号链接/);
+    await fs.unlink('skills');
+    await fs.unlink(path.join(root, 'templates/skills/pp-d2c/bin/figma.mjs'));
+    await assert.rejects(readTemplateResources(root), /缺少模板资源/);
+  } finally {
+    process.chdir(previous);
+  }
+});
