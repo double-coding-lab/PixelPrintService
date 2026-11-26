@@ -1,0 +1,41 @@
+web/src/workspace/SessionPanel.tsx
+  s_a4e26e740c8ebc::t_3a410e90e0ccc3 32,186-187,306,370,386
+test/sessionDraft.test.ts
+  s_e16f52fd1de115::t_45f105c2d8d07b 9-103
+  s_e16f52fd1de115::t_15698dfc37b46d 133-148
+  s_e16f52fd1de115::t_9730cce59484bf 122-124
+web/src/workspace/useSessionDraft.ts
+  s_a4e26e740c8ebc::t_3a410e90e0ccc3 1-53
+web/src/workspace/sessionDraft.ts
+  s_e16f52fd1de115::t_5bb4604f182162 63
+web/src/workspace/WorkspacePanel.tsx
+  s_a4e26e740c8ebc::t_3a410e90e0ccc3 169,187,195
+test/sessionDraftBrowser.test.ts
+  s_e16f52fd1de115::t_45f105c2d8d07b 21-90,97-133,135-246,251-273,313-315
+  s_e16f52fd1de115::t_8c7887cb2401e6 92-96,134,248-249,277-311
+  s_e16f52fd1de115::t_3db4de9795cfcc 10-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "9823a166cc94010e874686742a4151205b9674a4",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    },
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
