@@ -1,6 +1,6 @@
 ---
 id: project-architecture
-revision: 2
+revision: 3
 summary: "Fastify全栈入口、登录、日志、数据连接与部署"
 primary: module
 confidence: inferred
@@ -18,7 +18,7 @@ Node.js 24 在一个 Fastify 应用中提供 React 页面、API 和预览资源�
 - `/api/d2c` 统一注册工作区、团队、会话、凭据、文件、预览、版本和插件接口；页面来自 `dist/public`。
 - `connectMysql()` 仅认证与注册模型；`npm run db:init` 显式创建缺失表，不负责修改已有表结构。
 - `project.config.json` 是运行配置入口，配置修改需要重启。详细字段见 `project-config`。
-- 应用镜像用于部署整个服务；预览使用本机固定 Node/Vite 子进程和 Chromium。
+- 应用镜像用于部署整个服务；预览使用本机固定 Node/Vite 子进程和 Chromium。前端镜像构建的Node堆上限为4GiB，只作用于构建阶段；单机部署需预留构建内存。
 - 函数使用 JSDoc；近距离引用可用相对路径，跨模块可用 `@/`，省略后缀由 tsx/esbuild 解析。
 
 ## 边界
