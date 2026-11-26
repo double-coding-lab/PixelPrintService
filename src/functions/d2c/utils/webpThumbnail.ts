@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import path from 'node:path';
+import { applicationRoot } from '../../../paths';
 
 const maxInputBytes = 30_000_000;
 const maxOutputBytes = 5_000_000;
@@ -14,7 +15,7 @@ export async function createWebpThumbnail(content: Buffer, signal?: AbortSignal)
   if (!content.length || content.length > maxInputBytes) {
     throw new Error('THUMBNAIL_INPUT_LIMIT');
   }
-  const root = path.resolve('image-compression');
+  const root = path.join(applicationRoot, 'image-compression');
   try {
     const output = await new Promise<Buffer>((resolve, reject) => {
       const child = execFile(

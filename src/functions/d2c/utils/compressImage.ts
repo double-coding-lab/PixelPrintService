@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import path from 'node:path';
+import { applicationRoot } from '../../../paths';
 
 export type ImageCompression = {
   content: Buffer;
@@ -29,7 +30,7 @@ export async function compressImage(
     ? content.length >= 33 && content.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
     : content.length >= 4 && content.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex'));
   if (!valid || content.length > 30_000_000) return original('unchanged');
-  const root = path.resolve('image-compression');
+  const root = path.join(applicationRoot, 'image-compression');
   try {
     const output = await new Promise<Buffer>((resolve, reject) => {
       const child = execFile(

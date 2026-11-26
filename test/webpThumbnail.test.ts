@@ -3,6 +3,9 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { compressImage } from '../src/functions/d2c/utils/compressImage';
 import test from 'node:test';
 import { createWebpThumbnail } from '../src/functions/d2c/utils/webpThumbnail';
 
@@ -204,5 +207,23 @@ test('running conversion yields the event loop and propagates cancellation', cod
     await assert.rejects(pending, (error) => error === reason);
   } finally {
     clearTimeout(timer);
+  }
+});
+
+test('prepared compression and thumbnails work from an unrelated cwd', codec, async () => {
+  const previous = process.cwd();
+  const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'image-runtime-cwd-')));
+  const original = picture(640, 300);
+  process.chdir(directory);
+  try {
+    const compressed = await compressImage('fixture.png', original);
+    assert.equal(compressed.status, 'compressed');
+    assert.ok(compressed.afterBytes < compressed.beforeBytes);
+    const thumbnail = await createWebpThumbnail(original);
+    assert.equal(inspect(thumbnail).format, 'WEBP');
+    assert.equal(inspect(thumbnail).width, 320);
+  } finally {
+    process.chdir(previous);
+    await rm(directory, { recursive: true, force: true });
   }
 });
