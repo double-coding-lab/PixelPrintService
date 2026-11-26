@@ -302,8 +302,21 @@ export function createMessageService(
         } catch {
           throw new SessionError(503, 'RUNTIME_UNAVAILABLE', 'RuntimeConfig 执行参数尚未就绪');
         }
-        const model = runtime.modelConfigs[0];
-        const modelCredentialId = session.modelCredentialId ?? null;
+        let model = runtime.modelConfigs[0];
+        let modelCredentialId = session.modelCredentialId ?? null;
+        // 首条消息前允许保存个人设置；之后会话固定原修订，恢复也不换模型。
+        if (!modelCredentialId && !recovery && session.timelineSeq === 0) {
+          const latest = await findOrderedOne(credentials, 'credentialId', {
+            where: { ownerUserId: userId, kind: 'model', status: 'active' },
+            attributes: ['credentialId'],
+            order: [['revision', 'DESC']],
+            transaction,
+          });
+          if (latest?.credentialId) {
+            modelCredentialId = latest.credentialId;
+            await session.update({ modelCredentialId }, { transaction });
+          }
+        }
         if (modelCredentialId) {
           const credential = await credentials.findOne({
             where: {
@@ -326,15 +339,25 @@ export function createMessageService(
             throw new SessionError(
               422,
               'MODEL_CREDENTIAL_UNAVAILABLE',
-              '请配置本人模型 Token 后创建分支',
+              '请先配置本人的有效模型连接',
             );
           let personalToken;
           try {
-            personalToken = await createModelCredentialService(
+            const personalCredentials = createModelCredentialService(
               mysql,
               () => runtime.d2c.secrets,
               () => runtime.modelConfigs,
-            ).getToken(userId, modelCredentialId, model, transaction);
+            );
+            model = {
+              ...model,
+              ...(await personalCredentials.getConnection(userId, modelCredentialId, transaction)),
+            };
+            personalToken = await personalCredentials.getToken(
+              userId,
+              modelCredentialId,
+              model,
+              transaction,
+            );
           } catch {
             throw new SessionError(
               422,

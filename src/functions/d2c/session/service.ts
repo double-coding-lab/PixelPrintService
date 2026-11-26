@@ -1,5 +1,5 @@
 import { listActiveSessions } from './active';
-import { findOrderedPage, findOrderedRows } from '../utils/orderedRead';
+import { findOrderedPage, findOrderedRows, findOrderedOne } from '../utils/orderedRead';
 import { modelActivitySchema } from '../run/agent/modelActivity';
 import { defaultSessionName } from './name';
 import { userQuestionSchema, publicQuestion } from '../run/interaction';
@@ -380,6 +380,12 @@ export function createSessionService(mysql: Sequelize) {
           if (!credential || credential.ownerUserId !== userId || credential.status !== 'active')
             throw new SessionError(422, 'CREDENTIAL_UNAVAILABLE', 'Figma 凭据不可用');
         }
+        const personalModel = await findOrderedOne(credentials, 'credentialId', {
+          where: { ownerUserId: userId, kind: 'model', status: 'active' },
+          attributes: ['credentialId'],
+          order: [['revision', 'DESC']],
+          transaction,
+        });
         const session = await sessions.create(
           {
             sessionId: randomUUID(),
@@ -390,6 +396,7 @@ export function createSessionService(mysql: Sequelize) {
             target: input.target,
             figmaUrl,
             credentialId: input.credentialId ?? null,
+            modelCredentialId: personalModel?.credentialId ?? null,
             fileRevision: 0,
             timelineSeq: 0,
             activeRunId: null,

@@ -5,7 +5,7 @@ import { decryptSecret, encryptSecret, type SecretKeyConfig } from '@/hooks/tool
 import type { D2cCredential } from '@/models/D2cCredential';
 
 export type ModelCredentialStatus =
-  | { configured: true; credentialId: string; modelName: string }
+  | { configured: true; credentialId: string; modelName: string; baseUrl?: string }
   | { configured: false; credentialId?: never; modelName: string };
 export type CredentialModel = { MODEL_BASE_URL: string; MODEL_NAME: string };
 export const modelTokenSchema = z
@@ -19,15 +19,46 @@ const identifier = z
   .min(1)
   .max(64)
   .refine((value) => value === value.trim() && !/[\u0000-\u001f\u007f]/u.test(value));
+export const personalModelConnectionSchema = z
+  .object({
+    baseUrl: z
+      .string()
+      .trim()
+      .max(2048)
+      .url()
+      .refine((value) => {
+        try {
+          const url = new URL(value);
+          return (
+            ['http:', 'https:'].includes(url.protocol) &&
+            !url.username &&
+            !url.password &&
+            !url.search &&
+            !url.hash &&
+            !/[\u0000-\u0020\u007f]/u.test(value)
+          );
+        } catch {
+          return false;
+        }
+      }, '模型地址须为不含账号、查询参数或片段的 HTTP(S) 地址'),
+    modelName: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .refine((value) => !/[\u0000-\u001f\u007f]/u.test(value)),
+  })
+  .strict();
 const payloadSchema = z
   .object({
     token: modelTokenSchema,
     MODEL_BASE_URL: z.string().url(),
     MODEL_NAME: z.string().min(1),
+    personal: z.literal(true).optional(),
   })
   .strict();
 
-/** 只接受服务器默认模型；连接身份随 Token 修订加密，不接受浏览器提供的 URL。 */
+/** 连接和Token按个人修订整体加密；旧Token修订继续绑定原管理员默认模型。 */
 export function createModelCredentialService(
   mysql: Sequelize,
   readKeys: () => SecretKeyConfig | undefined,
@@ -46,7 +77,6 @@ export function createModelCredentialService(
     return { MODEL_BASE_URL: model.MODEL_BASE_URL, MODEL_NAME: model.MODEL_NAME };
   }
   function safeModelName(model: CredentialModel) {
-    // 对外只提供有限字符的名称，不投影 endpoint 或任意配置对象。
     return /^[a-zA-Z0-9][a-zA-Z0-9._/ -]{0,127}$/.test(model.MODEL_NAME)
       ? model.MODEL_NAME
       : '默认模型';
@@ -86,9 +116,17 @@ export function createModelCredentialService(
           ),
         ),
       );
-      const current = defaultModel();
+      if (payload.personal)
+        personalModelConnectionSchema.parse({
+          baseUrl: payload.MODEL_BASE_URL,
+          modelName: payload.MODEL_NAME,
+        });
+      const expectedModels = [
+        ...(payload.personal ? [] : [defaultModel()]),
+        ...(expected ? [expected] : []),
+      ];
       if (
-        [current, ...(expected ? [expected] : [])].some(
+        expectedModels.some(
           (model) =>
             payload.MODEL_BASE_URL !== model.MODEL_BASE_URL ||
             payload.MODEL_NAME !== model.MODEL_NAME,
@@ -97,13 +135,27 @@ export function createModelCredentialService(
         throw new Error();
       return payload;
     } catch {
-      throw new Error('模型凭据不可用，请配置本人默认模型 Token');
+      throw new Error('模型凭据不可用，请配置本人模型连接');
     }
   }
   return {
-    async save(ownerUserId: string, token: string) {
+    async save(
+      ownerUserId: string,
+      token: string,
+      connection?: z.infer<typeof personalModelConnectionSchema>,
+    ) {
       identifier.parse(ownerUserId);
-      const payload = { ...defaultModel(), token: modelTokenSchema.parse(token) };
+      const configured = connection ? personalModelConnectionSchema.parse(connection) : undefined;
+      const payload = {
+        ...(configured
+          ? {
+              MODEL_BASE_URL: configured.baseUrl.replace(/\/+$/, ''),
+              MODEL_NAME: configured.modelName,
+              personal: true as const,
+            }
+          : defaultModel()),
+        token: modelTokenSchema.parse(token),
+      };
       const credentialId = randomUUID();
       const encrypted = await encryptSecret(
         JSON.stringify(payload),
@@ -125,7 +177,14 @@ export function createModelCredentialService(
             revision: previous + 1,
             ...encrypted,
           });
-          return { configured: true, credentialId, modelName: safeModelName(payload) };
+          return {
+            configured: true,
+            credentialId,
+            modelName: safeModelName(payload),
+            ...(configured
+              ? { baseUrl: payload.MODEL_BASE_URL, modelName: payload.MODEL_NAME }
+              : {}),
+          };
         } catch (error) {
           if (error instanceof UniqueConstraintError && attempt < 2) continue;
           throw new Error('保存模型凭据失败');
@@ -143,9 +202,15 @@ export function createModelCredentialService(
           order: [['revision', 'DESC']],
         });
         if (!record?.credentialId) return { configured: false, modelName };
-        // 模型默认配置改变后旧 Token 不会发送到新的服务地址。
         try {
-          await read(ownerUserId, record.credentialId);
+          const payload = await read(ownerUserId, record.credentialId);
+          if (payload.personal)
+            return {
+              configured: true,
+              credentialId: record.credentialId,
+              modelName: payload.MODEL_NAME,
+              baseUrl: payload.MODEL_BASE_URL,
+            };
         } catch {
           return { configured: false, modelName };
         }
@@ -154,7 +219,16 @@ export function createModelCredentialService(
         throw new Error('查询模型凭据失败');
       }
     },
-    /** 仅执行器使用；严格按固定 ID、发起人、类型及管理员默认模型解密，失败绝不回退。 */
+    /** 私有业务边界读取连接元数据；密钥不进入状态响应或执行快照。 */
+    async getConnection(
+      ownerUserId: string,
+      credentialId: string,
+      transaction?: Transaction,
+    ): Promise<CredentialModel> {
+      const payload = await read(ownerUserId, credentialId, undefined, transaction);
+      return { MODEL_BASE_URL: payload.MODEL_BASE_URL, MODEL_NAME: payload.MODEL_NAME };
+    },
+    /** 仅执行器使用；核对固定ID、发起人、类型及预期连接，失败绝不回退。 */
     async getToken(
       ownerUserId: string,
       credentialId: string,

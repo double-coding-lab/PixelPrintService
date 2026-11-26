@@ -13,6 +13,7 @@ import { decryptSecret } from '../src/hooks/tools/secrets';
 import { executeGenerationRun } from '../src/functions/d2c/run/execute';
 import { createRunLeases } from '../src/functions/d2c/run/leases';
 import { createRunPersistence } from '../src/functions/d2c/run/persistence';
+import { createSessionService } from '../src/functions/d2c/session/service';
 import { parseD2cRuntimeConfig } from '../src/config/d2c';
 import { readTemplateResources } from '../src/functions/d2c/workspace/resources';
 import { initD2cSession } from '../src/models/D2cSession';
@@ -195,7 +196,7 @@ test('凭据路由只接受 Token；拒绝自定 URL、模型和他人 ID；鉴�
 });
 
 /** 本地 HTTP 模型记录实际 Authorization；返回流中故意回显密钥以验证稳定历史脱敏。 */
-async function executionFixture(t: TestContext) {
+async function executionFixture(t: TestContext, independent = false) {
   const f = await fixture();
   const headers: string[] = [];
   const server = createServer((request, response) => {
@@ -238,7 +239,15 @@ async function executionFixture(t: TestContext) {
   const bundle = await readTemplateResources(path.resolve('pixelprint'), root);
   f.runtime.d2c.execution.workRoot = root;
   f.tables.D2cWorkspaceRevision[0].bundleHash = bundle.hash;
-  await bind(f);
+  if (independent) {
+    await f.service.save('employee-a', personal, {
+      baseUrl: f.runtime.modelConfigs[0].MODEL_BASE_URL,
+      modelName: 'personal-model',
+    });
+    // 公共默认地址与个人端点完全不同；空闲会话首条消息自动绑定当前个人修订。
+    f.runtime.modelConfigs[0].MODEL_BASE_URL = 'http://unused.invalid/v1';
+    f.runtime.modelConfigs[0].MODEL_NAME = 'unrelated-global-model';
+  } else await bind(f);
   const queued = await f.messages.enqueue('employee-a', f.id, {
     clientRequestId: 'execute',
     content: '只讨论，不要生成代码',
@@ -305,4 +314,118 @@ test('新建模型及公开 DDL 包含可空列和 model kind；前端密码仅�
   const ui = await readFile('web/src/workspace/ModelCredentialSettings.tsx', 'utf8');
   assert.match(ui, /type="password"/);
   assert.doesNotMatch(ui, /localStorage|sessionStorage/);
+});
+
+test('个人地址、模型与Key整体加密，独立于全局默认模型并固定旧修订', async () => {
+  const f = await fixture();
+  const connection = {
+    baseUrl: 'https://models.example.test/custom/v1/',
+    modelName: 'qwen:personal',
+  };
+  const saved = await f.service.save('employee-a', personal, connection);
+  assert.equal(saved.baseUrl, 'https://models.example.test/custom/v1');
+  const snapshot = { MODEL_BASE_URL: saved.baseUrl!, MODEL_NAME: connection.modelName };
+  assert.deepEqual(await f.service.getConnection('employee-a', saved.credentialId), snapshot);
+  f.runtime.modelConfigs[0].MODEL_BASE_URL = 'https://changed.invalid/v1';
+  assert.equal((await f.service.getStatus('employee-a')).configured, true);
+  assert.equal(await f.service.getToken('employee-a', saved.credentialId, snapshot), personal);
+  await assert.rejects(
+    f.service.getToken('employee-a', saved.credentialId, {
+      ...snapshot,
+      MODEL_NAME: 'wrong-model',
+    }),
+  );
+  await assert.rejects(f.service.getConnection('employee-b', saved.credentialId));
+  assert.doesNotMatch(
+    JSON.stringify(f.tables.D2cCredential),
+    /models\.example\.test|qwen:personal|sk-personal/,
+  );
+  const session = await createSessionService(f.mysql).create('employee-a', 'workspace-a', {
+    target: 'h5',
+  });
+  const stored = f.tables.D2cSession.find((row) => row.sessionId === session.sessionId)!;
+  assert.equal(stored.modelCredentialId, saved.credentialId);
+  const later = await f.service.save('employee-a', 'sk-later-only', {
+    ...connection,
+    modelName: 'later-model',
+  });
+  assert.notEqual(later.credentialId, saved.credentialId);
+  const q = await f.messages.enqueue('employee-a', session.sessionId!, {
+    clientRequestId: 'bound-model',
+    content: '讨论布局',
+  });
+  const run = f.tables.D2cRun.find((row) => row.runId === q.runId)!;
+  assert.equal(run.modelSnapshot.MODEL_NAME, connection.modelName);
+  assert.equal(run.modelSnapshot.MODEL_BASE_URL, snapshot.MODEL_BASE_URL);
+  assert.equal(run.modelSnapshot.modelCredentialId, saved.credentialId);
+});
+
+test('完整个人连接路由接受合法地址，拒绝查询密钥、用户信息、片段、协议与不完整字段', async () => {
+  const f = await fixture();
+  const app = Fastify();
+  app.decorateRequest(
+    'getUser',
+    async () => ({ userId: 'employee-a' }) as Awaited<ReturnType<FastifyRequest['getUser']>>,
+  );
+  app.decorate('mysql', f.mysql);
+  app.decorate('runtimeConfig', {
+    get: <T>() => f.runtime as unknown as T,
+  } as FastifyInstance['runtimeConfig']);
+  app.register(credentialRoutes, { prefix: '/api/d2c' });
+  try {
+    const url = '/api/d2c/credentials/model',
+      headers = { 'x-requested-with': 'PixelPrint' };
+    for (const baseUrl of [
+      'file:///etc/passwd',
+      'ftp://example.test/v1',
+      'https://name:password@example.test/v1',
+      'https://example.test/v1?key=secret',
+      'https://example.test/v1#secret',
+    ]) {
+      assert.equal(
+        (
+          await app.inject({
+            method: 'POST',
+            url,
+            headers,
+            payload: { token: personal, baseUrl, modelName: 'model' },
+          })
+        ).statusCode,
+        422,
+      );
+    }
+    for (const extra of [{ baseUrl: 'https://models.example.test/v1' }, { modelName: 'model' }])
+      assert.equal(
+        (await app.inject({ method: 'POST', url, headers, payload: { token: personal, ...extra } }))
+          .statusCode,
+        422,
+      );
+    const saved = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: {
+        token: personal,
+        baseUrl: 'https://models.example.test/v1',
+        modelName: 'my-model',
+      },
+    });
+    assert.equal(saved.statusCode, 200);
+    assert.equal(saved.json().data.baseUrl, 'https://models.example.test/v1');
+    assert.equal(saved.json().data.modelName, 'my-model');
+    assert.doesNotMatch(saved.body, /sk-personal|ciphertext|authTag/);
+  } finally {
+    await app.close();
+  }
+});
+
+test('不同于全局模型的个人连接实际发出请求，首条消息固定个人ID且不发送全局Key', async (t) => {
+  const f = await executionFixture(t, true);
+  assert.equal(f.tables.D2cRun[0].modelSnapshot.MODEL_NAME, 'personal-model');
+  assert.ok(f.tables.D2cRun[0].modelSnapshot.modelCredentialId);
+  await executeGenerationRun(f.input);
+  assert.ok(f.headers.length > 0);
+  assert.ok(f.headers.every((value) => value === `Bearer ${personal}`));
+  assert.equal(f.tables.D2cRun[0].status, 'succeeded');
+  assert.doesNotMatch(JSON.stringify(f.tables.D2cTimeline), /sk-personal|test-model-key/);
 });

@@ -156,7 +156,8 @@ export async function executeGenerationRun(input: {
         model.MODEL_BASE_URL === snapshot.model.MODEL_BASE_URL &&
         model.MODEL_NAME === snapshot.model.MODEL_NAME,
     );
-    if (!selected) throw new RunExecutionError('MODEL_UNAVAILABLE', { stage: 'prepare' });
+    if (!snapshot.model.modelCredentialId && !selected)
+      throw new RunExecutionError('MODEL_UNAVAILABLE', { stage: 'prepare' });
     // 个人绑定只使用本轮发起人的固定 Token 修订，任何失败都不能借用平台 Key。
     const modelApiKey = snapshot.model.modelCredentialId
       ? await boundary('CREDENTIAL_UNAVAILABLE', 'prepare', () =>
@@ -166,7 +167,7 @@ export async function executeGenerationRun(input: {
             () => config.modelConfigs,
           ).getToken(snapshot.ownerUserId, snapshot.model.modelCredentialId!, snapshot.model),
         )
-      : selected.MODEL_API_KEY;
+      : selected!.MODEL_API_KEY;
     secrets.add(modelApiKey);
     const target = snapshot.configSnapshot.target;
     if (target !== 'h5' && target !== 'rn')
@@ -371,8 +372,8 @@ export async function executeGenerationRun(input: {
       sanitizePartialText: (text) => redactPartialText(text, secrets, redact),
       recordSubagent: (entry) => persistence.recordSubagent(entry),
       model: {
-        baseURL: selected.MODEL_BASE_URL,
-        name: selected.MODEL_NAME,
+        baseURL: snapshot.model.MODEL_BASE_URL,
+        name: snapshot.model.MODEL_NAME,
         apiKey: modelApiKey,
         contextBudgetTokens: snapshot.model.contextBudgetTokens,
         requestTimeoutMs: snapshot.model.requestTimeoutMs,
