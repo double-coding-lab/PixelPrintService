@@ -14,6 +14,7 @@ import WorkspacePanel from './workspace/WorkspacePanel';
 import WorkspaceHome from './workspace/WorkspaceHome';
 import CredentialSettings from './workspace/CredentialSettings';
 import ModelCredentialSettings from './workspace/ModelCredentialSettings';
+import AccountMenu from './workspace/AccountMenu';
 import TeamSettings, { TeamProvider } from './workspace/TeamSettings';
 import Icon from './components/Icon';
 import WorksPanel from './workspace/WorksPanel';
@@ -182,6 +183,7 @@ function App() {
           <CredentialSettings />
           <ModelCredentialSettings />
           <TeamSettings />
+          <AccountMenu />
         </div>
       </header>
       <div className="app-layout">
