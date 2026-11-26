@@ -124,6 +124,8 @@ async function scenario(
                             : '视觉一致：标签恢复了原有间距。',
                         )
                   : message;
+    next.id = `model-reasoning-${calls}`;
+    next.additional_kwargs.reasoning_content = `private thinking ${calls}`;
     return { generations: [{ text: next.text, message: next }] };
   };
   const tools: GenerationTools = {
@@ -204,6 +206,11 @@ async function scenario(
     messages: [new HumanMessage({ id: 'request', content: '点击名字' })],
     instructions: '仅修改已有页面的交互',
     onMessage: async (message) => {
+      if (AIMessage.isInstance(message) && message.id?.startsWith('model-reasoning-'))
+        assert.equal(
+          message.additional_kwargs.reasoning_content,
+          `private thinking ${message.id.slice('model-reasoning-'.length)}`,
+        );
       if (message.id && message.text.startsWith('本次交互')) finalIds.push(message.id);
     },
     reasoningUserText: '点击名字',

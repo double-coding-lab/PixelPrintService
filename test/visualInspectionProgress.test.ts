@@ -76,6 +76,8 @@ async function repair(scenario: 'writes' | 'reads' | 'failed-capture' | 'rejecte
         );
       message = new AIMessage('依据最新检查反馈继续处理。');
     }
+    message.id = `model-reasoning-${calls}`;
+    message.additional_kwargs.reasoning_content = `private thinking ${calls}`;
     return { generations: [{ text: message.text, message }] };
   };
   const result = await runAgent({
@@ -89,6 +91,11 @@ async function repair(scenario: 'writes' | 'reads' | 'failed-capture' | 'rejecte
     assertLease: async () => {},
     tools,
     onMessage: async (message) => {
+      if (AIMessage.isInstance(message) && message.id?.startsWith('model-reasoning-'))
+        assert.equal(
+          message.additional_kwargs.reasoning_content,
+          `private thinking ${message.id.slice('model-reasoning-'.length)}`,
+        );
       records.push(message);
     },
   });

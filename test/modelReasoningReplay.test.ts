@@ -143,7 +143,7 @@ test('SDK 回传真实思考：普通/原生流、检查点、私有历史与非
     ),
   );
   for (const name of ['left', 'right']) {
-    const request = requests.findLast((r) => r.messages[0].content === name)!;
+    const request = [...requests].reverse().find((r) => r.messages[0].content === name)!;
     assert.equal(request.messages[1].reasoning_content, name);
   }
   const batch = new AIMessage({
