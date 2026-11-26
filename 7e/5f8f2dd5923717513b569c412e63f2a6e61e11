@@ -1,0 +1,37 @@
+.Knowledge/topics/d2c-workspace-foundation.md
+  s_a4e26e740c8ebc::t_b3cc11b30a7a81 3,136-142
+.Knowledge/stock-docs/d2c-workspace-foundation.md
+  s_a4e26e740c8ebc::t_b3cc11b30a7a81 120-127
+.Knowledge/index.md
+  s_a4e26e740c8ebc::t_b3cc11b30a7a81 46,49
+.Knowledge/matchers/m-d2c-workspace-foundation.json
+  s_a4e26e740c8ebc::t_b3cc11b30a7a81 57-61
+.Knowledge/topics/d2c-team-collaboration.md
+  s_a4e26e740c8ebc::t_b3cc11b30a7a81 3,40-43
+.Knowledge/topics/project-architecture.md
+  s_a4e26e740c8ebc::t_b3cc11b30a7a81 3,52-55
+.Knowledge/stock-docs/项目架构终稿.md
+  s_a4e26e740c8ebc::t_b3cc11b30a7a81 79-80
+.Knowledge/stock-docs/d2c-team-collaboration.md
+  s_a4e26e740c8ebc::t_b3cc11b30a7a81 44-47
+.Knowledge/matchers/m-d2c-team-collaboration.json
+  s_a4e26e740c8ebc::t_b3cc11b30a7a81 15-16
+.Knowledge/matchers/m-project-architecture.json
+  s_a4e26e740c8ebc::t_b3cc11b30a7a81 21-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "7e5f8f2dd5923717513b569c412e63f2a6e61e11",
+  "prompts": {},
+  "sessions": {
+    "s_a4e26e740c8ebc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c5d-a8a9-7e90-8b85-0ffe53c5e35f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
