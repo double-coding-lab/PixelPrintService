@@ -22,6 +22,7 @@ export type StoredAgentMessage =
       content: string | Array<StoredTextBlock | StoredImageBlock>;
       status?: 'completed' | 'in_progress' | 'incomplete';
       id?: string;
+      reasoningContent?: string;
       providerData?: Record<string, unknown>;
     }
   | {
@@ -33,6 +34,7 @@ export type StoredAgentMessage =
       id?: string;
       namespace?: string | null;
       caller?: { type: string };
+      reasoningContent?: string;
       providerData?: Record<string, unknown>;
     }
   | {
@@ -95,11 +97,7 @@ export interface GenerationTools {
     },
   ): Promise<string>;
   /** scope仅由平台委派注入，模型工具不暴露此参数；merge始终完整验收。 */
-  rules(
-    relative: string,
-    mode: 'block' | 'merge',
-    scope?: { rootNodeId: string },
-  ): Promise<string>;
+  rules(relative: string, mode: 'block' | 'merge', scope?: { rootNodeId: string }): Promise<string>;
   /** 仅计算绑定设计稿规则报告；保存由调用方沿用既有写权限和租约事务。 */
   scanRules?(relative: string, nodeId?: string): Promise<NativeRuleScanResult>;
   slices(

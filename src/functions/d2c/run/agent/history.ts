@@ -7,6 +7,7 @@ import {
   type BaseMessage,
 } from '@langchain/core/messages';
 import { isDeepStrictEqual } from 'node:util';
+import { messageReasoningContent } from './reasoningContent';
 import type { StoredAgentMessage } from '../types';
 import type { AgentRecord } from '../types';
 
@@ -140,7 +141,7 @@ function failedOutput(text: string): boolean {
  * 将旧 replayHistory 已配好序的完整 StoredAgentMessage[] 转为独立的 LangChain 消息。
  * 连续 function_call 合并为一条 AIMessage，结果逐项保留 callId、名称、正文及失败语义。
  * 不接受未完成配对或跨普通消息结果；补记重排仍由旧 replayHistory 负责。
- * 只投影正文和工具字段，不复制 providerData、模型配置或凭据元数据。
+ * 投影正文、工具与独立的 reasoningContent 字段，不复制 providerData、模型配置或凭据元数据。
  * 正文/参数中的敏感文本仍须由既有 persistence.redact 处理。本转换不是 checkpointer。
  */
 export function storedHistoryToMessages(history: readonly StoredAgentMessage[]): BaseMessage[] {
@@ -161,6 +162,12 @@ export function storedHistoryToMessages(history: readonly StoredAgentMessage[]):
         if (pending.size) invalid('上一工具批次未完成');
         callGroup = new AIMessage({ content: '', tool_calls: [] });
         messages.push(callGroup);
+      }
+      if (typeof item.reasoningContent === 'string') {
+        const previous = callGroup.additional_kwargs.reasoning_content;
+        if (previous !== undefined && previous !== item.reasoningContent)
+          invalid('同批工具调用思考内容不一致');
+        callGroup.additional_kwargs.reasoning_content = item.reasoningContent;
       }
       callGroup.tool_calls!.push({
         id,
@@ -207,7 +214,15 @@ export function storedHistoryToMessages(history: readonly StoredAgentMessage[]):
           }),
         );
       else if (item.role === 'assistant')
-        messages.push(new AIMessage(textContent(item.content, ['output_text'])));
+        messages.push(
+          new AIMessage({
+            content: textContent(item.content, ['output_text']),
+            additional_kwargs:
+              typeof item.reasoningContent === 'string'
+                ? { reasoning_content: item.reasoningContent }
+                : {},
+          }),
+        );
       else invalid('不支持的消息角色');
     }
   }
@@ -225,7 +240,13 @@ export function storedHistoryToMessages(history: readonly StoredAgentMessage[]):
 export function messageToAgentRecords(message: BaseMessage, toolName?: string): AgentRecord[] {
   if (AIMessageChunk.isInstance(message) || ToolMessageChunk.isInstance(message))
     invalid('不能持久化消息分片');
-  const text = textContent(message.content, ['text']);
+  const content =
+    AIMessage.isInstance(message) && Array.isArray(message.content)
+      ? message.content.filter(
+          (block) => block.type !== 'reasoning' || typeof block.reasoning !== 'string',
+        )
+      : message.content;
+  const text = textContent(content, ['text']);
   if (ToolMessage.isInstance(message)) {
     const callId = identifier(message.tool_call_id);
     const name = identifier(message.name ?? toolName);
@@ -275,6 +296,8 @@ export function messageToAgentRecords(message: BaseMessage, toolName?: string): 
     }
   }
   const records: AgentRecord[] = [];
+  const reasoningContent = messageReasoningContent(message);
+  const reasoning = reasoningContent === undefined ? {} : { reasoningContent };
   if (text || !message.tool_calls?.length)
     records.push({
       kind: 'message',
@@ -282,6 +305,7 @@ export function messageToAgentRecords(message: BaseMessage, toolName?: string): 
       sdkItem: {
         type: 'message',
         role: 'assistant',
+        ...reasoning,
         status: 'completed',
         content: [{ type: 'output_text', text }],
       },
@@ -298,6 +322,7 @@ export function messageToAgentRecords(message: BaseMessage, toolName?: string): 
       name,
       sdkItem: {
         type: 'function_call',
+        ...(ids.size === 1 ? reasoning : {}),
         callId,
         name,
         arguments: JSON.stringify(jsonObject(call.args)),

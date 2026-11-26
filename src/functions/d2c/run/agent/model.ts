@@ -1,4 +1,10 @@
-import { ChatOpenAICompletions } from '@langchain/openai';
+import {
+  ChatOpenAICompletions,
+  convertMessagesToCompletionsMessageParams,
+} from '@langchain/openai';
+import type OpenAI from 'openai';
+import type { BaseMessage } from '@langchain/core/messages';
+import { messageReasoningContent } from './reasoningContent';
 import type { ChatModelStreamEvent } from '@langchain/core/language_models/event';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { estimateTokens } from './tokens';
@@ -49,12 +55,60 @@ function observeNativeChunk(event: ChatModelStreamEvent): void {
     });
 }
 
+const requestMessages = Symbol('pixelprint.requestMessages');
+
 /** 在 SDK 交付分片前记录观测时间；主/子模型及摘要复用同一入口。 */
 class ObservedChatCompletions extends ChatOpenAICompletions {
+  /** 请求私有元数据随调用选项传递，避免并发主/子请求串用历史。 */
+  override _generate(...args: Parameters<ChatOpenAICompletions['_generate']>) {
+    args[1] = Object.assign({}, args[1], { [requestMessages]: args[0] });
+    args[1].options = Object.assign({}, args[1].options, { [requestMessages]: args[0] });
+    return super._generate(...args);
+  }
+
+  override completionWithRetry(
+    request: OpenAI.Chat.ChatCompletionCreateParamsStreaming,
+    options?: OpenAI.RequestOptions,
+  ): Promise<AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>>;
+  override completionWithRetry(
+    request: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
+    options?: OpenAI.RequestOptions,
+  ): Promise<OpenAI.Chat.Completions.ChatCompletion>;
+  /** SDK 转换遗漏供应商思考字段；仅回传模型真实返回的字符串，不构造思考正文。 */
+  override completionWithRetry(
+    request: OpenAI.Chat.ChatCompletionCreateParams,
+    options?: OpenAI.RequestOptions & { [requestMessages]?: BaseMessage[] },
+  ) {
+    const { [requestMessages]: messages, ...sdkOptions } = options ?? {};
+    if (messages?.some((message) => messageReasoningContent(message) !== undefined)) {
+      request = {
+        ...request,
+        messages: messages.flatMap((message) => {
+          const converted = convertMessagesToCompletionsMessageParams({
+            messages: [message],
+            model: this.model,
+          });
+          const reasoning = messageReasoningContent(message);
+          if (reasoning !== undefined)
+            for (const item of converted)
+              if (item.role === 'assistant') Object.assign(item, { reasoning_content: reasoning });
+          return converted;
+        }),
+      };
+    }
+    return request.stream
+      ? super.completionWithRetry(request, sdkOptions)
+      : super.completionWithRetry(
+          request as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
+          sdkOptions,
+        );
+  }
+
   /** 原生内容块事件路径与普通分片路径共用计时上下文，不读取 provider 原始载荷。 */
   override async *_streamChatModelEvents(
     ...args: Parameters<ChatOpenAICompletions['_streamChatModelEvents']>
   ) {
+    args[1] = Object.assign({}, args[1], { [requestMessages]: args[0] });
     for await (const event of super._streamChatModelEvents(...args)) {
       observeNativeChunk(event);
       yield event;
@@ -65,6 +119,7 @@ class ObservedChatCompletions extends ChatOpenAICompletions {
   override async *_streamResponseChunks(
     ...args: Parameters<ChatOpenAICompletions['_streamResponseChunks']>
   ) {
+    args[1] = Object.assign({}, args[1], { [requestMessages]: args[0] });
     for await (const chunk of super._streamResponseChunks(...args)) {
       observeModelChunk(chunk.message);
       yield chunk;
