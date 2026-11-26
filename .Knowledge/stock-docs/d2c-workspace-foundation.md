@@ -115,3 +115,5 @@
 - 镜像构建通过npm run check:templates校验实际发布目录，测试覆盖无扩展社区包、已有扩展、缺失核心文件及符号链接。出现TEMPLATE_UNAVAILABLE时先检查部署包，不应排查模型Key或放开核心完整性校验。
 
 Node固定脚本预加载参数通过pathToFileURL编码，执行目录中的井号、空格和百分号不会改变导入语义。平台扩展默认随核心模板目录定位，不读取无关cwd；公开H5/RN冻结/恢复回归使用真实规则脚本，缺报告仍拒绝通过。
+
+图片无损压缩与WebP转换也按applicationRoot定位已准备的Pillow及脚本，不依赖进程cwd；CI固定Python 3.12并准备真实Pillow运行环境，异地cwd回归验证实际转换。
