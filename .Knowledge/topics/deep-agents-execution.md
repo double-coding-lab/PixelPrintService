@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 35
+revision: 37
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -113,15 +113,14 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 
 ## 检查点和中间写入外置
 
-- `d2c.checkpointStorage`独立于文件正文开关，新建配置默认`schemaReady=true/mode=external`，省略配置的旧部署保持`schemaReady=false/mode=inline`；配置位于project.config.json的runtime.d2c。三列新引用就绪后重启启用，旧schema默认SELECT/INSERT不依赖新列。
-- 两表保留typed BLOB，新增checkpointRef/metadataRef及数据库writeRef（模型valueRef）；shadow双写兼容旧writer，external仅外置合格大载荷，旧BLOB始终优先读取。回退inline仍保留schemaReady、历史密钥和对象；旧程序回滚前必须restore全部所需BLOB。
-- `content/binaryStore.ts`保存任意typed bytes，gzip获益时压缩，再以独立密钥AES-256-GCM加密；引用pixelprint.blob.v1绑定行身份、namespace、checkpoint/task/idx及typed编码，回读校验且解压有界。超出传输能力的合法载荷留库，定位/密钥不公开、不进入日志。
+- `d2c.checkpointStorage`独立配置引用列就绪状态和独立密钥；社区版配置位于project.config.json的runtime.d2c。新检查点、metadata和pending writes正文全部文件化，未就绪时拒绝写入；旧mode/thresholdBytes取值保留解析兼容，实际写策略统一external。
+- 两表保留历史typed BLOB与checkpointRef/metadataRef/writeRef（模型valueRef）兼容读取；数据库新写入只含引用、摘要和控制字段。已有BLOB优先读取，已有pixelprint.blob.v1单文件引用继续解密恢复；历史迁移仍按空闲会话分批/CAS执行，旧程序回滚须先显式restore。
+- `content/checkpointStore.ts`按实际单文件上传上限分块，使用pixelprint.checkpoint.v2小引用指向加密清单；每块沿用gzip获益压缩、AES-256-GCM、上传回读核验和独立范围绑定。清单校验完整行身份、顺序、总字节及原文SHA-256后重组，当前单正文上限128MiB、最多256块，清单上限4MiB；超限或对象失败明确报错，自动路径禁止回退数据库。
 - 序列化/上传及还原/反序列化在租约事务外。提交仍经原leases.commit；失租、取消或提交失败保留旧状态。普通write重复first-wins，特殊负idx last-wins，整批提交原子；重复普通写预检跳过无用上传，最后仍重验租约。
 - getTuple在单个一致读内冻结状态/元数据及所需pending描述，再事务外还原；list按最多50个候选分页、逐个还原/yield并复核filter，保留namespace/before/order/limit。每个tuple一致，跨页可见并发变化；不在长事务中下载对象或累积全部历史正文。
 - `checkpoint:migrate`提供checkpoints/writes固定表组、dry-run、BIGINT上界/分页、逐行CAS、0600游标续迁和精确BLOB回填。预演无对象IO或更新锁；apply按父会话→载荷行锁定，活动会话及并发变化停在安全游标，不改图状态或删除历史。DDL及实际迁移由部署方执行。
-- 原typed格式、全部channel_values、父链delta replay、归档和原生interrupt继续保留；损坏引用不静默变成新图。时间线外置、历史保留/对象GC和通道级增量属于后续独立范围，不按相同大小删除快照。
+- 原typed格式、全部channel_values、父链delta replay、归档和原生interrupt继续保留；损坏引用不静默变成新图。时间线外置、历史保留/对象GC和通道级增量属于后续独立范围，不按相同大小删除快照。 回归包含52MiB真实大小的随机二进制、完整typed图/元数据/中间写恢复、历史BLOB与旧引用、缺块/篡改/取消和提交失败；失败上传对象保留为孤立对象，不提交半成品引用。
 - 配置/SQL/启用与回滚说明见[执行终稿](../stock-docs/deep-agents-execution.md#检查点和中间写入外置)。
-
 ## 工具参数纠错与历史排查边界
 
 - 工具输入解析失败按注册Zod对象契约反馈出错顶层字段、固定校验类型、必填性、合法枚举及类型/长度/数值范围，最多12条；仅从受信契约生成提示，参数值、嵌套字典键和自定义异常正文保持私有。edit_file摘要类型与长度沿用专门反馈，错误调用不执行副作用，模型可修正后继续。
