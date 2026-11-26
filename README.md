@@ -2,7 +2,7 @@
 
 把 Figma 设计稿生成可预览、可编辑的页面代码。支持 H5、React Native Web、持续对话修改、截图对比、交互验收、团队协作和作品分享。
 
-**在线体验：[pp.lantao.work](https://pp.lantao.work/)**
+**[官网与版本入口](https://pp.lantao.work/) · [在线工作台](https://pp.lantao.work/workbench)**
 
 支持 GitHub 登录和临时访客。登录后，在“模型凭据”填写自己的 **模型地址、模型名称和 API Key**，并配置个人 Figma Token，再创建工作区开始生成。访客身份有有效期，需要长期保留的工作建议使用 GitHub 登录。个人密钥仅在服务端加密保存。
 

@@ -1,14 +1,14 @@
 ---
 id: project-architecture
-revision: 8
-summary: "Fastify全栈入口、登录、日志、数据连接与部署"
+revision: 10
+summary: "Fastify全栈入口、宣传首页、登录、数据连接与部署"
 primary: module
 confidence: inferred
 sourceDoc: ".Knowledge/stock-docs/项目架构终稿.md"
 ---
 # 项目架构
 
-Node.js 24 在一个 Fastify 应用中提供 React 页面、API 和预览资源。
+Node.js 24 在一个 Fastify 应用中提供公开宣传首页、React 工作台、API 和预览资源。
 
 ## 核心规则
 
@@ -43,3 +43,9 @@ Node.js 24 在一个 Fastify 应用中提供 React 页面、API 和预览资源�
 - 分支和PR由GitHub Actions检查；main且配置部署变量后自动发布。独立部署密钥仅允许固定命令，指纹核验、服务端锁和最新main比对保护发布顺序。
 - 精确归档源码与校验的CI产物统一组装，运行依赖指纹绑定实际镜像；切换前保存独立回滚标签，模板检查失败不激活，健康失败恢复上一镜像。配方、依赖和额外构建文件参与失效，私有配置与数据卷保留。详见[部署指南](../../docs/deployment/自动部署.md)。
 - src/paths.ts按模块定位固定模板、静态页面和预览资源，支持src/dist及异地cwd；用户数据和私有配置仍按各自配置解释。
+
+## 宣传首页与工作台
+
+- 普通根路径使用独立静态宣传页，提供在线工作台、本地PixelPrint仓库和开源PixelPrintService仓库入口；不读取个人凭据或发起生成。
+- 根路径的历史业务查询继续使用SPA入口，深路径工作台、作品与分享保持原行为；API身份和资源权限独立保护。默认登录回跳为/workbench，显式合法站内路径继续保留。
+- 页面资源随Vite public目录构建，只有固定静态链接与原生锚点/详情交互；展示版本选择与能力边界，不承诺固定还原率或耗时。

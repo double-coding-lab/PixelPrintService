@@ -99,7 +99,7 @@
       "topics": [
         "project-architecture"
       ],
-      "summary": "Fastify全栈入口、登录、日志、数据连接与部署"
+      "summary": "Fastify全栈入口、宣传首页、登录、数据连接与部署"
     },
     {
       "task": "project-config",
