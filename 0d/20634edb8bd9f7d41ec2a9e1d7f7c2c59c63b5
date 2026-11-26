@@ -1,0 +1,37 @@
+test/summaryReuse.test.ts
+  s_e16f52fd1de115::t_4393d207116bf5 23-27,277-278,361-391
+  s_e16f52fd1de115::t_0161b8743ff7a8 104,134
+  s_e16f52fd1de115::t_cbbc454b61835a 1-3,5-22,28-103,105-133,135-219,222-276,279-289
+  s_e16f52fd1de115::t_6e403f00588c49 4,220-221
+src/functions/d2c/run/agent/summaryReceipt.ts
+  s_e16f52fd1de115::t_9514641cb909a1 70-78,91-97
+  s_e16f52fd1de115::t_d5664557ecd0ff 25
+  s_e16f52fd1de115::t_08a1f656dfe433 1,3-10,15-23,27-35,39-59,64-69,79-90,98-110
+  s_e16f52fd1de115::t_cbbc454b61835a 2,11-14,24,26,36-38,60-63
+src/functions/d2c/run/agent/recovery.ts
+  s_e16f52fd1de115::t_55ba5c0cc6e93e 6-47,66,73
+src/functions/d2c/run/agent/summary.ts
+  s_e16f52fd1de115::t_7997e447ceb82a 238,241,243-244,330-336
+  s_e16f52fd1de115::t_7e61d110b1831e 278-281,284-287
+  s_e16f52fd1de115::t_cbbc454b61835a 299-301,315-319
+  s_e16f52fd1de115::t_cd57068c9cbce8 272-277
+  s_e16f52fd1de115::t_d5664557ecd0ff 20-22,24-25,27-43,45-53
+  s_e16f52fd1de115::t_2f9572cea9a02b 282-283,288,303-304
+  s_e16f52fd1de115::t_75be54ca098a75 4-5,15-19,23,26,44,54,234-236,256-257,289,295,298,305-314,320-322,328-329,342,346,348-359
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "0d20634edb8bd9f7d41ec2a9e1d7f7c2c59c63b5",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
