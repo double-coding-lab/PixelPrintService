@@ -5,7 +5,6 @@ import { registerTools } from '@/hooks/tools/index';
 import { registerLoginRoute } from '@/hooks/http/auth';
 import { projectConfig } from '@/config/project';
 import fastifyStatic from '@fastify/static';
-import multipart from '@fastify/multipart';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -23,16 +22,6 @@ async function registerModules(app: FastifyInstance) {
 export async function createApp(): Promise<FastifyInstance> {
   const app = Fastify({ trustProxy: 'loopback', logger: { level: projectConfig.logging.level } });
   await registerTools(app);
-  await app.register(multipart, {
-    limits: {
-      fileSize:
-        Number(
-          projectConfig.runtime.d2c.limits &&
-            (projectConfig.runtime.d2c.limits as { uploadBytes: number }).uploadBytes,
-        ) || 30000000,
-      files: 1,
-    },
-  });
   registerHttpHooks(app);
   registerLoginRoute(app);
   app.get('/health', async () => ({ status: 'ok' }));
