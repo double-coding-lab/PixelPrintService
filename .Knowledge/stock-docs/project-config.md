@@ -20,7 +20,7 @@
 | `storage.driver` | `local` 或 `s3`，按部署实际选择 |
 | `storage.directory/publicUrl` | 本地目录和外部可读的文件根地址；S3 可使用桶或 CDN 地址 |
 | `storage.bucket/region/endpoint` | S3 桶、区域及兼容服务 API 地址，桶由部署方预先创建 |
-| `network.proxyUrl` | 通用 HTTP 代理，直连时为空；不把模型和存储请求自动改走 Figma 代理 |
+| `network.proxyUrl` | Figma/GitHub 的运行代理，直连时为空；构建代理独立，模型和存储使用各自客户端 |
 | `runtime.modelConfigs` | 至少一个支持工具调用的模型配置，地址填兼容接口的根路径 |
 | `runtime.d2c.network.allowedExternalHosts` | 主机名或明确通配后缀，不填写完整 URL、端口或路径 |
 | `runtime.d2c.limits` | 单文件文本上限示例为100MiB（104857600字节），会话文件数和二进制上传限额独立 |
@@ -42,7 +42,7 @@
 
 Figma Token 用 AES-256-GCM 加密保存。`activeKeyId` 选择当前加密材料，`keys` 保存历史版本所需的真实材料；服务端直接派生密钥，没有额外解析服务。删除旧材料可能使旧凭据无法解密。
 
-模型 API Key、S3 凭据、Cookie 签名和 Figma 加密材料分开管理。所有真实值只保存在部署配置中；文档使用字段说明或公开占位符。
+平台默认模型 Key、S3 凭据、Cookie 签名和凭据加密材料保存在部署方私有配置；个人模型与 Figma 凭据在数据库加密保存。文档只使用字段说明或公开占位符。
 
 工作区的生成配置通过页面编辑后入库，资源升级只影响明确选择的工作区修订；会话历史不因模板仓更新而自动改变。预览固定采用本地执行，使用模板自带的运行参数，不需要填写远程执行平台配置。
 
@@ -55,3 +55,9 @@ Figma Token 用 AES-256-GCM 加密保存。`activeKeyId` 选择当前加密材�
 ## 个人模型 API Token
 
 个人模型设置支持本人独立填写地址、模型名称和Token，新会话固定当前加密修订，既有绑定保持原连接。旧库迁移、旧Token兼容与执行校验见[个人模型凭据](../topics/project-config.md#个人模型凭据)。
+
+## 部署组合与代理边界
+
+- 默认Compose提供MySQL、Redis和本地文件；compose.external.yaml仅启动应用，连接部署方已有服务。Redis当前是单节点配置，MySQL没有证书配置入口；文件对接S3兼容接口，OSS等须先验证兼容操作。
+- compose.build-proxy.yaml仅向镜像构建传HTTP_PROXY/HTTPS_PROXY，运行时仍由network.proxyUrl显式选择Figma/GitHub代理。Docker基础镜像拉取由daemon/BuildKit配置；浏览器访问网站走独立入站链路。
+- publicUrl、DNS记录、HTTPS证书和OAuth回调按同一个公开来源配置；通配证书与DNS解析分别管理。可复制的部署步骤见[自主部署指南](../../docs/deployment/部署与配置.md)。
