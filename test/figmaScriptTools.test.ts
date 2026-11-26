@@ -400,3 +400,24 @@ test('节点缓存先去除排版再核对存储上限，其余文件及重复�
   await runtime.tools.figma('cache-check', {});
   assert.equal(saves.filter((file) => file === cachePath).length, 1);
 });
+
+/** 可配置执行根目录允许普通文件名字符，Node --import 必须按文件 URL 加载。 */
+test('固定脚本可从含空格、中文、#及%转义字面的执行目录启动', async (t) => {
+  for (const suffix of [' 中文 #目录', ' percent%20literal']) {
+    const f = await toolFixture(
+      t,
+      'console.log(JSON.stringify({ ok: true, data: { valid: true } }));',
+    );
+    const previous = f.input.restored.directory;
+    const directory = previous + suffix;
+    await fs.rename(previous, directory);
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    f.input.restored.directory = directory;
+    f.input.restored.resources = path.join(directory, 'resources');
+    f.input.restored.workspace = path.join(directory, 'workspace');
+    const runtime = await createGenerationTools(f.input);
+    const result = JSON.parse(await runtime.tools.figma('verify-token', {}));
+    assert.equal(result.ok, true);
+    assert.equal(result.data.valid, true);
+  }
+});

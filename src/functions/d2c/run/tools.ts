@@ -24,6 +24,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { createScriptNetworkPrelude } from './scriptNetwork';
 import {
   assertArtifactPath,
@@ -720,8 +721,8 @@ export async function createGenerationTools(input: {
           '--use-system-ca',
           '--use-env-proxy',
           '--import',
-          prelude,
-          ...(name === 'figma.mjs' ? ['--import', processPrelude] : []),
+          pathToFileURL(prelude).href,
+          ...(name === 'figma.mjs' ? ['--import', pathToFileURL(processPrelude).href] : []),
           filename,
           ...args,
         ],
