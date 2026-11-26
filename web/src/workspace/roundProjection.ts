@@ -1,3 +1,4 @@
+import { measureRunDuration } from '../../../src/shared/runDuration';
 import { groupTimeline, mergeTimeline } from './timeline';
 import type { TimelineEntry } from './types';
 
@@ -12,8 +13,9 @@ export type ConversationRoundGroup = {
 /** 仅顶层生命周期可决定整轮状态，子 Agent、切图和工具状态均不算结束。 */
 function isLifecycle(entry: TimelineEntry): boolean {
   return (
-    entry.kind === 'run_status' ||
+    (entry.kind === 'run_status' && entry.data.agentId == null) ||
     (entry.kind === 'stage' &&
+      entry.data.agentId == null &&
       (entry.data.stage === undefined || ['queued', 'cancelled'].includes(entry.data.stage)))
   );
 }
@@ -131,8 +133,16 @@ export function projectConversationRound(entries: TimelineEntry[], active: boole
     ordered.find((entry) => entry.kind === 'run_status' && entry.data.status === 'running');
   const startedAt = timestamp(started);
   const endedAt = timestamp(terminal);
-  const durationMs =
-    startedAt !== null && endedAt !== null && endedAt >= startedAt ? endedAt - startedAt : null;
+  const duration = measureRunDuration(
+    startedAt,
+    terminal?.data.status ?? latestStatus ?? 'unknown',
+    ordered.filter(isLifecycle).map((entry) => ({
+      status: entry.data.status ?? '',
+      at: timestamp(entry),
+    })),
+    null,
+  );
+  const durationMs = duration.elapsedMs;
   return {
     foreground,
     answer,
@@ -142,6 +152,7 @@ export function projectConversationRound(entries: TimelineEntry[], active: boole
     startedAt: startedAt === null ? null : started!.at,
     endedAt: endedAt === null ? null : terminal!.at,
     durationMs,
+    waitingAt: duration.waitingAt === null ? null : new Date(duration.waitingAt).toISOString(),
     durationOrigin: queued ? ('queued' as const) : started ? ('running' as const) : null,
   };
 }

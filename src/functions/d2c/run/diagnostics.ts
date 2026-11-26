@@ -1,3 +1,4 @@
+import { measureRunDuration } from '../../../shared/runDuration';
 import { findOrderedRows } from '../utils/orderedRead';
 import { buildAgentDiagnostics } from './subagentDiagnostics';
 import { createHash } from 'node:crypto';
@@ -172,51 +173,30 @@ function executionSteps(rows: D2cTimeline[], status: string): Step[] {
   return steps;
 }
 
-/** 同轮恢复 queued 开启新区间；每个区间只认首个终态，不用 cleanup 更新时间。 */
+/** 主轮事件排除子任务；聊天与诊断共用等待回答暂停的区间算法。 */
 function runTiming(run: D2cRun, events: D2cTimeline[], observedAt: string) {
-  const stopped = new Set([...terminal, 'paused']);
-  let start = timestamp(run.createdAt);
-  let elapsedMs = 0;
-  let finishedAt: string | null = null;
-  let valid = true;
-  let observedStart = !!start;
-  const ordered = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-  for (const event of ordered) {
-    const status = event.displayPayload?.status;
-    const mainQueued =
-      event.kind === 'stage' &&
-      event.displayPayload?.stage === 'queued' &&
-      status === 'queued' &&
-      event.displayPayload?.agentId == null;
-    if (event.kind !== 'run_status' && !mainQueued) continue;
-    if (status !== 'queued' && !stopped.has(String(status))) continue;
-    const at = timestamp(event.createdAt);
-    if (!at) {
-      valid = false;
-      continue;
-    }
-    if (status === 'queued') {
-      if (!start) {
-        if (finishedAt && at < finishedAt) valid = false;
-        start = at;
-        observedStart = true;
-        finishedAt = null;
-      }
-    } else if (start) {
-      if (at < start) valid = false;
-      else elapsedMs += Date.parse(at) - Date.parse(start);
-      start = null;
-      finishedAt = at;
-    }
-  }
-  if (start) {
-    if (stopped.has(run.status) || observedAt < start) valid = false;
-    else elapsedMs += Date.parse(observedAt) - Date.parse(start);
-  } else if (!stopped.has(run.status)) valid = false;
+  const timing = measureRunDuration(
+    timestamp(run.createdAt) ? Date.parse(timestamp(run.createdAt)!) : null,
+    run.status,
+    [...events]
+      .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+      .filter(
+        (event) =>
+          event.kind === 'run_status' ||
+          (event.kind === 'stage' &&
+            event.displayPayload?.stage === 'queued' &&
+            event.displayPayload?.status === 'queued' &&
+            event.displayPayload?.agentId == null),
+      )
+      .map((event) => ({
+        status: String(event.displayPayload?.status),
+        at: timestamp(event.createdAt) ? Date.parse(timestamp(event.createdAt)!) : null,
+      })),
+    Date.parse(observedAt),
+  );
   return {
-    elapsedMs: valid && observedStart ? elapsedMs : null,
-    runningCount: valid && observedStart && start ? 1 : 0,
-    finishedAt: valid && observedStart && !start ? finishedAt : null,
+    ...timing,
+    finishedAt: timing.finishedAt === null ? null : new Date(timing.finishedAt).toISOString(),
   };
 }
 

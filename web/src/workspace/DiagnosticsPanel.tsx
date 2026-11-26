@@ -157,7 +157,7 @@ export function DiagnosticsContent({
           <div>
             <span>所选轮次耗时</span>
             <strong>{totalDuration(selectedDuration)}</strong>
-            <small>含排队及等待回答</small>
+            <small>含排队，等待回答暂停计时</small>
           </div>
           <div>
             <span>模型请求</span>
@@ -173,7 +173,7 @@ export function DiagnosticsContent({
           </div>
         </div>
         <p className="diagnostics-note">
-          耗时含排队和等待回答，以明确的结束事件结算。同轮中断后再次排队另开区间，不计两轮之间的空闲时间，同轮中断后的空闲也不计入；
+          耗时含排队，等待回答期间暂停，回答重新入队后继续累计，以明确的结束事件结算。同轮中断后再次排队另开区间，不计两轮之间的空闲时间，同轮中断后的空闲也不计入；
           缺少历史端点时保持未知，不使用清理记录的更新时间代替结束时间。
         </p>
       </section>

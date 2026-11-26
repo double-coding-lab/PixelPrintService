@@ -36,8 +36,10 @@ export default function ConversationRound({
     : `${statuses[round.status ?? ''] ?? '执行过程'} · ${duration}`;
   const timing =
     round.startedAt && round.endedAt
-      ? `${round.durationOrigin === 'queued' ? '入队' : '开始执行'} ${round.startedAt} → 结束 ${round.endedAt}；包含期间的等待时间`
-      : '缺少完整的轮次起止时间，无法计算耗时';
+      ? `${round.durationOrigin === 'queued' ? '入队' : '开始执行'} ${round.startedAt} → 结束 ${round.endedAt}；包含排队，扣除等待回答时间`
+      : round.waitingAt
+        ? `等待回答，计时暂停于 ${round.waitingAt}；回答后继续累计`
+        : '缺少完整的轮次起止时间，无法计算耗时';
 
   /** 复用既有消息样式，renderer 只返回正文；每个事件仍是外层 ol 的直接 li。 */
   function message(entry: TimelineEntry) {
