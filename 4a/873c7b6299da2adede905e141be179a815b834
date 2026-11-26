@@ -1,0 +1,23 @@
+test/webpThumbnail.test.ts
+  s_e16f52fd1de115::t_e75d914b7fd67d 6-8,212-227
+src/functions/d2c/utils/webpThumbnail.ts
+  s_e16f52fd1de115::t_e75d914b7fd67d 3,18
+src/functions/d2c/utils/compressImage.ts
+  s_e16f52fd1de115::t_e75d914b7fd67d 3,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "4a873c7b6299da2adede905e141be179a815b834",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
