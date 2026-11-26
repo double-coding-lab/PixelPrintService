@@ -22,7 +22,7 @@ node scripts/setup.mjs --docker
 
 终端会显示首次登录账号和随机密码。编辑生成的 `project.config.json`：
 
-- `runtime.modelConfigs[0]`：填写支持工具调用的 OpenAI Chat Completions 兼容服务地址、模型名和 API Key。
+- `runtime.modelConfigs[0]`：保留平台预算和可选默认模型连接；用户可登录后在“模型凭据”独立填写支持工具调用的服务地址、模型名和 API Key，新会话使用个人设置。
 - `server.publicUrl`：用户实际访问的地址。默认 `http://localhost:8080`。
 - `storage.publicUrl`：同一地址加 `/files`，例如 `https://your-domain.example/files`。
 - `database.password`：与 Compose 的 `PIXELPRINT_DB_PASSWORD` 一致；上线时替换示例密码。

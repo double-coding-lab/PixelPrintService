@@ -52,4 +52,4 @@ Figma Token 用 AES-256-GCM 加密保存。`activeKeyId` 选择当前加密材�
 
 ## 个人模型 API Token
 
-顶栏模型凭据使用账号自己的 Token，广场分支绑定当前修订，服务地址和模型名沿管理员默认模型。历史空绑定会话沿平台配置。已有数据库按 `docs/sql/personal-model-credentials-migration.sql` 补齐凭据类型与会话绑定列，完整安全和部署约定见[个人模型凭据](../topics/project-config.md#个人模型凭据)。
+个人模型设置支持本人独立填写地址、模型名称和Token，新会话固定当前加密修订，既有绑定保持原连接。旧库迁移、旧Token兼容与执行校验见[个人模型凭据](../topics/project-config.md#个人模型凭据)。

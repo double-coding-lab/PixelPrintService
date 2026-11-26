@@ -23,6 +23,8 @@
     "checkpointStorage",
     "个人模型Token",
     "模型凭据",
-    "modelCredentialId"
+    "modelCredentialId",
+    "个人模型地址",
+    "模型Base URL"
   ]
 }

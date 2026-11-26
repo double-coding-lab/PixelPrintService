@@ -1,6 +1,6 @@
 ---
 id: d2c-session-plaza
-revision: 17
+revision: 18
 summary: "登录用户会话广场、个人分支续聊与隔离作品副本"
 primary: feature
 confidence: inferred
@@ -126,7 +126,7 @@ sourceDoc: ".Knowledge/stock-docs/D2C会话广场与个人作品_终稿.md"
 - 文件、消息和附件创建新标识；外置文本按新session scope重新准备，图片复用不可变对象定位并保留摘要。正文中的私有文件/附件地址改写为新会话授权路径。源发布撤回或源记录删除后，已创建分支仍沿本人工作区权限读取。
 - 冻结公开聊天截止序号和源码修订；仅复制受控产物路径。文件数量沿当前限额，复制文件合计最多128MiB；公开正文最多10000条/16MiB。超限明确返回413，不静默丢弃；存储读取及完整性失败保持真实错误。
 - 社区版先在顶栏分别保存个人Figma与模型Token；创建分支必须绑定本人的active模型凭据。模型Token按现有密钥配置加密保存，前端仅获配置状态；新轮次快照记录凭据标识，主模型、子模型及摘要统一使用发起人的密钥，失效明确报错。普通历史会话的NULL绑定沿平台配置。
-- 模型服务地址及模型名取管理员默认项，随个人Token修订加密绑定；默认连接改变后须重新保存，旧Token不会发往新地址。已有库发布前执行docs/sql/personal-model-credentials-migration.sql；新库db:init按模型建表。执行前须先读依赖主题`project-config`。
+- 个人模型地址、模型名与Token在顶栏独立设置并随修订加密绑定；新分支使用创建者的固定连接，历史仅Token修订保持原默认连接约束。旧库迁移与普通会话绑定规则见依赖主题`project-config`，执行前须先读取。
 - 实现：sharing/fork.ts、sharing/routes.ts、ForkSession和CommunityPanel；回归：plazaFork、sharingRoutes和plazaForkBrowser。个人模型额外见credential/model.ts、ModelCredentialSettings和modelCredentials回归。
 
 ## 后台 WebP 封面

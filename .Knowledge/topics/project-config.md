@@ -1,6 +1,6 @@
 ---
 id: project-config
-revision: 5
+revision: 6
 summary: "本地配置字段、模型预算、存储与生效时机"
 primary: config
 confidence: inferred
@@ -49,6 +49,7 @@ project.config.json、配置填写、运行配置、modelConfigs、contextBudget
 
 ## 个人模型凭据
 
-- 顶栏“模型凭据”仅保存本地账号自己的API Token；MODEL_BASE_URL与MODEL_NAME沿管理员modelConfigs首项，浏览器不提交自选服务地址。凭据使用runtime.d2c.secrets现有密钥加密并保留修订；备份或轮换密钥时继续保留已有材料。
-- 新建广场会话分支必须绑定本人Figma及model凭据；modelCredentialId固定到会话和执行快照，执行按发起账号解密，同一轮次主子模型与摘要共用；个人凭据失败返回CREDENTIAL_UNAVAILABLE，历史NULL会话沿平台模型。默认模型连接改变后重新保存个人Token。
-- 已有数据库在发布前备份并审核执行docs/sql/personal-model-credentials-migration.sql，扩展d2c_credential.kind和新增d2c_session.modelCredentialId；程序和db:init不自动ALTER已有表，全新库按注册模型创建。个人Token不进入源码、日志、公开数据、明文快照或浏览器存储。
+- 顶栏“模型凭据”由本人填写Base URL、模型名称和API Token，整体按既有密钥加密为新修订；地址与模型名仅向本人回填，Token不回显或存入浏览器。地址支持HTTP(S)，禁止内嵌账号、查询参数、片段和控制字符；支持工具调用的服务由用户自行提供。
+- 普通新会话自动绑定创建者当前active模型凭据；空会话可在首条消息前配置个人连接，首条入队时补绑定。后续保存新修订用于新会话，已绑定会话及恢复轮次固定原凭据；主模型、子模型与摘要沿该地址、名称和Token执行，共用管理员的预算及超时配置。
+- 个人连接可独立于管理员默认模型，执行先核对当前发起人、凭据ID、状态及快照连接；错误或失效明确拒绝，不能回退平台Key。旧的仅Token修订继续绑定原管理员连接，旧空绑定历史仍沿平台模型；当前默认连接改变时旧Token修订须重配。
+- POST /credentials/model兼容旧token单字段调用，个人完整配置须同时提交baseUrl、modelName及token；新能力复用既有密文列和modelCredentialId，无新增迁移。已有旧库仍先完成docs/sql/personal-model-credentials-migration.sql，新库按模型建表。回归见modelCredentials：真实HTTP密钥归属、跨用户、修订及连接校验。
