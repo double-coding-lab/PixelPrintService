@@ -1,3 +1,4 @@
+import { PUBLIC_TEAM_ID } from '../../../src/shared/publicTeam';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Alert, App, Modal, Popover } from 'antd';
 import { data, errorMessage, id } from './api';
@@ -32,7 +33,7 @@ export default function WorkspaceSwitcher({
   const confirm = useConfirm();
   const list = useWorkspaceList();
   const directory = useTeams();
-  const [teamId, setTeamId] = useState<string | null>(null);
+  const [teamId, setTeamId] = useState<string | null>(PUBLIC_TEAM_ID);
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
   const { open, setOpen } = useHeaderPanel('workspace');
@@ -63,7 +64,11 @@ export default function WorkspaceSwitcher({
       closeHeaderPanels();
       setOpen(false);
       setTeamId(
-        directory.workspaceScope.startsWith('team:') ? directory.workspaceScope.slice(5) : null,
+        directory.workspaceScope.startsWith('team:')
+          ? directory.workspaceScope.slice(5)
+          : directory.workspaceScope === 'personal'
+            ? null
+            : PUBLIC_TEAM_ID,
       );
       setCreating(true);
     };
@@ -184,7 +189,9 @@ export default function WorkspaceSwitcher({
                 setTeamId(
                   directory.workspaceScope.startsWith('team:')
                     ? directory.workspaceScope.slice(5)
-                    : null,
+                    : directory.workspaceScope === 'personal'
+                      ? null
+                      : PUBLIC_TEAM_ID,
                 );
                 setCreating(true);
               }}

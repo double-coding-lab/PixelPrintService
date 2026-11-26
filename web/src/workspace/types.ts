@@ -4,6 +4,7 @@ import type { AgentDiagnostics } from '../../../shared/agentDiagnostics';
 export type Target = 'h5' | 'rn';
 
 export type Team = {
+  isPublic?: boolean;
   teamId: string;
   name: string;
   createdUserId: string | null;

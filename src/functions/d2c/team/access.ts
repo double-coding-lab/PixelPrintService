@@ -1,3 +1,4 @@
+import { PUBLIC_TEAM_ID, PUBLIC_TEAM_NAME } from '../../../shared/publicTeam';
 import { Op, col, fn, where, type Sequelize, type Transaction, type WhereOptions } from 'sequelize';
 import type { D2cTeam } from '@/models/D2cTeam';
 import type { D2cTeamMember } from '@/models/D2cTeamMember';
@@ -55,6 +56,13 @@ export async function requireTeamMember(
 ) {
   const user = normalizeUserId(userId);
   requireTeamId(teamId);
+  if (teamId === PUBLIC_TEAM_ID)
+    return {
+      teamId: PUBLIC_TEAM_ID,
+      name: PUBLIC_TEAM_NAME,
+      createdUserId: '',
+      creatorName: null,
+    } as D2cTeam;
   const { teams, members } = teamModels(mysql);
   const lock = transaction && mode === 'write' ? { lock: transaction.LOCK.UPDATE } : {};
   const team = await teams.findOne({ where: { teamId }, transaction, ...lock });
@@ -98,13 +106,19 @@ export async function visibleWorkspaceWhere(
   }
   if (filter.scope === 'personal')
     return { [Op.and]: [owner, { [Op.or]: [{ teamId: null }, { teamId: '' }] }] };
-  if (!mysql.models.D2cTeam && !mysql.models.D2cTeamMember) return { [Op.and]: [owner] };
+  if (!mysql.models.D2cTeam && !mysql.models.D2cTeamMember)
+    return { [Op.or]: [owner, { teamId: PUBLIC_TEAM_ID }] };
   const { members } = teamModels(mysql);
   const rows = await members.findAll({
     where: { userId: user },
     attributes: ['teamId'],
     transaction,
   });
-  const ids = [...new Set(rows.map((row) => row.teamId).filter((id): id is string => Boolean(id)))];
+  const ids = [
+    ...new Set([
+      PUBLIC_TEAM_ID,
+      ...rows.map((row) => row.teamId).filter((id): id is string => Boolean(id)),
+    ]),
+  ];
   return ids.length ? { [Op.or]: [owner, { teamId: { [Op.in]: ids } }] } : { [Op.and]: [owner] };
 }

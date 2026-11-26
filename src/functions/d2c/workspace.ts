@@ -1,3 +1,4 @@
+import { PUBLIC_TEAM_ID } from '../../shared/publicTeam';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import responseData from '@/common/response';
@@ -97,7 +98,7 @@ export default async function workspaceRoutes(
     };
     const result =
       teamId === undefined
-        ? await service.create(owner, name)
+        ? await service.create(owner, name, PUBLIC_TEAM_ID)
         : await service.create(owner, name, teamId);
     return reply.code(202).send(responseData.success({ data: result }));
   });

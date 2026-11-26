@@ -1,4 +1,5 @@
-import {
+import { PUBLIC_TEAM_ID } from '../../../src/shared/publicTeam';
+import React, {
   createContext,
   useCallback,
   useContext,
@@ -198,16 +199,23 @@ export function TeamSelect({
   const { teams, loading } = useTeams();
   const available = value && teams.some((team) => team.teamId === value) ? value : '';
   return (
-    <Select
-      aria-label="工作区归属"
-      value={available}
-      onChange={(teamId) => onChange(teamId || null)}
-      disabled={disabled || loading}
-      options={[
-        { value: '', label: '个人' },
-        ...teams.map((team) => ({ value: team.teamId, label: team.name })),
-      ]}
-    />
+    <>
+      <Select
+        aria-label="工作区归属"
+        value={available}
+        onChange={(teamId) => onChange(teamId || null)}
+        disabled={disabled || loading}
+        options={[
+          { value: '', label: '个人' },
+          ...teams.map((team) => ({ value: team.teamId, label: team.name })),
+        ]}
+      />
+      {value === PUBLIC_TEAM_ID && (
+        <p className="muted">
+          公开团队中的工作区向所有用户和访客开放协作；Figma及模型凭据各自使用。
+        </p>
+      )}
+    </>
   );
 }
 
@@ -230,6 +238,12 @@ export function TeamMembers({
   pending: boolean;
   onRemove: (userId: string) => void;
 }) {
+  if (team.isPublic)
+    return (
+      <p className="muted">
+        所有登录用户和访客自动加入，可共同编辑公开团队工作区与会话；凭据各自独立。
+      </p>
+    );
   return (
     <ul className="team-members" aria-label="团队成员">
       {team.members.map((member) => (
@@ -458,7 +472,9 @@ export default function TeamSettings() {
           <>
             <div className="team-heading">
               <strong>{team.name}</strong>
-              <span className="muted">{team.memberCount} 人</span>
+              <span className="muted">
+                {team.isPublic ? '所有用户（含访客）' : `${team.memberCount} 人`}
+              </span>
             </div>
             <TeamMembers team={team} pending={pending} onRemove={(userId) => void remove(userId)} />
             {team.isOwner && (

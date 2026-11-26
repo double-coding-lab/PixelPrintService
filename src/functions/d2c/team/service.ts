@@ -1,3 +1,4 @@
+import { PUBLIC_TEAM_ID, PUBLIC_TEAM_NAME } from '../../../shared/publicTeam';
 import { randomUUID } from 'node:crypto';
 import { Op, type Sequelize, type Transaction } from 'sequelize';
 import type { D2cTeam } from '@/models/D2cTeam';
@@ -18,9 +19,25 @@ function teamName(value: string) {
 /** 团队服务只操作已注册模型；仅创建者管理成员，不修改 账号认证 或执行 DDL。 */
 export function createTeamService(mysql: Sequelize) {
   const { teams, members } = teamModels(mysql);
+  /** 公开团队不枚举用户目录或暴露成员身份，也没有可被抢占的创建者。 */
+  const publicTeam = {
+    teamId: PUBLIC_TEAM_ID,
+    name: PUBLIC_TEAM_NAME,
+    createdUserId: null,
+    creatorName: null,
+    isOwner: false,
+    isPublic: true,
+    memberCount: 0,
+  };
 
   /** 管理入口统一复用当前 membership 校验，普通成员明确返回禁止管理。 */
   async function managed(userId: string, id: string, transaction: Transaction) {
+    if (id === PUBLIC_TEAM_ID)
+      throw new TeamError(
+        403,
+        'PUBLIC_TEAM_MANAGED',
+        '公开团队自动包含所有用户，不支持手动增删成员',
+      );
     const row = await requireTeamMember(mysql, userId, id, transaction);
     if (!sameUser(row.createdUserId, userId))
       throw new TeamError(403, 'TEAM_OWNER_REQUIRED', '仅团队创建者可管理成员');
@@ -99,13 +116,21 @@ export function createTeamService(mysql: Sequelize) {
           ['createdAt', 'DESC'],
           ['teamId', 'DESC'],
         ],
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
+        limit: page === 1 ? pageSize - 1 : pageSize,
+        offset: Math.max(0, (page - 1) * pageSize - 1),
       });
-      return { rows: await Promise.all(rows.map((row) => summary(row, user))), total: count };
+      return {
+        rows: [
+          ...(page === 1 ? [publicTeam] : []),
+          ...(await Promise.all(rows.map((row) => summary(row, user)))),
+        ],
+        total: count + 1,
+      };
     },
     /** 详情只对当前成员开放，包含 userId 和派生角色。 */
     async get(userId: string, id: string) {
+      normalizeUserId(userId);
+      if (id === PUBLIC_TEAM_ID) return { ...publicTeam, members: [] };
       return detail(await requireTeamMember(mysql, userId, id), userId);
     },
     /** 团队锁内幂等添加成员，数据库唯一键阻止重复 teamId/userId。 */
