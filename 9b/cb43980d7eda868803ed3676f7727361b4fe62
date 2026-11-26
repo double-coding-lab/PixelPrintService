@@ -1,0 +1,25 @@
+web/public/assets/pixelprint-mark.svg
+  s_e16f52fd1de115::t_0376e1e1f88b80 1-5
+web/public/assets/landing.css
+  s_e16f52fd1de115::t_2d7b4f98e54273 1-221,223-626,628,630-742,744,746-749,751-828,830,832-842,844-952,955-998,1000-1040,1042-1348,1350-1370,1372-1398,1400-1439,1441-1493
+  s_e16f52fd1de115::t_0376e1e1f88b80 222,627,629,743,745,750,829,831,843,953-954,999,1349,1371,1399,1440
+web/public/landing.html
+  s_e16f52fd1de115::t_2d7b4f98e54273 6-9,12-15,23-39,46-70,72-97,99-103,109-119,122-131,133-137,139-267,269-271,274-294
+  s_e16f52fd1de115::t_84a28ead07436b 1-5,10-11,16-22,40-45,71,98,104-108,120-121,132,138,268,272-273,295-296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "9bcb43980d7eda868803ed3676f7727361b4fe62",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
