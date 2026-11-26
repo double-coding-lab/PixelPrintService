@@ -1,0 +1,35 @@
+.Knowledge/topics/project-config.md
+  s_e16f52fd1de115::t_3053ba94d23860 3,16
+.Knowledge/index.md
+  s_e16f52fd1de115::t_3053ba94d23860 44
+docs/deployment/configuration.md
+  s_e16f52fd1de115::t_3053ba94d23860 13-14,67-74
+.Knowledge/stock-docs/项目架构终稿.md
+  s_e16f52fd1de115::t_3053ba94d23860 34-38
+.Knowledge/stock-docs/project-config.md
+  s_e16f52fd1de115::t_3053ba94d23860 17-19
+.Knowledge/matchers/m-project-architecture.json
+  s_e16f52fd1de115::t_3053ba94d23860 15-19
+.Knowledge/topics/project-architecture.md
+  s_e16f52fd1de115::t_3053ba94d23860 3,17
+docs/使用指南.md
+  s_e16f52fd1de115::t_3053ba94d23860 5
+README.md
+  s_e16f52fd1de115::t_3053ba94d23860 76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "755ed77235bb0fa9f0337e3fcd6147586af8585b",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
