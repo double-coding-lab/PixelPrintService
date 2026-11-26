@@ -1,0 +1,34 @@
+test/publicHome.test.ts
+  s_e16f52fd1de115::t_f2f97eb9847d4c 178-182,188-191,229-232,244-247
+  s_e16f52fd1de115::t_0a15954f54ad72 1-177,183-187,192-228,233-243,248-253
+src/hooks/http/authUtils.ts
+  s_e16f52fd1de115::t_e0d598fd809003 14,24,28
+src/hooks/http/publicHome.ts
+  s_e16f52fd1de115::t_e0d598fd809003 1-11,13-48
+  s_e16f52fd1de115::t_f2f97eb9847d4c 12
+test/externalAuth.test.ts
+  s_e16f52fd1de115::t_07b527f03f6ab4 763
+  s_e16f52fd1de115::t_0a15954f54ad72 493,726
+  s_e16f52fd1de115::t_55e848a2666363 734-762
+src/app.ts
+  s_e16f52fd1de115::t_e0d598fd809003 6,59
+test/platform.test.ts
+  s_e16f52fd1de115::t_0a15954f54ad72 88-90,105,232
+  s_e16f52fd1de115::t_07b527f03f6ab4 101-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "8e76d30adaf2f676bd5bb61f42a4bd9f065216a1",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
