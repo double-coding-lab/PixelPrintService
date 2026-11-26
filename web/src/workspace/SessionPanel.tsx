@@ -29,6 +29,7 @@ import { useMessageQueue } from './useMessageQueue';
 import QuestionPanel from './QuestionPanel';
 import DiagnosticsPanel from './DiagnosticsPanel';
 import ExecutionProgress from './ExecutionProgress';
+import { useSessionDraft } from './useSessionDraft';
 
 /** 只展示投影后的诊断文本，旧事件保持原有时间线文案。 */
 export function TimelineEvent({
@@ -182,7 +183,8 @@ export default function SessionPanel({
   const imagePicker = useRef<HTMLInputElement | null>(null);
   const sendingLock = useRef(false);
   const imagesBlocked = images.some((image) => image.status !== 'ready');
-  const [prompt, setPrompt] = useState('');
+  const draft = useSessionDraft(workspaceId, sessionId);
+  const { text: prompt, setText: setPrompt } = draft;
   const hasMessage = !!prompt.trim() || images.length > 0;
   const [answerDirty, setAnswerDirty] = useState(false);
   const currentSessionId = useRef(sessionId);
@@ -301,9 +303,8 @@ export default function SessionPanel({
       return;
     setSession((current) => mergeSessionSnapshot(current, latest, sessionId));
   }
-  /** 直接切换会话时清空普通消息和回答草稿，避免旧请求污染新会话。 */
+  /** 会话文本由草稿 hook 隔离恢复，附件和回答状态仅留当前页面。 */
   useEffect(() => {
-    setPrompt('');
     setImages([]);
     setImageError('');
     sendingLock.current = false;
@@ -366,6 +367,7 @@ export default function SessionPanel({
       setSendError('上一条发送尚未确认，请先按原方式重试');
       return;
     }
+    const clearSentDraft = draft.capture();
     pending.current = input;
     pendingDelivery.current = delivery;
     sendingLock.current = true;
@@ -381,10 +383,10 @@ export default function SessionPanel({
           body: JSON.stringify(input),
         });
       }
+      clearSentDraft();
       if (!mounted.current || currentSessionId.current !== sessionId) return;
       pending.current = null;
       pendingDelivery.current = null;
-      setPrompt('');
       imageDraft.current?.clear();
       const latest = await data<Session>(path);
       if (

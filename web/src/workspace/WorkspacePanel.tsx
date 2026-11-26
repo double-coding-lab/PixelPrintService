@@ -166,6 +166,7 @@ export default function WorkspacePanel({
     setPending(true);
     onBusy(true);
     setError('');
+    let createdSessionId: string | undefined;
     try {
       const credential = useCredential ? await data<Credential>('/credentials/figma/status') : null;
       if (useCredential && !credential?.configured)
@@ -183,7 +184,7 @@ export default function WorkspacePanel({
       setCreating(false);
       setFigmaUrl('');
       list.first();
-      onSelect(session.sessionId);
+      createdSessionId = session.sessionId;
       void message.success('会话已创建');
     } catch (reason) {
       setError(errorMessage(reason));
@@ -191,6 +192,7 @@ export default function WorkspacePanel({
       setPending(false);
       onBusy(false);
     }
+    if (createdSessionId) onSelect(createdSessionId);
   }
 
   return (
