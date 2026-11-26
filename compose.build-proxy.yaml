@@ -1,0 +1,11 @@
+# Optional overlay: proxy only dependency downloads during image builds.
+# Set BUILD_HTTP_PROXY to a proxy reachable from the build container.
+services:
+  app:
+    build:
+      args:
+        HTTP_PROXY: ${BUILD_HTTP_PROXY:?Set BUILD_HTTP_PROXY for build downloads}
+        HTTPS_PROXY: ${BUILD_HTTP_PROXY:?Set BUILD_HTTP_PROXY for build downloads}
+        NO_PROXY: ${BUILD_NO_PROXY:-localhost,127.0.0.1}
+      extra_hosts:
+        - 'host.docker.internal:host-gateway'

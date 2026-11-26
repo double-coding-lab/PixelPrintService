@@ -12,3 +12,6 @@ image-compression/.venv
 **/__pycache__
 *.log
 .DS_Store
+
+# Local agent tasks can contain private deployment handovers.
+.task
