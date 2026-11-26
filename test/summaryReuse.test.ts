@@ -389,3 +389,51 @@ test('summary receipts stay isolated between parent and sibling subagent checkpo
   assert.equal(await loadSummaryReceipt(b, messages), undefined);
   assert.equal(await loadSummaryReceipt(parent, messages), undefined);
 });
+
+/** 整个上下文都是受保护工具组时，原生中间件直通，不能把首条普通输入当成摘要回执。 */
+test('no safe compaction boundary leaves original messages intact and creates no summary receipt', async () => {
+  const { archive, data } = archiveMemory();
+  const { model, inputs } = summaryModel();
+  const user = new HumanMessage({
+    id: 'protected-user',
+    content: '保留当前要求，先核对未知写入。',
+  });
+  const messages = [
+    user,
+    new AIMessage({
+      content: '',
+      tool_calls: [
+        {
+          id: 'pending-write',
+          name: 'write_file',
+          args: { path: 'page.tsx', content: '未知写入正文'.repeat(2500) },
+        },
+      ],
+    }),
+  ];
+  const middleware = createContextSummary({
+    archive,
+    model,
+    budget: 8000,
+    overhead: () => 2000,
+    signal: new AbortController().signal,
+    beforeRequest: async () => {},
+    recordUsage: () => {},
+    historicalSourceInputId: user.id,
+  });
+  await middleware.wrapModelCall!(
+    {
+      model,
+      messages,
+      systemMessage: new SystemMessage('未知副作用须先核对'),
+      tools: [],
+      state: {},
+    } as never,
+    (async (r: { messages: BaseMessage[] }) => {
+      assert.deepEqual(r.messages, messages);
+      return new AIMessage('先核对状态');
+    }) as never,
+  );
+  assert.equal(inputs.length, 0);
+  assert.equal(data.has('/history/compaction_receipt.json'), false);
+});

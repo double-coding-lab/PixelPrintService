@@ -345,13 +345,19 @@ export function createContextSummary(input: {
         },
         async (modified) => {
           input.archive.assertHealthy();
-          const cutoff = request.messages.length - (modified.messages.length - 1);
-          await saveSummaryReceipt(
-            input.archive,
-            request.messages.slice(0, cutoff),
-            modified.messages[0],
-            snapshot,
-          );
+          const summary = modified.messages[0];
+          const summarized =
+            HumanMessage.isInstance(summary) &&
+            summary.additional_kwargs.lc_source === 'summarization';
+          const cutoff = summarized ? request.messages.length - (modified.messages.length - 1) : 0;
+          // 原生中间件可能因缺少安全边界而直通；普通输入不能被记录为已完成摘要。
+          if (summarized && summary !== event?.summaryMessage)
+            await saveSummaryReceipt(
+              input.archive,
+              request.messages.slice(0, cutoff),
+              summary,
+              snapshot,
+            );
           return handler({
             ...modified,
             messages: pin(modified.messages, cutoff),
