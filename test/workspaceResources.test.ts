@@ -72,3 +72,23 @@ test('community template loads without optional extensions and rejects broken re
     process.chdir(previous);
   }
 });
+
+/** cwd中的同名扩展不属于发布包，不能被意外冻结进用户工作区。 */
+test('default platform extensions follow the template deployment instead of process cwd', async (t) => {
+  const previous = process.cwd();
+  const directory = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), 'template-location-')),
+  );
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const root = path.join(directory, 'deployment/pixelprint');
+  await fs.cp(path.resolve('pixelprint'), root, { recursive: true });
+  await fs.mkdir(path.join(directory, 'foreign/skills'), { recursive: true });
+  await fs.writeFile(path.join(directory, 'foreign/skills/unrelated.md'), 'unrelated cwd resource');
+  process.chdir(path.join(directory, 'foreign'));
+  try {
+    const bundle = await readTemplateResources(root);
+    assert.ok(!bundle.files.some((file) => file.path.startsWith('platform-skills/')));
+  } finally {
+    process.chdir(previous);
+  }
+});

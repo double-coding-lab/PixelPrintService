@@ -136,7 +136,7 @@ export async function readTemplateResources(
   platformSkillsRoot?: string,
 ): Promise<ResourceBundle> {
   const roots = [path.resolve(root)];
-  const extensions = path.resolve(platformSkillsRoot ?? 'skills');
+  const extensions = path.resolve(platformSkillsRoot ?? path.join(root, '..', 'skills'));
   // 社区发行包可以只携带核心模板；显式扩展路径与其他读取错误仍严格校验。
   try {
     await fs.lstat(extensions);

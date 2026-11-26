@@ -8,12 +8,13 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { applicationRoot } from './paths';
 
 /** 集中注册业务模块，所有业务读取当前登录账号。 */
 async function registerModules(app: FastifyInstance) {
   app.register(d2cRoutes, {
     prefix: '/d2c',
-    templateRoot: path.resolve('pixelprint'),
+    templateRoot: path.join(applicationRoot, 'pixelprint'),
     environment: 'local',
   });
 }
@@ -55,7 +56,7 @@ export async function createApp(): Promise<FastifyInstance> {
     });
   }
   await app.register(fastifyStatic, {
-    root: path.resolve('dist/public'),
+    root: path.join(applicationRoot, 'dist/public'),
     prefix: '/',
     wildcard: true,
   });
