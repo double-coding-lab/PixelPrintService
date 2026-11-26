@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="PixelPrint，让 Figma 设计稿成为可运行的页面代码。选择本地 Skill，或使用开源工作台，在浏览器中生成、预览并持续迭代 H5 与 React Native 页面。"
+    />
+    <meta name="theme-color" content="#f7f8fc" />
+    <meta property="og:title" content="PixelPrint · 从设计到实现" />
+    <meta
+      property="og:description"
+      content="让设计成为可运行的代码。选择本地版，或使用开源工作台。"
+    />
+    <link rel="icon" type="image/svg+xml" href="/assets/pixelprint-mark.svg" />
+    <link rel="stylesheet" href="/assets/landing.css" />
+    <title>PixelPrint · 让设计成为可运行的代码</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="site-header wrap">
+      <a class="brand" href="/" aria-label="PixelPrint 首页"
+        ><img src="/assets/pixelprint-mark.svg" width="34" height="34" alt="" /><span
+          >PixelPrint</span
+        ><span class="brand-label">DESIGN TO CODE</span></a
+      >
+      <nav aria-label="主导航">
+        <a href="#workflow">工作方式</a><a href="#versions">选择版本</a
+        ><a
+          href="https://github.com/double-coding-lab/PixelPrintService"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GitHub <span aria-hidden="true">↗</span></a
+        >
+      </nav>
+      <a class="button button-small button-dark" href="/workbench"
+        >进入工作台 <span aria-hidden="true">↗</span></a
+      >
+    </header>
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="status-dot"></span> 把创意，带到代码里</p>
+          <h1 id="hero-title">让设计，<br />成为可运行的<span class="ink-blue">代码。</span></h1>
+          <p class="hero-description">
+            从 Figma 的结构与素材出发，生成页面代码。<br
+              class="desktop-break"
+            />在本地开发，或在浏览器里创作、预览、持续迭代。
+          </p>
+          <div class="hero-actions">
+            <a class="button button-blue" href="/workbench"
+              >在线体验 <span aria-hidden="true">↗</span></a
+            ><a class="button button-outline" href="#versions"
+              >选择你的版本 <span aria-hidden="true">↓</span></a
+            >
+          </div>
+          <p class="hero-note">
+            <span class="mini-check" aria-hidden="true">✓</span> H5 与 React Native
+            <span class="note-divider">/</span> 模型由你选择
+          </p>
+        </div>
+        <div
+          class="hero-visual"
+          role="img"
+          aria-label="流程示意：从设计画板生成 React 页面代码，再进入运行预览。"
+        >
+          <div class="visual-grid"></div>
+          <span class="pixel pixel-a"></span><span class="pixel pixel-b"></span
+          ><span class="pixel pixel-c"></span>
+          <div class="design-window">
+            <div class="window-bar">
+              <span class="window-dots"><i></i><i></i><i></i></span
+              ><span>Design / Your next idea</span><span class="tiny-plus">+</span>
+            </div>
+            <div class="design-canvas">
+              <div class="art-toolbar">
+                <span class="canvas-label">FRAME 01</span><span>375 × 812</span>
+              </div>
+              <div class="idea-card">
+                <div class="idea-glyph"><i></i><i></i><i></i><i></i></div>
+                <p>A little idea.<br /><strong>A real beginning.</strong></p>
+                <div class="idea-line"></div>
+                <div class="idea-line short"></div>
+                <div class="idea-cta">Make it happen <span>↗</span></div>
+              </div>
+              <span class="selection-corner corner-a"></span
+              ><span class="selection-corner corner-b"></span
+              ><span class="selection-corner corner-c"></span
+              ><span class="selection-corner corner-d"></span>
+            </div>
+          </div>
+          <div class="flow-connector">
+            <span>design</span
+            ><svg viewBox="0 0 96 28" fill="none" aria-hidden="true">
+              <path d="M1 14H90M81 5L90 14L81 23" stroke="currentColor" stroke-width="1.5" /></svg
+            ><span>code</span>
+          </div>
+          <div class="code-window">
+            <div class="code-bar">
+              <span class="code-file"><i></i> Home.tsx</span><span class="code-type">REACT</span>
+            </div>
+            <pre><code><span class="code-muted">01</span> <span class="code-purple">export default function</span> Home() {
+<span class="code-muted">02</span>   <span class="code-purple">return</span> (
+<span class="code-muted">03</span>     <span class="code-mint">&lt;main</span> className=<span class="code-gold">"your-idea"</span><span class="code-mint">&gt;</span>
+<span class="code-muted">04</span>       <span class="code-mint">&lt;h1&gt;</span>Make it happen<span class="code-mint">&lt;/h1&gt;</span>
+<span class="code-muted">05</span>     <span class="code-mint">&lt;/main&gt;</span>
+<span class="code-muted">06</span>   );
+<span class="code-muted">07</span> }</code></pre>
+            <div class="code-bottom">
+              <span><i class="status-dot"></i> 页面源码已保存</span><span>TSX</span>
+            </div>
+          </div>
+          <div class="preview-chip">
+            <span class="preview-check">✓</span
+            ><span><strong>预览已就绪</strong><small>让想法，出现在屏幕上</small></span
+            ><span class="chip-arrow">↗</span>
+          </div>
+          <span class="visual-caption">DESIGN → CODE → PREVIEW <span>流程示意</span></span>
+        </div>
+      </section>
+      <div class="capability-strip wrap" aria-label="核心能力">
+        <span class="strip-intro">一次创作，连起整个流程</span>
+        <div><span class="strip-symbol">◇</span> Figma 设计稿</div>
+        <span class="strip-line"></span>
+        <div><span class="strip-symbol">⌘</span> 页面源码</div>
+        <span class="strip-line"></span>
+        <div><span class="strip-symbol">▣</span> 运行预览</div>
+        <span class="strip-line"></span>
+        <div><span class="strip-symbol">↗</span> 持续迭代</div>
+      </div>
+      <section class="workflow section wrap" id="workflow" aria-labelledby="workflow-title">
+        <div class="section-heading">
+          <p class="eyebrow text-blue">从设计到实现</p>
+          <h2 id="workflow-title">少一些来回，<br class="mobile-break" />多一些创作。</h2>
+          <p>把素材、代码与验证放在同一条工作流里。</p>
+        </div>
+        <div class="workflow-grid">
+          <article class="step">
+            <div class="step-top">
+              <span class="step-number">01</span>
+              <div class="step-art node-art" aria-hidden="true">
+                <span></span><i></i><i></i><i></i>
+              </div>
+            </div>
+            <h3>读懂设计的结构</h3>
+            <p>读取 Figma 节点、尺寸与素材，让生成过程从设计信息开始，而不是凭空猜测。</p>
+            <span class="step-tag">结构 · 素材 · 设计规则</span>
+          </article>
+          <article class="step">
+            <div class="step-top">
+              <span class="step-number">02</span>
+              <div class="step-art code-art" aria-hidden="true">
+                <span>&lt;</span><i>/</i><span>&gt;</span>
+              </div>
+            </div>
+            <h3>生成，也能继续打磨</h3>
+            <p>保存页面源码，通过对话持续修改样式与交互。代码可读、可编辑，也能带回自己的项目。</p>
+            <span class="step-tag">源码 · 对话 · 版本</span>
+          </article>
+          <article class="step">
+            <div class="step-top">
+              <span class="step-number">03</span>
+              <div class="step-art browser-art" aria-hidden="true"><span>● ● ●</span><i>✓</i></div>
+            </div>
+            <h3>看到运行的结果</h3>
+            <p>编译真实页面，查看预览与截图，再检查交互。让“写好了”有可以看见的结果。</p>
+            <span class="step-tag">预览 · 截图 · 交互检查</span>
+          </article>
+        </div>
+      </section>
+      <section class="versions-section" id="versions" aria-labelledby="versions-title">
+        <div class="wrap section">
+          <div class="section-heading">
+            <p class="eyebrow text-blue">同一个 PixelPrint，两种工作方式</p>
+            <h2 id="versions-title">选择适合你的起点。</h2>
+            <p>喜欢在本地开发，还是希望打开浏览器就能开始？</p>
+          </div>
+          <div class="version-grid">
+            <article class="version-card local-card">
+              <div class="version-card-top">
+                <span class="version-icon" aria-hidden="true">&gt;_</span
+                ><span class="version-kicker">LOCAL · SKILLS &amp; SCRIPTS</span>
+              </div>
+              <h3>本地版</h3>
+              <p class="version-lead">你的开发环境，<br />你的工作节奏。</p>
+              <p class="version-description">
+                把 PixelPrint 的 Skill 与脚本带进自己的开发工具，在熟悉的项目里完成设计到代码。
+              </p>
+              <ul>
+                <li>使用自己的编码工具与模型</li>
+                <li>在本地项目里生成和调整源码</li>
+                <li>按仓库说明安装和使用</li>
+              </ul>
+              <a
+                class="version-link"
+                href="https://github.com/double-coding-lab/PixelPrint"
+                target="_blank"
+                rel="noopener noreferrer"
+                ><span>前往本地版仓库 <small>double-coding-lab / PixelPrint</small></span
+                ><span aria-hidden="true">↗</span></a
+              >
+            </article>
+            <article class="version-card service-card">
+              <div class="version-card-top">
+                <span class="version-icon" aria-hidden="true">▣</span
+                ><span class="version-kicker">COMMUNITY · SELF-HOST</span>
+              </div>
+              <h3>开源服务版</h3>
+              <p class="version-lead">一个浏览器，<br />串起创作全程。</p>
+              <p class="version-description">
+                用工作区与会话组织创作，在线预览、编辑和保存作品；也可以部署到自己的服务器。
+              </p>
+              <ul>
+                <li>个人模型设置与 Figma 凭据</li>
+                <li>工作区、会话、预览与团队协作</li>
+                <li>支持自建 MySQL、Redis 和对象存储</li>
+              </ul>
+              <a
+                class="version-link"
+                href="https://github.com/double-coding-lab/PixelPrintService"
+                target="_blank"
+                rel="noopener noreferrer"
+                ><span>前往开源服务版仓库 <small>double-coding-lab / PixelPrintService</small></span
+                ><span aria-hidden="true">↗</span></a
+              >
+            </article>
+          </div>
+          <p class="versions-note">
+            想先看看？<a href="/workbench">打开在线工作台 <span aria-hidden="true">↗</span></a>
+            <span>开始生成前，请配置自己的模型和 Figma 凭据。</span>
+          </p>
+        </div>
+      </section>
+      <section class="faq-section section wrap" aria-labelledby="faq-title">
+        <div class="faq-intro">
+          <p class="eyebrow text-blue">开始之前</p>
+          <h2 id="faq-title">你可能想知道。</h2>
+          <p>先选一种方式，<br />让第一个页面跑起来。</p>
+        </div>
+        <div class="faq-list">
+          <details>
+            <summary>需要自己提供模型吗？<span aria-hidden="true">+</span></summary>
+            <p>
+              在线工作台由每位用户配置自己的模型地址、模型名称与 API Key，生成前还需配置个人 Figma
+              Token。模型接口需要支持工具调用。
+            </p>
+          </details>
+          <details>
+            <summary>可以部署在自己的服务器上吗？<span aria-hidden="true">+</span></summary>
+            <p>
+              可以。开源服务版提供单机部署方案，也能对接已有的 MySQL、Redis 和 S3
+              兼容对象存储。具体兼容范围与操作步骤见仓库部署文档。
+            </p>
+          </details>
+          <details>
+            <summary>生成后还可以继续修改吗？<span aria-hidden="true">+</span></summary>
+            <p>
+              可以通过对话继续调整页面，也能查看和编辑源码、编译预览、保存版本或下载代码。视觉与交互效果仍需结合实际页面验收。
+            </p>
+          </details>
+        </div>
+      </section>
+      <section class="closing wrap">
+        <div>
+          <p class="eyebrow">YOUR NEXT IDEA STARTS HERE</p>
+          <h2>下一份设计，<br class="mobile-break" />从这里开始。</h2>
+        </div>
+        <a class="button button-blue" href="/workbench"
+          >进入在线工作台 <span aria-hidden="true">↗</span></a
+        >
+      </section>
+    </main>
+    <footer class="site-footer wrap">
+      <a class="brand" href="/"
+        ><img src="/assets/pixelprint-mark.svg" width="26" height="26" alt="" /><span
+          >PixelPrint</span
+        ></a
+      >
+      <p>从设计到实现，保持创作的主动权。</p>
+      <div>
+        <a
+          href="https://github.com/double-coding-lab/PixelPrint"
+          target="_blank"
+          rel="noopener noreferrer"
+          >本地版 ↗</a
+        ><a
+          href="https://github.com/double-coding-lab/PixelPrintService"
+          target="_blank"
+          rel="noopener noreferrer"
+          >开源服务版 ↗</a
+        >
+      </div>
+    </footer>
+  </body>
+</html>
