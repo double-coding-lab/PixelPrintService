@@ -65,6 +65,7 @@ MySQL 和 Redis 是必需的服务，可以使用 Compose 提供的实例，也�
 - [文档目录](docs/README.md)：按使用、部署和实现查找资料。
 - [配置字段](docs/deployment/configuration.md)：账号、模型、存储、超时和并发设置。
 - [架构与流程图](docs/架构与流程图.md)：应用、任务、数据和预览之间的关系。
+- [自动部署](docs/deployment/自动部署.md)：推送 main 后检查、发布、健康检查与镜像回滚。
 - [本地开发](docs/deployment/部署与配置.md#本地开发)：依赖安装、开发启动与检查。
 - [知识库](.Knowledge/index.md)：维护实现约定与故障定位入口。
 

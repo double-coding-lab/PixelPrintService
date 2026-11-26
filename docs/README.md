@@ -14,6 +14,7 @@
 
 - [部署与配置](deployment/部署与配置.md)：单机部署、外接 MySQL/Redis/S3 兼容存储、HTTPS、登录、代理和维护。
 - [配置字段说明](deployment/configuration.md)：账号、模型、MySQL、Redis、local/S3 与加密密钥。
+- [自动部署](deployment/自动部署.md)：GitHub Actions、专用部署密钥、构建产物与镜像回滚。
 - [数据库 SQL 入口](sql/README.md)：空库初始化、历史升级、结构检查和外置存储启用顺序。
 
 ## 实现参考
