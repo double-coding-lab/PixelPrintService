@@ -1,6 +1,6 @@
 ---
 id: project-architecture
-revision: 7
+revision: 8
 summary: "Fastify全栈入口、登录、日志、数据连接与部署"
 primary: module
 confidence: inferred
@@ -37,3 +37,9 @@ Node.js 24 在一个 Fastify 应用中提供 React 页面、API 和预览资源�
 ## 数据库错误日志
 
 `common/databaseDiagnostics.ts`沿cause/parent/original有界提取固定数据库错误码、数值错误号与合法SQLState，HTTP访问日志和后台执行共用该安全投影。错误正文、SQL、绑定值、密钥及堆栈保持私有；预览工具的数据库失败保留工具归属。大字段查询的读取策略见[工作区主题](d2c-workspace-foundation.md#大字段排序与数据库诊断)。
+
+## 自动部署
+
+- 分支和PR由GitHub Actions检查；main且配置部署变量后自动发布。独立部署密钥仅允许固定命令，指纹核验、服务端锁和最新main比对保护发布顺序。
+- 精确归档源码与校验的CI产物统一组装，运行依赖指纹绑定实际镜像；切换前保存独立回滚标签，模板检查失败不激活，健康失败恢复上一镜像。配方、依赖和额外构建文件参与失效，私有配置与数据卷保留。详见[部署指南](../../docs/deployment/自动部署.md)。
+- src/paths.ts按模块定位固定模板、静态页面和预览资源，支持src/dist及异地cwd；用户数据和私有配置仍按各自配置解释。

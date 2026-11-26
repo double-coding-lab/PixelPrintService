@@ -1,6 +1,6 @@
 ---
 id: project-config
-revision: 8
+revision: 9
 summary: "本地配置字段、模型预算、存储与生效时机"
 primary: config
 confidence: inferred
@@ -58,3 +58,8 @@ project.config.json、配置填写、运行配置、modelConfigs、contextBudget
 
 - 默认compose.yaml提供应用、MySQL、Redis和本地文件；compose.external.yaml只提供应用，可连接部署方已有数据库与缓存。S3兼容存储按需启用，OSS等需验证兼容接口；当前MySQL没有TLS证书字段，Redis使用单节点连接串。
 - publicUrl须与浏览器访问来源、HTTPS和OAuth回调一致；通配证书与DNS解析分别配置。完整示例及维护步骤见[配置终稿](../stock-docs/project-config.md#部署组合与代理边界)。
+
+## 自动部署配置
+
+- Actions的DEPLOY_HOST/USER/PORT为部署变量，DEPLOY_SSH_KEY与DEPLOY_KNOWN_HOSTS保存在Secrets。服务器deploy.env选择Compose、实际Dockerfile和额外构建文件，git/build代理与应用运行代理分离。
+- 未配置部署主机时仅检查，PR不部署；历史数据库迁移仍先按SQL说明处理。详见[自动部署](../../docs/deployment/自动部署.md)。

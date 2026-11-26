@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 20
+revision: 21
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -117,3 +117,8 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 
 - 运行预览、在线编辑副本、版本预览共用的 `.phone-preview-stage`，以及设计稿长图的 `.design-reference-canvas` 使用原生 `overscroll-behavior: auto`；内部仍可滚动时先滚内部，达到顶部或底部后将同方向滚动传递给可滚动祖先。
 - 全屏继续沿用背景滚动锁定；视口尺寸、显示缩放和 iframe 隔离保持原有行为。样式位于 `phonePreview.css` 与 `designReference.css`。
+
+## 发布目录兼容
+
+- 构建/增量/截图固定资源通过src/paths.ts按服务模块定位；模板CLI入口比较realpath后的路径，支持受控执行目录符号链接。
+- RN图片别名枚举原始inputRoot，构建work镜像不重复计入候选；真实同名冲突继续拒绝。publicPreview与incremental-container覆盖异地cwd、H5/RN真实构建、增量与截图。

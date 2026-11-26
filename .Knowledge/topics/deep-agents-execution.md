@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 30
+revision: 31
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -204,3 +204,7 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 - 固定工具契约每个Agent只序列化一次；离线Token估算按固定算法的精确输入摘要复用有界计数，不保留用户原文、不改变预算及真实用量。单Run附件缓存仍逐次检查权限、有效期与行版本，摘要/定位等版本变化失效，失败不缓存，原字节继续校验。
 - 同一授权范围内，完整规则回执及同入口截图之后已有模型响应机会、且未发生新修改/引导/失败或未收取子任务时，仅提供收尾提示，建议复用证据并避免无依据修改。截图不等于视觉通过；首次视觉比较、高思考修复及交互门禁保持原策略，不自动降档或强制宣告完成。
 - 验证入口：rnStyleNumeric、nativeScanAgent/nativeScanPending、modelPreparation/tokenCountCache及generationFinishing相关回归。功能通过与端到端提速分开验收，部署后仍按同稿、同模型、同质量标准比较耗时与请求用量。
+
+## 固定脚本导入路径
+
+- Node执行固定工具时将预加载路径编码为file URL，避免井号、空格和百分号影响模块解析。授权、工具纠错与规则拒绝继续生效；publicRunResources回归使用公开冻结/恢复副本执行真实规则脚本。
