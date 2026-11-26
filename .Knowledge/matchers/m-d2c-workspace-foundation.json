@@ -51,6 +51,9 @@
     "连接池超时",
     "图片URL别名",
     "图片映射冲突",
-    "IMAGE_URL_CONTENT_CONFLICT"
+    "IMAGE_URL_CONTENT_CONFLICT",
+    "WebP目录",
+    "图片类型",
+    "application/octet-stream"
   ]
 }
