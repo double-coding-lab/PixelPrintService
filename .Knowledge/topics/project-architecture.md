@@ -1,6 +1,6 @@
 ---
 id: project-architecture
-revision: 10
+revision: 11
 summary: "Fastify全栈入口、宣传首页、登录、数据连接与部署"
 primary: module
 confidence: inferred
@@ -49,3 +49,7 @@ Node.js 24 在一个 Fastify 应用中提供公开宣传首页、React 工作台
 - 普通根路径使用独立静态宣传页，提供在线工作台、本地PixelPrint仓库和开源PixelPrintService仓库入口；不读取个人凭据或发起生成。
 - 根路径的历史业务查询继续使用SPA入口，深路径工作台、作品与分享保持原行为；API身份和资源权限独立保护。默认登录回跳为/workbench，显式合法站内路径继续保留。
 - 页面资源随Vite public目录构建，只有固定静态链接与原生锚点/详情交互；展示版本选择与能力边界，不承诺固定还原率或耗时。
+
+## 网页图标与首页导航
+
+宣传首页与工作台共用/assets/pixelprint-mark.svg。工作台左上图标链接根首页；离开仍检查忙碌与未保存编辑，确认后执行一次整页导航。两版仓库入口继续使用各自公开GitHub地址。

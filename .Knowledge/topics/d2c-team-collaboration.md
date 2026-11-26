@@ -1,6 +1,6 @@
 ---
 id: d2c-team-collaboration
-revision: 2
+revision: 3
 summary: "团队成员、共享工作区、操作者和凭据隔离"
 primary: feature
 confidence: inferred
@@ -37,3 +37,7 @@ confidence: inferred
 
 - 顶部当前工作区、下拉列表、欢迎页卡片及工作区标题均按“名称（团队名）”显示；个人工作区为“名称（个人）”。团队名仅从当前可访问目录解析，未知或失权目录显示“（团队）”。名称与归属在同一行，改名只编辑原始名称；过滤和翻页保留当前已读取归属，不额外扩大团队读取范围。
 - 实现为 WorkspaceAttribution、WorkspaceSwitcher、WorkspacePanel 与 team.css；teamWorkspaceUi 包含真实浏览器及未知团队、个人归属和名称编辑回归。
+
+## 创建入口衔接
+
+工作区首页并列提供新建团队和新建工作区。工作区归属旁的新建团队复用团队管理表单，临时隐藏工作区创建弹窗；创建成功带回新团队，取消则返回原输入，名称和已有归属草稿保留。团队目录刷新期间禁止误提交个人归属，权限继续由服务端核对。

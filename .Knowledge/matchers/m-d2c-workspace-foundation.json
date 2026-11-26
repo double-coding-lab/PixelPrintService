@@ -54,6 +54,10 @@
     "IMAGE_URL_CONTENT_CONFLICT",
     "WebP目录",
     "图片类型",
-    "application/octet-stream"
+    "application/octet-stream",
+    "顶栏弹层",
+    "提示遮挡",
+    "聊天草稿",
+    "会话自动进入"
   ]
 }
