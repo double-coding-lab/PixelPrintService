@@ -118,7 +118,8 @@ export default function WorksPanel({
   const [teamId, setTeamId] = useState('');
   const directory = useTeams();
   const validTeam = directory.teams.some((team) => team.teamId === teamId);
-  const effectiveScope = scope === 'team' && !validTeam ? 'mine' : scope;
+  const effectiveScope = scope;
+  const needsTeam = scope === 'team' && !validTeam;
   useEffect(() => {
     if (!directory.loading && !directory.error && teamId && !validTeam) {
       setTeamId('');
@@ -130,7 +131,7 @@ export default function WorksPanel({
   }, [directory.loading, directory.error, teamId, validTeam, scope]);
   const [page, setPage] = useState(1);
   const [reload, setReload] = useState(0);
-  const [list, setList] = useState<WorkPage | null>(null);
+  const [list, setList] = useState<(WorkPage & { path: string }) | null>(null);
   const [detail, setDetail] = useState<WorkDetail | null>(null);
   const [fileId, setFileId] = useState('');
   const [search, setSearch] = useState('');
@@ -147,6 +148,10 @@ export default function WorksPanel({
     setFileId('');
     setPreviewLink(null);
     setSearch('');
+    if (!versionId && needsTeam) {
+      setLoading(false);
+      return () => controller.abort();
+    }
     const path = versionId
       ? `/versions/${id(versionId)}`
       : worksListPath(effectiveScope, teamId, page);
@@ -160,7 +165,7 @@ export default function WorksPanel({
           const result = value as WorkPage;
           const lastPage = Math.max(1, Math.ceil(result.total / 12));
           if (page > lastPage) setPage(lastPage);
-          else setList(result);
+          else setList({ ...result, path });
         }
         setLoading(false);
       },
@@ -172,7 +177,7 @@ export default function WorksPanel({
       },
     );
     return () => controller.abort();
-  }, [effectiveScope, teamId, page, versionId, reload, directory.revision]);
+  }, [effectiveScope, teamId, page, versionId, reload, directory.revision, needsTeam]);
   const selected = detail?.files.find((file) => file.fileId === fileId);
   function deleted() {
     if (versionId) onSelect('');
@@ -216,7 +221,7 @@ export default function WorksPanel({
               {
                 label: '团队版本',
                 value: 'team',
-                disabled: directory.loading || !directory.teams.length,
+                disabled: directory.loading,
               },
             ]}
             value={effectiveScope}
@@ -230,29 +235,38 @@ export default function WorksPanel({
             <Select
               className="works-team-select"
               aria-label="作品团队"
-              value={teamId}
+              value={validTeam ? teamId : undefined}
+              placeholder="选择团队"
+              allowClear
               disabled={directory.loading}
               options={directory.teams.map((team) => ({ value: team.teamId, label: team.name }))}
               onChange={(value) => {
-                setTeamId(value);
+                setTeamId(value ?? '');
                 setPage(1);
               }}
             />
           )}
           <span className="works-total">
-            {loading ? '正在读取版本' : `共 ${list?.total ?? 0} 个版本`}
+            {loading || directory.loading
+              ? '正在读取版本'
+              : error || directory.error
+                ? '版本读取失败'
+                : needsTeam
+                  ? '未选择团队'
+                  : `共 ${list?.total ?? 0} 个版本`}
           </span>
         </div>
       )}
       {(error || (!versionId && directory.error)) && (
         <Alert type="error" title={error || directory.error} showIcon />
       )}
-      {loading ? (
+      {loading || (!versionId && directory.loading) ? (
         <div className="works-loading" role="status" aria-label="正在加载作品">
           <Skeleton active paragraph={{ rows: 4 }} />
         </div>
       ) : (
         !error &&
+        (versionId || !directory.error) &&
         (versionId ? (
           detail && (
             <>
@@ -491,12 +505,44 @@ export default function WorksPanel({
                 </article>
               ))}
             </div>
-            {list && !list.total && (
-              <p className="works-empty" role="status">
-                {scope === 'mine'
-                  ? '暂无会话版本。前往工作台打开会话，点击“暂存版本”后即可在这里查看。'
-                  : '暂无会话版本'}
-              </p>
+            {(needsTeam ||
+              (list?.path === worksListPath(effectiveScope, teamId, page) && !list.total)) && (
+              <section className="works-empty" role="status" aria-label="作品库空态">
+                <div className="works-empty-card">
+                  <span className="works-empty-icon">
+                    <Icon name={needsTeam ? 'panels' : 'folder'} />
+                  </span>
+                  <h2>
+                    {needsTeam
+                      ? '先选择一个团队'
+                      : scope === 'mine'
+                        ? '还没有暂存的版本'
+                        : scope === 'team'
+                          ? '该团队暂无会话版本'
+                          : '作品库暂无会话版本'}
+                  </h2>
+                  <p>
+                    {needsTeam
+                      ? directory.teams.length
+                        ? '在上方选择团队，查看团队工作区的会话版本。'
+                        : '加入或创建团队后，即可在这里查看团队的会话版本。'
+                      : scope === 'mine'
+                        ? '前往工作台打开会话，点击“暂存版本”，保存的版本就会出现在这里。'
+                        : scope === 'team'
+                          ? '在团队工作区的会话中点击“暂存版本”，与团队分享已完成的成果。'
+                          : '在工作台的会话中点击“暂存版本”，即可将成果收录到作品库。'}
+                  </p>
+                  {onOpenSession && (
+                    <Button
+                      type="primary"
+                      icon={<Icon name="arrow" />}
+                      onClick={() => onOpenSession('', '')}
+                    >
+                      前往工作台
+                    </Button>
+                  )}
+                </div>
+              </section>
             )}
             {list && list.total > 12 && (
               <Pagination
