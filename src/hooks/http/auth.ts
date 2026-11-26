@@ -32,7 +32,7 @@ export function registerLoginRoute(app: FastifyInstance, options: ExternalAuthOp
     const notice = typeof error === 'string' ? errors[error] : undefined;
     return reply
       .header('Cache-Control', 'no-store')
-      .header('Referrer-Policy', 'no-referrer')
+      .header('Referrer-Policy', 'same-origin')
       .header(
         'Content-Security-Policy',
         "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",

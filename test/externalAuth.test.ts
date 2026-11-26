@@ -576,6 +576,7 @@ test('external authentication regression (offline)', { concurrency: false }, asy
       const { app } = await makeApp(t);
       const enabled = await app.inject('/login?returnTo=%2Fworkspace');
       assert.equal(enabled.statusCode, 200);
+      assert.equal(enabled.headers['referrer-policy'], 'same-origin');
       assert.match(enabled.body, /GitHub/i);
       assert.match(enabled.body, /\/auth\/github/);
       assert.match(enabled.body, /action=["']\/auth\/guest/);
