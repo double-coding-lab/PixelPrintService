@@ -1,0 +1,21 @@
+test/workspaceResources.test.ts
+  s_e16f52fd1de115::t_9a9bf089da4de9 41-74
+src/functions/d2c/workspace/resources.ts
+  s_e16f52fd1de115::t_9a9bf089da4de9 131,136,138-147,188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "662a6f3fc77642f7f2b57a86ab1366d555f1466b",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
