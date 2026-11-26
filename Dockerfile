@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund --registry=https://registry.npmjs.org
 COPY . .
+RUN npm run check:templates
 RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 RUN npm run prepare:images
 RUN npm run prepare:preview
