@@ -275,6 +275,10 @@ async function capturedExecutor() {
     platform: 'node',
     format: 'esm',
     packages: 'external',
+    // 内存 data: bundle 模拟正式 dist 文件地址，供本地预览资源定位使用。
+    define: {
+      'import.meta.url': JSON.stringify(new URL('../dist/timeout-test.mjs', import.meta.url).href),
+    },
     plugins: [
       {
         name: 'capture-timeout-generation',

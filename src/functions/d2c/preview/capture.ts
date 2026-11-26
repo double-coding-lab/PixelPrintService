@@ -7,11 +7,12 @@ import {
   type PreviewCoverage,
 } from './interaction';
 import { previewAssetBase } from './assetPolicy';
+import { previewBrowserRoot } from './paths';
 import { execFileSync, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const BROWSER_ROOT = resolve(process.cwd(), 'preview-browser');
+const BROWSER_ROOT = previewBrowserRoot;
 const MAX_IMAGE = 10 * 1024 * 1024;
 const MAX_PROTOCOL = 20 * 1024 * 1024;
 const TIMEOUT = 75_000;

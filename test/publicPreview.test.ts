@@ -9,6 +9,7 @@ import { previewEngine } from '../src/functions/d2c/preview/engine';
 import { collectPreviewOutput, runPreviewBuild } from '../src/functions/d2c/preview/runner';
 import { previewProcessEnv } from '../src/functions/d2c/preview/localProcess';
 import { createWarmPreviewRunner } from '../src/functions/d2c/preview/warmRunner';
+import { build } from 'esbuild';
 
 const temporary = await mkdtemp(path.join(tmpdir(), 'public-preview-test-'));
 const configFile = path.join(temporary, 'project.config.json');
@@ -178,9 +179,15 @@ test(
     if (!existsSync('preview-template/node_modules/vite'))
       return t.skip('run npm run prepare:preview first');
     const page = input(
-      "import {View, Text, StyleSheet} from 'react-native'; const styles=StyleSheet.create({box:{padding:12}}); export default function Page(){return <View style={styles.box}><Text>offline-native</Text></View>}",
+      "import {View, Text, Image, StyleSheet} from 'react-native'; import {rpx} from '@/utils/rpx'; const styles=StyleSheet.create({box:{padding:rpx(12)}}); export default function Page(){return <View style={styles.box}><Text>offline-native</Text><Image source={require('@Images/icons/hero.svg')} style={{width:20,height:20}}/></View>}",
     );
     page.target = 'rn';
+    page.files.push({
+      path: 'static/icons/hero.svg',
+      content: Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path fill="red" d="M0 0h20v20H0z"/></svg>',
+      ),
+    });
     const output = await runPreviewBuild(page);
     assert.ok(output.some((file) => file.path === 'index.html'));
     assert.ok(output.some((file) => file.content.includes('offline-native')));
@@ -206,6 +213,87 @@ test('asset policy follows public local/S3 storage and rejects credential inject
     projectConfig.storage.publicUrl = previous;
   }
 });
+
+test(
+  'bundled preview builds, warm edits and screenshots work outside the deployment cwd',
+  { timeout: 90000 },
+  async (t) => {
+    if (
+      !existsSync('preview-template/node_modules/vite') ||
+      !existsSync('preview-browser/.browsers')
+    )
+      return t.skip('run npm run prepare:preview first');
+    const deployment = path.join(temporary, 'deployment with spaces');
+    const unrelated = path.join(temporary, 'unrelated');
+    await mkdir(path.join(deployment, 'dist'), { recursive: true });
+    await mkdir(unrelated);
+    for (const directory of ['preview-template', 'preview-browser', 'node_modules'])
+      await symlink(path.resolve(directory), path.join(deployment, directory), 'dir');
+    const entry = path.join(deployment, 'dist/check.mjs');
+    await build({
+      stdin: {
+        contents: `
+          import assert from 'node:assert/strict';
+          import { runPreviewBuild } from './src/functions/d2c/preview/runner';
+          import { createWarmPreviewRunner } from './src/functions/d2c/preview/warmRunner';
+          import { runPreviewCapture } from './src/functions/d2c/preview/capture';
+          const manager = createWarmPreviewRunner({ maxContexts: 1 });
+          let stage = 'startup';
+          try {
+            for (const target of ['h5', 'rn']) {
+              const page = text => target === 'h5'
+                ? 'import "./style.scss"; export default function Page(){return <div id="proof">' + text + '<img src="/static/hero.svg"/></div>}'
+                : 'import {View,Text,Image} from "react-native"; import {rpx} from "@/utils/rpx"; export default function Page(){return <View><Text nativeID="proof">' + text + '</Text><Image source={require("@Images/hero.svg")} style={{width:rpx(40),height:rpx(40)}}/></View>}';
+              const input = text => ({target, entryPath:'page.tsx', unit:{outputUnit:'px',outputBase:750},
+                signal:new AbortController().signal, files:[
+                  {path:'page.tsx',content:Buffer.from(page(text))},
+                  {path:'style.scss',content:Buffer.from('#proof{font-size:32px;img{width:80px;height:80px}}')},
+                  {path:'static/hero.svg',content:Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path fill="red" d="M0 0h40v40H0z"/></svg>')}
+                ]});
+              stage = target + '/cold';
+              const cold = await runPreviewBuild(input('cold-' + target));
+              assert.ok(cold.some(file => file.path === 'index.html'));
+              stage = target + '/warm-first';
+              await manager.run(target, input('first-' + target));
+              stage = target + '/warm-update';
+              const warm = await manager.run(target, input('updated-' + target));
+              assert.equal(manager.lastIncremental, true);
+              for (const [files, text] of [[cold, 'cold-' + target], [warm, 'updated-' + target]]) {
+                stage = target + '/capture-' + text;
+                const result = await runPreviewCapture({files,target,signal:new AbortController().signal,
+                  inspection:{actions:[{type:'expect',selector:'#proof',state:'text',text}]}});
+                assert.equal(result.interaction.passed, true);
+                assert.deepEqual(result.errors, []);
+                assert.deepEqual(result.missingAssets, []);
+                assert.equal(result.image.toString('hex',0,8),'89504e470d0a1a0a');
+              }
+            }
+          } catch (error) {
+            console.error(JSON.stringify({stage,reason:error.reason,diagnostic:error.diagnostic}));
+            throw error;
+          } finally { await manager.close(); }
+        `,
+        resolveDir: process.cwd(),
+        sourcefile: 'preview-deployment-check.ts',
+        loader: 'ts',
+      },
+      outfile: entry,
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      packages: 'external',
+      tsconfig: path.resolve('tsconfig.json'),
+    });
+    const result = spawnSync(process.execPath, [entry], {
+      cwd: unrelated,
+      env: { ...previewProcessEnv(), PIXELPRINT_CONFIG: configFile },
+      encoding: 'utf8',
+      timeout: 80000,
+      maxBuffer: 1024 * 1024,
+    });
+    assert.equal(result.status, 0, result.stderr || result.error?.message);
+  },
+);
 
 test(
   'real Chromium screenshots keep opaque CSP and block unlisted external network',

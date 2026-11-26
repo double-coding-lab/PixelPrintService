@@ -5,6 +5,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  realpath,
   rm,
   stat,
   symlink,
@@ -176,7 +177,7 @@ export async function buildPreview({ target, entry, unit, rawBase, cache, increm
         },
       },
       relativeStaticUrls(),
-      createPreviewRnAssets(target, root, aliasRoot, root),
+      createPreviewRnAssets(target, root, aliasRoot, inputRoot),
       rpx.plugin,
       boundedSass(root),
       react({ babel: { babelrc: false, configFile: false } }),
@@ -225,7 +226,7 @@ export async function buildPreview({ target, entry, unit, rawBase, cache, increm
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(await realpath(process.argv[1])).href) {
   const [target, entry, unit, rawBase] = process.argv.slice(2);
   buildPreview({ target, entry, unit, rawBase: Number(rawBase) }).catch((error) => {
     process.stderr.write(

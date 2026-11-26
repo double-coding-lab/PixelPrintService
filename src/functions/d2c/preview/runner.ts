@@ -1,5 +1,6 @@
 import { diagnosticFromStderr, type PreviewDiagnostic } from './diagnostics';
 import { startPreviewProcess, type LocalPreviewProcess } from './localProcess';
+import { previewRuntimeRoot, previewTemplateRoot } from './paths';
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -136,9 +137,9 @@ export async function runLocalPreviewBuild(input: {
     }
     controller.signal.throwIfAborted();
     worker = startPreviewProcess(
-      path.resolve('preview-template/container/build.mjs'),
+      path.join(previewTemplateRoot, 'container/build.mjs'),
       [input.target, input.entryPath, input.unit.outputUnit, String(input.unit.outputBase)],
-      { cwd: process.cwd(), env: { PIXELPRINT_PREVIEW_ROOT: temporary } },
+      { cwd: previewRuntimeRoot, env: { PIXELPRINT_PREVIEW_ROOT: temporary } },
     );
     const result = await worker.exited;
     controller.signal.throwIfAborted();

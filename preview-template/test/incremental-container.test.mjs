@@ -191,7 +191,7 @@ test('trusted cold build and serial incremental worker', { timeout: 90000 }, asy
         );
         await writeFile(
           `${temporary}/input/other.tsx`,
-          'const image = require("./static/new.svg"); export default function Page(){return <img src={image.uri}/>}',
+          'const image = require("@Images/new.svg"); export default function Page(){return <img src={image.uri}/>}',
         );
         const rnRequest = { target: 'rn', entryPath: 'other.tsx' };
         assert.equal((await send(request(rnRequest))).incremental, true);
@@ -200,6 +200,13 @@ test('trusted cold build and serial incremental worker', { timeout: 90000 }, asy
         assert.equal((await send(request(rnRequest))).incremental, true);
         assert.match(await output(), /CHANGED_ASSET/);
         assert.doesNotMatch(await output(), /NEW_ASSET/);
+        await mkdir(`${temporary}/input/other-images`);
+        await writeFile(`${temporary}/input/other-images/new.svg`, '<svg>AMBIGUOUS</svg>');
+        const ambiguous = await send(request(rnRequest));
+        assert.equal(ambiguous.ok, false);
+        assert.equal(ambiguous.diagnostic.code, 'MODULE_NOT_FOUND');
+        await rm(`${temporary}/input/other-images`, { recursive: true });
+        assert.equal((await send(request(rnRequest))).ok, true);
         controller.abort();
         await worker;
         worker = undefined;

@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { previewDiagnostic } from './diagnostics';
 import { startPreviewProcess, type LocalPreviewProcess } from './localProcess';
+import { previewRuntimeRoot, previewTemplateRoot } from './paths';
 import {
   collectPreviewOutput,
   PreviewBuildError,
@@ -301,8 +302,8 @@ export function createLocalWarmPreviewRunner(options: WarmPreviewRunnerOptions =
   async function start(context: Context, signal: AbortSignal) {
     try {
       if (signal.aborted) throw new PreviewBuildError('PREVIEW_BUILD_CANCELLED');
-      context.process = startProcess(path.resolve('preview-template/container/warm.mjs'), [], {
-        cwd: process.cwd(),
+      context.process = startProcess(path.join(previewTemplateRoot, 'container/warm.mjs'), [], {
+        cwd: previewRuntimeRoot,
         env: { PIXELPRINT_PREVIEW_ROOT: context.root },
       });
       const deadline = Date.now() + startupMs;

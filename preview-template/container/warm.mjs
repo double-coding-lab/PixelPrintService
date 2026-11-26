@@ -1,11 +1,14 @@
-import { lstat, readFile, rename, writeFile } from 'node:fs/promises';
+import { lstat, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { buildPreview, validatePreviewOptions } from './build.mjs';
 import { formatCompilerDiagnostic } from './diagnostics.mjs';
 
-const control = path.resolve(process.env.PIXELPRINT_PREVIEW_ROOT ?? '.runtime/preview-build', 'control');
+const control = path.resolve(
+  process.env.PIXELPRINT_PREVIEW_ROOT ?? '.runtime/preview-build',
+  'control',
+);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 仅接收固定协议字段；任何路径、配置或运行参数都不能来自额外字段。 */
@@ -96,7 +99,7 @@ export async function runWarmWorker({ signal, compile = buildPreview } = {}) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(await realpath(process.argv[1])).href) {
   runWarmWorker().catch(() => {
     process.exitCode = 1;
   });
