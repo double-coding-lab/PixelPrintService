@@ -1,6 +1,6 @@
 ---
 id: deep-agents-execution
-revision: 32
+revision: 33
 summary: "模型循环、检查点、摘要、子Agent、预算和诊断"
 primary: module
 confidence: inferred
@@ -208,3 +208,11 @@ Deep Agents、Worker、检查点、LangGraph、自动摘要、子Agent、暂停�
 ## 固定脚本导入路径
 
 - Node执行固定工具时将预加载路径编码为file URL，避免井号、空格和百分号影响模块解析。授权、工具纠错与规则拒绝继续生效；publicRunResources回归使用公开冻结/恢复副本执行真实规则脚本。
+
+## 工具调用思考字段回传
+
+- 对要求 `reasoning_content` 的 Chat Completions 网关，模型真实返回的思考内容随后续助手工具调用历史回传；缺失会触发 `invalid_request_error` / HTTP 400。
+- `model.ts` 在实际发送前补全 SDK 转换遗漏字段，普通流、原生流及非流式请求共用入口。调用选项以私有 Symbol 关联当前消息，发送前移除，不跨并发请求共享历史。
+- 普通流读取 `additional_kwargs.reasoning_content`，原生流读取标准 `reasoning` 内容块；私有 sdkItem 使用可选 `reasoningContent` 保存，工具批次仅首条保存一次，重建历史恢复到助手消息。检查点沿原消息序列化保留字段。
+- 思考字段与用户可见正文分离，沿既有脱敏和私有历史权限保存。旧历史缺失时保留缺失事实，不补造思考或重放工具。普通消息没有该字段时沿 SDK 原协议发送。
+- 回归入口为 `test/modelReasoningReplay.test.ts`，通过真实 SDK 与本地 HTTP 服务核对出站字段、恢复、并发隔离和多工具配对。
