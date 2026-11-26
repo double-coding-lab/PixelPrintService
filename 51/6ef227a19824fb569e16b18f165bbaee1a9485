@@ -1,0 +1,23 @@
+docs/deployment/部署与配置.md
+  s_e16f52fd1de115::t_6d143ab10f9cd6 15
+Dockerfile
+  s_e16f52fd1de115::t_008b822e23b945 7-10
+.Knowledge/topics/project-architecture.md
+  s_e16f52fd1de115::t_6d143ab10f9cd6 3,21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "516ef227a19824fb569e16b18f165bbaee1a9485",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
