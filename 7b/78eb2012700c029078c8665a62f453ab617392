@@ -1,0 +1,21 @@
+src/functions/d2c/session/messages.ts
+  s_e16f52fd1de115::t_3c773a64329c6e 180,188-192,313-332,341,344,388-393,435-447,540-541,594-595,602-610
+src/functions/d2c/run/persistence.ts
+  s_e16f52fd1de115::t_3c773a64329c6e 14,244-271,273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "7b78eb2012700c029078c8665a62f453ab617392",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
