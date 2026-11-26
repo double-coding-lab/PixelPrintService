@@ -15,6 +15,7 @@ import type { StorageFileClient } from '@/hooks/tools/storage';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { Sequelize } from 'sequelize';
 import { createModelCredentialService } from '../credential/model';
+import { isExternalUserId } from '@/common/userIdentity';
 import { createFigmaCredentialService } from '../credential/service';
 import { SessionError } from '../session/access';
 import type { ResourceBundleStore } from '../workspace/resources';
@@ -151,6 +152,8 @@ export async function executeGenerationRun(input: {
   async function prepare() {
     /** 准备：从租约事务取得一致快照，再用模型地址和名称匹配当前配置中的密钥。 */
     const snapshot = await boundary('PREPARATION_FAILED', 'prepare', () => persistence.load());
+    if (isExternalUserId(snapshot.ownerUserId) && !snapshot.model.modelCredentialId)
+      throw new RunExecutionError('CREDENTIAL_UNAVAILABLE', { stage: 'prepare' });
     const selected = config.modelConfigs.find(
       (model) =>
         model.MODEL_BASE_URL === snapshot.model.MODEL_BASE_URL &&

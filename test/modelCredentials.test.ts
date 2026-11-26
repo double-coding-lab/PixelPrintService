@@ -121,6 +121,35 @@ test('入队冻结本人 ID 且不复制全局 Key；后续保存不会替换已
   await assert.rejects(persistence.load(), /绑定不一致/);
 });
 
+test('GitHub 与访客身份必须绑定本人模型凭据，不能消耗平台模型 Key', async () => {
+  for (const userId of ['github-123456', 'guest-123e4567-e89b-42d3-a456-426614174000']) {
+    const f = await fixture();
+    f.tables.D2cWorkspace[0].createdUserId = userId;
+    f.tables.D2cSession[0].createdUserId = userId;
+    await assert.rejects(
+      f.messages.enqueue(userId, f.id, {
+        clientRequestId: 'external-missing',
+        content: '开始生成',
+      }),
+      (error: any) => error.reason === 'MODEL_CREDENTIAL_UNAVAILABLE',
+    );
+    assert.equal(f.tables.D2cRun.length, 0);
+    const saved = await f.service.save(userId, personal, {
+      baseUrl: 'https://personal.example.test/v1',
+      modelName: 'personal-model',
+    });
+    const queued = await f.messages.enqueue(userId, f.id, {
+      clientRequestId: 'external-personal',
+      content: '使用我自己的模型',
+    });
+    const run = f.tables.D2cRun.find((row) => row.runId === queued.runId)!;
+    assert.equal(run.requestedUserId, userId);
+    assert.equal(run.modelSnapshot.modelCredentialId, saved.credentialId);
+    assert.equal(run.modelSnapshot.MODEL_BASE_URL, 'https://personal.example.test/v1');
+    assert.doesNotMatch(JSON.stringify(run), /sk-personal|test-model-key/);
+  }
+});
+
 test('入队拒绝他人、撤销、类型不符及缺失修订，不允许平台回退', async () => {
   for (const mutation of ['other', 'revoked', 'missing', 'kind', 'ciphertext']) {
     const f = await fixture();

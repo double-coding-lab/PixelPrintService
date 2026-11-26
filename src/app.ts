@@ -20,7 +20,11 @@ async function registerModules(app: FastifyInstance) {
 
 /** 创建单进程全栈服务；数据库、缓存、身份和存储由项目内配置装配。 */
 export async function createApp(): Promise<FastifyInstance> {
-  const app = Fastify({ trustProxy: 'loopback', logger: { level: projectConfig.logging.level } });
+  const app = Fastify({
+    trustProxy: 'loopback',
+    disableRequestLogging: true,
+    logger: { level: projectConfig.logging.level },
+  });
   await registerTools(app);
   registerHttpHooks(app);
   registerLoginRoute(app);
@@ -56,7 +60,7 @@ export async function createApp(): Promise<FastifyInstance> {
     wildcard: true,
   });
   app.setNotFoundHandler((request, reply) => {
-    if (/^\/(?:api|files|H5_Preview|RN_Preview)(?:\/|$)/.test(request.url))
+    if (/^\/(?:api|auth|files|H5_Preview|RN_Preview)(?:\/|$)/.test(request.url))
       return reply.code(404).send({ error: 'Not found' });
     return reply.sendFile('index.html');
   });

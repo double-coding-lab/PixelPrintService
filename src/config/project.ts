@@ -19,6 +19,19 @@ const schema = z.object({
   auth: z.object({
     sessionSecret: z.string().min(32),
     sessionTtlSeconds: z.number().int().positive(),
+    github: z
+      .object({
+        enabled: z.boolean(),
+        clientId: z.string(),
+        clientSecret: z.string(),
+      })
+      .optional(),
+    guest: z
+      .object({
+        enabled: z.boolean(),
+        ttlSeconds: z.number().int().min(300).max(604800).optional(),
+      })
+      .optional(),
     users: z
       .array(
         z.object({
@@ -66,6 +79,8 @@ export function loadProjectConfig(
     );
   const ids = parsed.data.auth.users.map((user) => user.id);
   if (new Set(ids).size !== ids.length) throw new Error('auth.users.id 不能重复');
+  if (ids.some((id) => /^(?:github|guest)-/i.test(id)))
+    throw new Error('auth.users.id 的 github- 和 guest- 前缀保留给外部身份');
   return parsed.data;
 }
 

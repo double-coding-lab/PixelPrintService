@@ -2,11 +2,26 @@ import { createHash, createHmac, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { projectConfig } from '@/config/project';
+import { isExternalUserId } from '@/common/userIdentity';
 
 export const sessionCookieName = 'pixelprint_session';
 const derivePassword = promisify(scrypt);
 
-export type User = { userId: string; id: string; name: string; cname: string };
+export type IdentityProvider = 'local' | 'github' | 'guest';
+export type SessionIdentity = {
+  id: string;
+  name: string;
+  provider: IdentityProvider;
+  expiresAt: number;
+};
+export type User = {
+  userId: string;
+  id: string;
+  name: string;
+  cname: string;
+  provider?: IdentityProvider;
+  expiresAt?: number;
+};
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -27,6 +42,11 @@ export function validateSessionConfig() {
   if (!Number.isSafeInteger(sessionTtlSeconds) || sessionTtlSeconds <= 0) {
     throw new Error('auth.sessionTtlSeconds must be a positive integer');
   }
+  if (projectConfig.auth.users.some((user) => /^(?:github|guest)-/i.test(user.id)))
+    throw new Error('auth.users.id reserves github- and guest- prefixes for external identities');
+  const github = projectConfig.auth.github;
+  if (github?.enabled && (!github.clientId.trim() || !github.clientSecret.trim()))
+    throw new Error('auth.github requires clientId and clientSecret');
 }
 
 /** 验证 scrypt$saltHex$keyHex；salt 的十六进制文本直接作为 Node scrypt 的盐值。 */
@@ -58,8 +78,54 @@ export function createSession(userId: string, now = Date.now()): string {
   return `${payload}.${signature(payload)}`;
 }
 
-/** 验证签名、编码、时限与本地账号是否仍存在；无效会话不返回任何身份。 */
-export function readSession(token: string | undefined, now = Date.now()): string | null {
+/** 访客有效期固定且不滑动续期；同一浏览器刷新继续使用原临时身份。 */
+export function guestSessionTtlSeconds() {
+  return Math.min(
+    projectConfig.auth.sessionTtlSeconds,
+    projectConfig.auth.guest?.ttlSeconds ?? 86400,
+  );
+}
+
+/** 仅由已验证的 GitHub 回调或服务端访客入口签发，客户端不能自报身份。 */
+export function createExternalSession(
+  identity: Pick<SessionIdentity, 'id' | 'name'> & { provider: 'github' | 'guest' },
+  now = Date.now(),
+): string {
+  validateSessionConfig();
+  if (
+    !isExternalUserId(identity.id) ||
+    !identity.id.startsWith(identity.provider + '-') ||
+    !identity.name ||
+    identity.name.length > 160 ||
+    /[\u0000-\u001f\u007f]/u.test(identity.name)
+  )
+    throw new Error('Invalid external identity');
+  if (
+    identity.provider === 'guest'
+      ? !projectConfig.auth.guest?.enabled
+      : !projectConfig.auth.github?.enabled
+  )
+    throw new Error('Identity provider disabled');
+  const iat = Math.floor(now / 1000);
+  const ttl =
+    identity.provider === 'guest' ? guestSessionTtlSeconds() : projectConfig.auth.sessionTtlSeconds;
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: identity.id,
+      name: identity.name,
+      provider: identity.provider,
+      iat,
+      exp: iat + ttl,
+    }),
+  ).toString('base64url');
+  return `${payload}.${signature(payload)}`;
+}
+
+/** 验证签名、编码、时限和身份提供方；本地账号仍实时复查配置中的存在性。 */
+export function readSessionIdentity(
+  token: string | undefined,
+  now = Date.now(),
+): SessionIdentity | null {
   if (!token || token.length > 4096) return null;
   const parts = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]{43})$/.exec(token);
   if (!parts) return null;
@@ -79,14 +145,47 @@ export function readSession(token: string | undefined, now = Date.now()): string
       value.iat > seconds ||
       value.exp <= seconds ||
       value.exp <= value.iat ||
-      value.exp - value.iat > projectConfig.auth.sessionTtlSeconds ||
-      !projectConfig.auth.users.some((user) => user.id === value.sub)
+      value.exp - value.iat > projectConfig.auth.sessionTtlSeconds
     )
       return null;
-    return value.sub;
+    if (value.provider === undefined || value.provider === 'local') {
+      const user = projectConfig.auth.users.find((user) => user.id === value.sub);
+      return user && !/^(?:github|guest)-/i.test(user.id)
+        ? { id: user.id, name: user.name, provider: 'local', expiresAt: value.exp * 1000 }
+        : null;
+    }
+    if (
+      !isExternalUserId(value.sub) ||
+      typeof value.name !== 'string' ||
+      !value.name ||
+      value.name.length > 160 ||
+      /[\u0000-\u001f\u007f]/u.test(value.name)
+    )
+      return null;
+    if (
+      (value.provider === 'github' &&
+        projectConfig.auth.github?.enabled &&
+        value.sub.startsWith('github-')) ||
+      (value.provider === 'guest' &&
+        projectConfig.auth.guest?.enabled &&
+        value.sub.startsWith('guest-') &&
+        value.exp - value.iat <= guestSessionTtlSeconds())
+    )
+      return {
+        id: value.sub,
+        name: value.name,
+        provider: value.provider,
+        expiresAt: value.exp * 1000,
+      };
+    return null;
   } catch {
     return null;
   }
+}
+
+/** 兼容既有调用方的账号 ID 读取接口。 */
+export function readSession(token: string | undefined, now = Date.now()): string | null {
+  return readSessionIdentity(token, now)?.id ?? null;
 }
 
 /** 只读取指定会话 Cookie，不信任 Header、业务参数或客户端用户 ID。 */
@@ -126,11 +225,19 @@ export function registerIdentity(app: FastifyInstance) {
     if (this.user !== undefined) return this.user;
     const id = await this.getUid();
     const user = projectConfig.auth.users.find((item) => item.id === id);
+    const external = readSessionIdentity(sessionToken(this));
+    const profile = user
+      ? { id: user.id, name: user.name, provider: 'local' as const }
+      : external?.id === id
+        ? external
+        : undefined;
     this.user = {
-      userId: user?.id ?? '',
-      id: user?.id ?? '',
-      name: user?.name ?? '',
-      cname: user?.name ?? '',
+      userId: profile?.id ?? '',
+      id: profile?.id ?? '',
+      name: profile?.name ?? '',
+      cname: profile?.name ?? '',
+      provider: profile?.provider,
+      expiresAt: external?.id === id ? external.expiresAt : undefined,
     };
     return this.user;
   });

@@ -17,6 +17,8 @@
   "auth": {
     "sessionSecret": "",
     "sessionTtlSeconds": 86400,
+    "github": { "enabled": false, "clientId": "", "clientSecret": "" },
+    "guest": { "enabled": true, "ttlSeconds": 86400 },
     "users": []
   },
   "logging": {

@@ -1,4 +1,5 @@
 import { createModelCredentialService } from '../credential/model';
+import { isExternalUserId } from '@/common/userIdentity';
 import { findOrderedOne } from '../utils/orderedRead';
 import { automaticRecoveryPlan } from '../run/automaticRecovery';
 import { readMessageQueue } from './queue';
@@ -317,6 +318,12 @@ export function createMessageService(
             await session.update({ modelCredentialId }, { transaction });
           }
         }
+        if (!modelCredentialId && isExternalUserId(userId))
+          throw new SessionError(
+            422,
+            'MODEL_CREDENTIAL_UNAVAILABLE',
+            '请先在顶部配置自己的模型地址、模型名称和 API Key',
+          );
         if (modelCredentialId) {
           const credential = await credentials.findOne({
             where: {
