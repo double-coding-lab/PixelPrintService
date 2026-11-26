@@ -1,0 +1,27 @@
+.Knowledge/topics/project-config.md
+  s_e16f52fd1de115::t_99bcb1ef477923 3,20,56-60
+.Knowledge/stock-docs/project-config.md
+  s_e16f52fd1de115::t_99bcb1ef477923 23,45,58-63
+.Knowledge/stock-docs/项目架构终稿.md
+  s_e16f52fd1de115::t_99bcb1ef477923 65-68
+.Knowledge/topics/project-architecture.md
+  s_e16f52fd1de115::t_99bcb1ef477923 3,21
+.Knowledge/index.md
+  s_e16f52fd1de115::t_99bcb1ef477923 44-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "1693e1cdf8ef159ae7e2bc9e3963338c8b81b851",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
