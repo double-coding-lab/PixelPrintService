@@ -96,6 +96,18 @@ class ObservedChatCompletions extends ChatOpenAICompletions {
         }),
       };
     }
+    /** DeepSeek 工具协议要求每条助手消息都有字符串；旧历史和平台消息仅补空值。 */
+    if (request.tools?.length && /^(?:deepseek\/)?deepseek(?:-|$)/i.test(this.model)) {
+      request = {
+        ...request,
+        messages: request.messages.map((item) =>
+          item.role === 'assistant' &&
+          typeof (item as { reasoning_content?: unknown }).reasoning_content !== 'string'
+            ? { ...item, reasoning_content: '' }
+            : item,
+        ),
+      };
+    }
     return request.stream
       ? super.completionWithRetry(request, sdkOptions)
       : super.completionWithRetry(

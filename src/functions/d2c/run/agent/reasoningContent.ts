@@ -11,3 +11,9 @@ export function messageReasoningContent(message: BaseMessage): string | undefine
   if (blocks.some((block) => typeof block.reasoning !== 'string')) return undefined;
   return blocks.map((block) => block.reasoning).join('');
 }
+
+/** 重建平台助手消息时只保留真实思考，不复制可能已失效的原始工具参数。 */
+export function messageReasoningFields(message: BaseMessage) {
+  const reasoning = messageReasoningContent(message);
+  return reasoning === undefined ? {} : { additional_kwargs: { reasoning_content: reasoning } };
+}

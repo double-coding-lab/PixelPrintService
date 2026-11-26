@@ -70,6 +70,8 @@
     "检查点分块",
     "执行状态文件",
     "ER_NET_PACKET_TOO_LARGE",
-    "max_allowed_packet"
+    "max_allowed_packet",
+    "思考字段缺失",
+    "空思考兼容"
   ]
 }

@@ -1,3 +1,4 @@
+import { messageReasoningContent, messageReasoningFields } from './reasoningContent';
 import {
   createIncrementalVerificationMiddleware,
   incrementalVerification,
@@ -2080,10 +2081,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
     }
     await guard();
     recordUsage(response);
-    reasoningFinal =
-      typeof response.additional_kwargs?.reasoning_content === 'string'
-        ? response.additional_kwargs.reasoning_content
-        : undefined;
+    reasoningFinal = messageReasoningContent(response);
     if (response.response_metadata?.finish_reason === 'length') {
       await closeStreams(true);
       if (input.inspectDelivery && input.specialist) {
@@ -2163,6 +2161,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
     if (visualPair) {
       completed = new AIMessage({
         id: completed.id,
+        ...messageReasoningFields(completed),
         content: visionRejected
           ? '无法对比：模型网关未接受截图。'
           : completed.text.trim() || '无法对比：模型没有给出视觉结论。',
@@ -2177,6 +2176,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       if (interaction.verificationOnly && !interaction.pendingInspection) {
         completed = new AIMessage({
           id: completed.id,
+          ...messageReasoningFields(completed),
           content:
             verification.success && verification.data.actions?.length
               ? ''
@@ -2237,6 +2237,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
         }
         completed = new AIMessage({
           id: completed.id,
+          ...messageReasoningFields(completed),
           content: deferredEdits
             ? '先保存改动前的运行截图；已生成的局部修改已绑定文件版本，截图后继续执行。'
             : '先保存改动前的运行截图作为视觉基线，本批拟议的源码修改尚未执行。',
@@ -2267,6 +2268,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
         // Save requested writes first. The validated plan is checkpointed with their tool batch.
         completed = new AIMessage({
           id: completed.id,
+          ...messageReasoningFields(completed),
           content: completed.content,
           tool_calls: calls.filter((call) => call.name !== 'inspect_preview'),
           usage_metadata: completed.usage_metadata,
@@ -2280,6 +2282,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       } else if (check && calls.filter((call) => call.name === 'inspect_preview').length > 1) {
         completed = new AIMessage({
           id: completed.id,
+          ...messageReasoningFields(completed),
           content: completed.content,
           tool_calls: calls.filter((call) => call.name !== 'inspect_preview' || call === check),
           usage_metadata: completed.usage_metadata,
@@ -2365,6 +2368,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       await closeStreams(true);
       const joined = new AIMessage({
         id: completed.id,
+        ...messageReasoningFields(completed),
         content: '',
         tool_calls: [
           ...(completed.tool_calls ?? []).filter(
@@ -2386,6 +2390,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       if (path) {
         const inspectionCall = new AIMessage({
           id: completed.id,
+          ...messageReasoningFields(completed),
           content: '',
           tool_calls: [
             {
@@ -2412,6 +2417,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
       await closeStreams(true);
       const inspectionCall = new AIMessage({
         id: completed.id,
+        ...messageReasoningFields(completed),
         content: '',
         tool_calls: [
           {
