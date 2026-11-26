@@ -1,0 +1,22 @@
+test/publicRunResources.test.ts
+  s_e16f52fd1de115::t_0d173a1f54ec2e 1-14,83-84,92,99
+  s_e16f52fd1de115::t_5c041488865a3c 15-82,85-91,93-98
+test/figmaScriptTools.test.ts
+  s_e16f52fd1de115::t_5c041488865a3c 407-410
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "ba758d184f0d91ccc38b48bdc3d39ad58dc5b0fd",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
