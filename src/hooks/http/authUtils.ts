@@ -11,7 +11,7 @@ export function loginReturnPath(value: unknown): string {
     value.startsWith('//') ||
     /[\\\u0000-\u001f\u007f]/u.test(value)
   )
-    return '/';
+    return '/workbench';
   try {
     const url = new URL(value, 'http://application.local');
     const pathname = decodeURIComponent(url.pathname);
@@ -21,11 +21,11 @@ export function loginReturnPath(value: unknown): string {
       /[\\\u0000-\u001f\u007f]/u.test(pathname) ||
       /^\/(?:login|logout|api|auth)(?:\/|$)/i.test(pathname)
     )
-      return '/';
+      return '/workbench';
     url.searchParams.delete('ticket');
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
-    return '/';
+    return '/workbench';
   }
 }
 

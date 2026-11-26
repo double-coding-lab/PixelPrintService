@@ -85,6 +85,9 @@ test('local platform adapters', async (t) => {
   });
 
   await t.test('returnTo only permits safe local page destinations', () => {
+    assert.equal(loginReturnPath(undefined), '/workbench');
+    assert.equal(loginReturnPath(''), '/workbench');
+    assert.equal(loginReturnPath('/'), '/');
     assert.equal(loginReturnPath('/workspace?a=1#files'), '/workspace?a=1#files');
     for (const value of [
       'https://evil.test',
@@ -95,8 +98,11 @@ test('local platform adapters', async (t) => {
       '/%61pi/private',
       '/logout',
       '/%00evil',
+      '/%zz',
+      '/auth/github',
+      '/' + 'x'.repeat(4096),
     ]) {
-      assert.equal(loginReturnPath(value), '/', value);
+      assert.equal(loginReturnPath(value), '/workbench', value);
     }
   });
 
@@ -223,7 +229,7 @@ test('local platform adapters', async (t) => {
         }).toString(),
       });
       assert.equal(form.statusCode, 303);
-      assert.equal(form.headers.location, '/');
+      assert.equal(form.headers.location, '/workbench');
       const logout = await app.inject({ method: 'POST', url: '/logout', headers: { cookie } });
       assert.equal(logout.statusCode, 204);
       assert.match(String(logout.headers['set-cookie']), /Max-Age=0/);

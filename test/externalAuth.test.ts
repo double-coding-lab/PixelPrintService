@@ -490,7 +490,7 @@ test('external authentication regression (offline)', { concurrency: false }, asy
         payload: new URLSearchParams({ returnTo }).toString(),
       });
       assert.equal(response.statusCode, 303);
-      assert.equal(response.headers.location, '/', returnTo);
+      assert.equal(response.headers.location, '/workbench', returnTo);
     }
   });
 
@@ -723,11 +723,41 @@ test('external authentication regression (offline)', { concurrency: false }, asy
         headers: { cookie: flow.cookie },
       });
       assert.equal(response.statusCode, 303);
-      assert.equal(response.headers.location, '/');
+      assert.equal(response.headers.location, '/workbench');
       assert.equal(
         readSessionIdentity(cookieToken(requireCookie(response)))?.name,
         'fallback-login',
       );
+    },
+  );
+
+  await t.test(
+    'GitHub return defaults to workbench and preserves explicit home or SPA destinations',
+    async (t) => {
+      const { app } = await makeApp(t);
+      for (const [returnTo, expected] of [
+        [undefined, '/workbench'],
+        ['', '/workbench'],
+        ['/auth/me', '/workbench'],
+        ['/', '/'],
+        ['/?workspace=w&session=s', '/?workspace=w&session=s'],
+        ['/plaza/p?ticket=remove&ref=github', '/plaza/p?ref=github'],
+      ]) {
+        const start = await app.inject(
+          '/auth/github' +
+            (returnTo === undefined ? '' : '?returnTo=' + encodeURIComponent(returnTo)),
+        );
+        assert.equal(start.statusCode, 302);
+        const state = new URL(String(start.headers.location)).searchParams.get('state');
+        assert.ok(state);
+        const response = await app.inject({
+          url: callbackUrl(state),
+          headers: { cookie: requireCookie(start, oauthCookieName) },
+        });
+        assert.equal(response.statusCode, 303);
+        assert.equal(response.headers.location, expected);
+        assert.ok(readSessionIdentity(cookieToken(requireCookie(response))));
+      }
     },
   );
 

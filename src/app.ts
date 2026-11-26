@@ -3,6 +3,7 @@ import d2cRoutes from '@/functions/d2c/index';
 import { registerHttpHooks } from '@/hooks/http/index';
 import { registerTools } from '@/hooks/tools/index';
 import { registerLoginRoute } from '@/hooks/http/auth';
+import { registerPublicHome } from '@/hooks/http/publicHome';
 import { projectConfig } from '@/config/project';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -55,15 +56,6 @@ export async function createApp(): Promise<FastifyInstance> {
       },
     });
   }
-  await app.register(fastifyStatic, {
-    root: path.join(applicationRoot, 'dist/public'),
-    prefix: '/',
-    wildcard: true,
-  });
-  app.setNotFoundHandler((request, reply) => {
-    if (/^\/(?:api|auth|files|H5_Preview|RN_Preview)(?:\/|$)/.test(request.url))
-      return reply.code(404).send({ error: 'Not found' });
-    return reply.sendFile('index.html');
-  });
+  await registerPublicHome(app, path.join(applicationRoot, 'dist/public'));
   return app;
 }
