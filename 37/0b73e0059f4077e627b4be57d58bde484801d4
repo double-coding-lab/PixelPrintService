@@ -1,0 +1,24 @@
+src/functions/d2c/content/checkpointStore.ts
+  s_e16f52fd1de115::t_0756b8b42c0d2a 1-16,18-33,35-43,48-89,91-92,99,101-104,107-108,115-117,119-121,123-129,132-134,137-144,146-156,158-186,188-193
+  s_e16f52fd1de115::t_65b13b789147c8 17,44-47,93-98,100,105-106,109-114,118,122,135-136,187
+.Knowledge/matchers/m-deep-agents-execution.json
+  s_e16f52fd1de115::t_5d65747140a5cb 69-73
+src/functions/d2c/content/checkpointRuntime.ts
+  s_e16f52fd1de115::t_468fa49f046247 133-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "370b73e0059f4077e627b4be57d58bde484801d4",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
