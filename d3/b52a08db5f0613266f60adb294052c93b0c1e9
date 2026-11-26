@@ -1,0 +1,29 @@
+docs/deployment/configuration.md
+  s_e16f52fd1de115::t_d01cdc567a2c96 47-48,77-80
+  s_e16f52fd1de115::t_396152d921ba8e 5-46
+docs/README.md
+  s_e16f52fd1de115::t_d01cdc567a2c96 3-11,15
+README.md
+  s_e16f52fd1de115::t_e1a033f9ef7a05 1,3,5,7,9,11-15,17,19,21,23,26-28,31,33-35,38-41,44,46,48,59,61,63,65-69,71,73,75,77
+  s_e16f52fd1de115::t_d01cdc567a2c96 50-57
+docs/deployment/部署与配置.md
+  s_e16f52fd1de115::t_e1a033f9ef7a05 1,3,5,12-27,30-57,59-171,173-180,183,185,187-206,217-220,232,234-239
+  s_e16f52fd1de115::t_396152d921ba8e 172
+  s_e16f52fd1de115::t_d01cdc567a2c96 7-11,208-216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "d3b52a08db5f0613266f60adb294052c93b0c1e9",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
