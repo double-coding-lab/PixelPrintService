@@ -1,0 +1,27 @@
+docs/deployment/部署与配置.md
+  s_e16f52fd1de115::t_551c4672502d4f 174,246-251
+docs/架构与流程图.md
+  s_e16f52fd1de115::t_551c4672502d4f 42,183,299
+.Knowledge/topics/deep-agents-execution.md
+  s_e16f52fd1de115::t_551c4672502d4f 3,116-118,122
+.Knowledge/index.md
+  s_e16f52fd1de115::t_551c4672502d4f 47
+.Knowledge/stock-docs/deep-agents-execution.md
+  s_e16f52fd1de115::t_551c4672502d4f 99-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "14e010ad8b3a33a90941b11b36ed7eaa19f13102",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
