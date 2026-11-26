@@ -1,6 +1,6 @@
 ---
 id: project-config
-revision: 9
+revision: 10
 summary: "本地配置字段、模型预算、存储与生效时机"
 primary: config
 confidence: inferred
@@ -50,7 +50,8 @@ project.config.json、配置填写、运行配置、modelConfigs、contextBudget
 ## 个人模型凭据
 
 - 顶栏“模型凭据”由本人填写Base URL、模型名称和API Token，整体按既有密钥加密为新修订；地址与模型名仅向本人回填，Token不回显或存入浏览器。地址支持HTTP(S)，禁止内嵌账号、查询参数、片段和控制字符；支持工具调用的服务由用户自行提供。
-- 普通新会话自动绑定创建者当前active模型凭据；空会话可在首条消息前配置个人连接，首条入队时补绑定。后续保存新修订用于新会话，已绑定会话及恢复轮次固定原凭据；主模型、子模型与摘要沿该地址、名称和Token执行，共用管理员的预算及超时配置。
+- 个人工作区的新会话自动绑定创建者当前active模型凭据；空会话可在首条消息前配置个人连接，首条入队时补绑定。后续保存新修订用于新会话，已绑定会话及恢复轮次固定原凭据；主模型、子模型与摘要沿该地址、名称和Token执行，共用管理员的预算及超时配置。
+- 团队工作区的新轮次按实际发起人选择最新active个人连接，不改创建者的session绑定；缺少本人连接则拒绝。回答、引导和恢复按原run固定身份及凭据，Worker加载再次核对归属，详见[公开团队与协作](d2c-team-collaboration.md#默认公开团队)。
 - 个人连接可独立于管理员默认模型，执行先核对当前发起人、凭据ID、状态及快照连接；错误或失效明确拒绝，不能回退平台Key。旧的仅Token修订继续绑定原管理员连接，旧空绑定历史仍沿平台模型；当前默认连接改变时旧Token修订须重配。
 - POST /credentials/model兼容旧token单字段调用，个人完整配置须同时提交baseUrl、modelName及token；新能力复用既有密文列和modelCredentialId，无新增迁移。已有旧库仍先完成docs/sql/personal-model-credentials-migration.sql，新库按模型建表。回归见modelCredentials：真实HTTP密钥归属、跨用户、修订及连接校验。
 
