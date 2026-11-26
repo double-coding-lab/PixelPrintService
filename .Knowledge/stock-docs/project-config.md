@@ -14,7 +14,9 @@
 | `database` | 部署方标准 MySQL 连接信息 |
 | `redis.url` | 部署方 Redis 连接串 |
 | `auth.sessionSecret` | 初始化生成的随机材料，至少 32 字节；更换会使已有签名失效 |
-| `auth.users` | 稳定用户 ID、显示名称和 scrypt 密码哈希，可选个人 API Token |
+| `auth.users` | 本地稳定用户 ID、显示名称和 scrypt 密码哈希，可选个人 API Token；github-/guest- 前缀保留 |
+| `auth.github` | enabled、clientId、clientSecret；回调固定为 server.publicUrl 下的 /auth/github/callback |
+| `auth.guest` | enabled、ttlSeconds（默认 86400，300–604800）；有效期同时受 sessionTtlSeconds 限制 |
 | `storage.driver` | `local` 或 `s3`，按部署实际选择 |
 | `storage.directory/publicUrl` | 本地目录和外部可读的文件根地址；S3 可使用桶或 CDN 地址 |
 | `storage.bucket/region/endpoint` | S3 桶、区域及兼容服务 API 地址，桶由部署方预先创建 |

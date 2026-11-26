@@ -1,6 +1,6 @@
 ---
 id: project-config
-revision: 6
+revision: 7
 summary: "本地配置字段、模型预算、存储与生效时机"
 primary: config
 confidence: inferred
@@ -13,7 +13,7 @@ confidence: inferred
 
 - `src/config/project.ts` 在启动时读取 `project.config.json`；`PIXELPRINT_CONFIG` 可指定其他文件，校验失败只报告字段路径。
 - `npm run setup` 从公开示例生成随机会话/凭据密钥及账号，已有配置不覆盖；真实配置必须保持私有。
-- `server`、`database`、`redis`、`auth`、`logging`、`storage`、`network` 和 `runtime` 对应独立职责。
+- `server`、`database`、`redis`、`auth`、`logging`、`storage`、`network` 和 `runtime` 对应独立职责。`auth.github`配置OAuth App，回调从server.publicUrl派生；`auth.guest`配置临时访客开关和固定时限，旧配置缺省关闭。详见[部署配置](../../docs/deployment/configuration.md#github-登录和访客)。
 - `RuntimeConfig` 提供已加载的 `runtime`，不会自动订阅远程变更；配置修改后重启。
 - `runtime.modelConfigs` 是模型列表，首项为默认模型；不是自动回退链。`contextBudgetTokens` 是单次上下文预算，`maxTurns` 是主/子模型与摘要共享的请求上限。
 - `runTimeoutMs` 单位为毫秒；`concurrency` 控制单实例不同会话的并行轮次；`leaseMs` 必须大于 `heartbeatMs` 的两倍。

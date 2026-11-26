@@ -1,6 +1,6 @@
 ---
 id: project-architecture
-revision: 5
+revision: 6
 summary: "Fastify全栈入口、登录、日志、数据连接与部署"
 primary: module
 confidence: inferred
@@ -14,7 +14,7 @@ Node.js 24 在一个 Fastify 应用中提供 React 页面、API 和预览资源�
 
 - `src/index.ts` 启动监听和关闭流程；`src/app.ts` 装配工具、身份、路由、静态文件与预览网关。
 - `src/hooks/tools/index.ts` 挂载 `logging`、`redis`、`mysql`、`runtimeConfig`；连接失败和关闭时释放资源。
-- 身份来自 `auth.users` 配置的本地账号、签名 Cookie 或个人 API Token；业务使用 `request.getUser()`，不接受客户端自报归属。
+- 身份由本地账号、GitHub OAuth 或签名临时访客提供，业务统一使用 `request.getUser()`；账号命名空间、PKCE/Redis回调和访客留存见[请求身份](../stock-docs/项目架构终稿.md#请求身份与接口响应)。GitHub与访客的AI任务必须绑定本人的模型凭据。
 - `/api/d2c` 统一注册工作区、团队、会话、凭据、文件、预览、版本和插件接口；页面来自 `dist/public`。上传解析器由 `uploadRoutes` 在上传模块作用域注册一次，限制单文件大小和表单部分数量。
 - `connectMysql()` 仅认证与注册模型；`npm run db:init` 显式创建缺失表，不负责修改已有表结构。
 - `project.config.json` 是运行配置入口，配置修改需要重启。详细字段见 `project-config`。

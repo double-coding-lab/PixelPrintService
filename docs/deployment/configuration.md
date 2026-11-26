@@ -10,6 +10,8 @@
 | redis.url | redis:// 或 rediss:// 连接串，可包含部署方提供的认证信息 |
 | auth.sessionSecret | 初始化生成，用于 Cookie 签名；更换后已有登录失效 |
 | auth.sessionTtlSeconds | 登录有效期秒数 |
+| auth.github | enabled、clientId、clientSecret；启用需填完整 GitHub OAuth App 配置 |
+| auth.guest | enabled、ttlSeconds（默认 86400，300–604800），访客 Cookie 的固定有效期 |
 | auth.users | 本地用户数组，id 为稳定账号，name 为显示名称，passwordHash 为 scrypt 哈希 |
 | auth.users[].apiToken | 可选，至少32字符，用于插件接口 Bearer 认证，不要暴露给其他用户 |
 | logging.level | trace / debug / info / warn / error / fatal / silent |
@@ -62,3 +64,11 @@ node scripts/setup.mjs --config new-user.private.json --user alice
 ## 数据库初始化与历史升级
 
 建表、引用列与个人模型凭据升级统一见[SQL 入口](../sql/README.md)。新库初始化与已有库迁移分开执行；程序不自动 ALTER 旧表。
+
+## GitHub 登录和访客
+
+- 在 GitHub 创建 OAuth App：Homepage URL 填 `server.publicUrl`，回调为该来源下的 `/auth/github/callback`，保持精确匹配。将 Client ID/Client Secret 填在服务器私有配置的 `auth.github` 并设 `enabled:true`，重启应用。密钥不进入前端、Git 或聊天。授权流程使用 state、浏览器绑定和 PKCE，参见[GitHub 官方说明](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps)。
+- Redis 保存十分钟有效的一次性授权上下文；Redis 异常时登录明确不可用，支持重新发起。应用请求日志不记录完整查询串；反向代理对 `/auth/github/callback` 设置 `access_log off`，避免记录授权码。
+- 新配置默认启用访客；旧配置缺少 `auth.guest` 时保持关闭，可显式添加 `{ "enabled": true, "ttlSeconds": 86400 }` 后重启。访客入口按浏览器签发随机临时身份，刷新复用且不滑动续期。
+- GitHub 的 `github-<id>` 和访客的 `guest-<uuid>` 使用保留账号前缀，本地账号不能占用。二者可按既有权限访问工作区与广场，生成任务必须使用本人的个人模型凭据。
+- 访客退出、过期或清除 Cookie 后无法找回其身份；服务端文件按既有留存规则保存，转用 GitHub 登录不会自动转移访客数据。顶栏可查看身份、账号 ID 和退出入口。

@@ -73,7 +73,7 @@ npm start
 | 数据库 | 标准 MySQL 8 + Sequelize / mysql2 |
 | 缓存与通知 | 标准 Redis，持久任务和时间线仍以 MySQL 为准 |
 | 日志 | Pino，输出到 stdout / stderr，由部署环境采集 |
-| 登录 | 本地账号、scrypt 密码哈希、签名 Cookie |
+| 登录 | GitHub OAuth、临时访客、本地账号与签名 Cookie |
 | 图片和文件 | 默认本地磁盘；可改为 S3 兼容对象存储 |
 | 运行配置 | 项目内 JSON，重启生效 |
 | Agent | Deep Agents / LangGraph，MySQL 检查点 |
