@@ -1,7 +1,8 @@
 import { setTimeout as retryDelay } from 'node:timers/promises';
 import { modelRetryPlan, type ModelRetryPlan } from './modelRetry';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { HumanMessage, AIMessage, type BaseMessage } from '@langchain/core/messages';
+import { HumanMessage, AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
+import { Command } from '@langchain/langgraph';
 import { createSummarizationMiddleware } from 'deepagents';
 import { createMiddleware } from 'langchain';
 import { z } from 'zod';
@@ -11,6 +12,46 @@ import { LangChainTracer } from '@langchain/core/tracers/tracer_langchain';
 import { estimateTokens } from './tokens';
 import { createHistoricalSourceView } from './incrementalContext';
 import { incrementalVerificationStateSchema } from './incrementalVerification';
+import { loadSummaryReceipt, saveSummaryReceipt } from './summaryReceipt';
+
+/** 按真实Token选择近期完整消息组，超大工具组整体进入摘要，未配对调用继续原样保留。 */
+function recentCount(messages: BaseMessage[], target: number) {
+  const pending = new Set<string>();
+  const boundaries = new Set([0]);
+  let latestCall = -1;
+  let protectedCall = messages.length;
+  for (const [index, message] of messages.entries()) {
+    if (AIMessage.isInstance(message)) {
+      if (message.tool_calls?.length) latestCall = index;
+      for (const call of message.tool_calls ?? []) pending.add(call.id!);
+    }
+    if (ToolMessage.isInstance(message)) {
+      pending.delete(message.tool_call_id);
+      let failed = message.status === 'error';
+      if (typeof message.content === 'string') {
+        try {
+          const value = JSON.parse(message.content);
+          failed ||=
+            value?.success === false || value?.ok === false || value?.outcome === 'unknown';
+        } catch {
+          /* 非结构化的普通读取正文沿工具状态判断。 */
+        }
+      }
+      if (failed && latestCall >= 0) protectedCall = latestCall;
+      else if (latestCall > protectedCall) protectedCall = messages.length;
+    }
+    if (!pending.size) boundaries.add(index + 1);
+  }
+  let tokens = 0;
+  let cutoff = boundaries.has(messages.length) ? messages.length : 0;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    // 保守计入逐消息结构开销，线性遍历，避免每个候选重复编码整个后缀。
+    tokens += estimateTokens(messages[index].toDict()) + 32;
+    if (tokens > target) break;
+    if (boundaries.has(index)) cutoff = index;
+  }
+  return messages.length - Math.min(cutoff, protectedCall);
+}
 
 /** 摘要由原生中间件直接 invoke，单独提供静默 tracer，阻止环境变量开启外部上报。 */
 function localTracingGuard() {
@@ -190,16 +231,17 @@ export function createContextSummary(input: {
       }
     }
     if (!response) throw new Error('DEEP_SUMMARY_EMPTY');
-    return response;
+    return new AIMessage(
+      `${response.text}\n完整原始消息JSON：${sourceArchive!.path}；细节可按路径分页回查。`,
+    );
   });
-  const native = createSummarizationMiddleware({
+  const options = {
     backend: input.archive.backend,
     historyPathPrefix: '/history',
-    trigger: { type: 'messages', value: 1 },
-    keep: { type: 'messages', value: 2 },
+    trigger: { type: 'messages' as const, value: 1 },
     summaryPrompt: '{conversation}',
-  });
-  const wrap = native.wrapModelCall!;
+  };
+  const native = createSummarizationMiddleware(options);
   return createMiddleware({
     ...native,
     stateSchema: native.stateSchema!.extend({
@@ -211,8 +253,8 @@ export function createContextSummary(input: {
       input.signal.throwIfAborted();
       input.archive.assertHealthy();
       /** 1.16.0 的事件保存原始 cutoff，工作上下文由摘要加 cutoff 后的新消息重建。 */
-      const event = request.state._summarizationEvent;
-      const effective = event
+      let event = request.state._summarizationEvent;
+      let effective = event
         ? [event.summaryMessage, ...request.messages.slice(event.cutoffIndex)]
         : request.messages;
       const guidanceApplied =
@@ -227,35 +269,94 @@ export function createContextSummary(input: {
         (message) => message.type === 'human' && message.id && boundaryIds.has(message.id),
       );
       const boundaryId = boundaries.at(-1)?.id;
-      const prepared = await historicalSourceView(
+      const latestHuman = request.messages
+        .filter(
+          (message) =>
+            message.type === 'human' && message.additional_kwargs.lc_source !== 'summarization',
+        )
+        .at(-1);
+      // 保留最近输入只影响展示上下文，不把普通Human通知提升为源码归档的授权边界。
+      const requirements = request.messages.filter(
+        (message) => boundaries.includes(message) || message === latestHuman,
+      );
+      /** 当前授权要求逐字保留；摘要覆盖的要求仍作为本次输入提供。 */
+      const pin = (messages: BaseMessage[], cutoff: number) => {
+        const covered = request.messages
+          .slice(0, cutoff)
+          .filter((message) => requirements.includes(message));
+        return covered.length ? [messages[0], ...covered, ...messages.slice(1)] : messages;
+      };
+      let prepared = await historicalSourceView(
         request.messages,
         boundaryId,
         event?.cutoffIndex ?? 0,
       );
       input.signal.throwIfAborted();
-      const preparedEffective = event
+      let preparedEffective = event
         ? [event.summaryMessage, ...prepared.slice(event.cutoffIndex)]
         : prepared;
-      const view = input.view?.(preparedEffective) ?? preparedEffective;
-      const tokens = estimateTokens(view.map((message) => message.toDict()));
+      let view = input.view?.(preparedEffective) ?? preparedEffective;
+      const tokens = estimateTokens(
+        pin(view, event?.cutoffIndex ?? 0).map((message) => message.toDict()),
+      );
       const available = input.budget - (input.overhead?.() ?? input.budget * 0.4);
-      if (tokens < available * 0.7) return handler({ ...request, messages: view });
+      if (tokens < available * 0.7)
+        return handler({ ...request, messages: pin(view, event?.cutoffIndex ?? 0) });
+      /** 已完成的摘要回执先于下一次生成保存，普通继续只复用严格匹配的覆盖范围。 */
+      const receipt = await loadSummaryReceipt(input.archive, request.messages);
+      const restored = receipt && receipt.cutoffIndex > (event?.cutoffIndex ?? 0);
+      if (restored) {
+        event = receipt;
+        effective = [event.summaryMessage, ...request.messages.slice(event.cutoffIndex)];
+        prepared = await historicalSourceView(request.messages, boundaryId, event.cutoffIndex);
+        preparedEffective = [event.summaryMessage, ...prepared.slice(event.cutoffIndex)];
+        view = input.view?.(preparedEffective) ?? preparedEffective;
+      }
+      if (
+        restored &&
+        estimateTokens(pin(view, event!.cutoffIndex).map((message) => message.toDict())) <
+          available * 0.7
+      ) {
+        await handler({ ...request, messages: pin(view, event!.cutoffIndex) });
+        return new Command({ update: { _summarizationEvent: event } });
+      }
       /** 原生 Markdown 归档用于阅读，JSON 快照完整保留工具参数、消息 ID 与结构。 */
       const original = JSON.stringify(effective.map((message) => message.toDict()));
       const snapshot = `/history/snapshot_${createHash('sha256').update(original).digest('hex')}.json`;
       await input.archive.save(snapshot, original);
       sourceArchive = { path: snapshot, characters: original.length };
+      // 压缩后给后续工具结果预留空间；固定两条消息可能恰好包含一个超大读取结果。
+      const requirementTokens = estimateTokens(requirements.map((message) => message.toDict()));
+      const wrap = createSummarizationMiddleware({
+        ...options,
+        keep: {
+          type: 'messages',
+          value: recentCount(view, Math.max(0, available * 0.35 - requirementTokens)),
+        },
+      }).wrapModelCall!;
       // 原生中间件还会按已有cutoff取有效消息；保持原消息索引，不能传入已裁剪的effective视图。
       // 完整原文已保存到上面的JSON快照，精简仅替换正文，不改变数量、ID或工具配对。
       return wrap(
         {
           ...request,
+          state: { ...request.state, _summarizationEvent: event },
           messages: input.view?.(prepared) ?? prepared,
           model: summaryModel,
         },
-        (modified) => {
+        async (modified) => {
           input.archive.assertHealthy();
-          return handler({ ...modified, model: request.model });
+          const cutoff = request.messages.length - (modified.messages.length - 1);
+          await saveSummaryReceipt(
+            input.archive,
+            request.messages.slice(0, cutoff),
+            modified.messages[0],
+            snapshot,
+          );
+          return handler({
+            ...modified,
+            messages: pin(modified.messages, cutoff),
+            model: request.model,
+          });
         },
       );
     },
