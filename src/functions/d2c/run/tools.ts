@@ -52,7 +52,14 @@ import {
   inspectFigmaNode,
   inspectFigmaSubtree,
 } from './figmaNode';
-import { createRulesWorkspace, mergeRulesReports } from './rulesWorkspace';
+import {
+  createRulesWorkspace,
+  mergeRulesReports,
+  createRuleImageMap,
+  ruleImageMappingReport,
+  RuleImageMappingError,
+  type RuleImage,
+} from './rulesWorkspace';
 import { designReferencePaths, persistDesignReference } from './designReference';
 import {
   requiredRnImages,
@@ -1502,21 +1509,35 @@ export async function createGenerationTools(input: {
       }
       const checkedMutation = mutation;
       const urls = input.assetUrls?.() ?? {};
-      const images = new Map<string, string>();
-      for (const [slug, design] of activeSlices) {
-        const inspected = await reuseSlices(slug, design);
-        if (!inspected) throw new RunExecutionError('VALIDATION_FAILED', { stage: 'validation' });
-        for (const theme of inspected.value.themes) {
-          for (const entry of theme.entries) {
-            if (path.posix.basename(entry.filepath) !== entry.filename)
-              throw new RunExecutionError('VALIDATION_FAILED', { stage: 'validation' });
-            const url = urls[entry.filepath];
-            if (!url) continue;
-            if (images.has(url) && images.get(url) !== entry.filepath)
-              throw new RunExecutionError('VALIDATION_FAILED', { stage: 'validation' });
-            images.set(url, entry.filepath);
+      let images: Map<string, string>;
+      try {
+        const entries: RuleImage[] = [];
+        for (const [slug, design] of activeSlices) {
+          const inspected = await reuseSlices(slug, design);
+          if (!inspected) throw new RunExecutionError('VALIDATION_FAILED', { stage: 'validation' });
+          const identities = new Map(inspected.images.map((image) => [image.path, image]));
+          for (const theme of inspected.value.themes) {
+            for (const entry of theme.entries) {
+              if (path.posix.basename(entry.filepath) !== entry.filename)
+                throw new RuleImageMappingError('IMAGE_PATH_INVALID', [entry.filepath]);
+              const url = urls[entry.filepath];
+              if (!url) continue;
+              const identity = identities.get(entry.filepath);
+              if (!identity)
+                throw new RuleImageMappingError('IMAGE_IDENTITY_MISSING', [entry.filepath]);
+              entries.push({ ...identity, url });
+            }
           }
         }
+        images = createRuleImageMap(entries);
+      } catch (error) {
+        if (!(error instanceof RuleImageMappingError)) throw error;
+        await input.assertLease();
+        input.signal.throwIfAborted();
+        const output = JSON.stringify(ruleImageMappingReport(error));
+        if (mode === 'merge')
+          await saveRuleResult(normalized, checkedMutation, { code: 1, output });
+        return JSON.stringify({ ...toolFeedback('RULES_FAILED'), report: output });
       }
       let result = await script(
         'check-rules.mjs',

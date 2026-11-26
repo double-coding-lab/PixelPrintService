@@ -1,7 +1,79 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { resolveWorkspacePath } from '../utils/paths';
+import { assertArtifactPath, resolveWorkspacePath } from '../utils/paths';
+
+/** 只接受已校验清单范围、稳定文件和当前字节后的可信图片身份。 */
+export type RuleImage = { url: string; path: string; sha256: string; size: number };
+
+/** 错误只保存相对路径和固定原因，不把URL、查询凭据或完整摘要写入反馈。 */
+export class RuleImageMappingError extends Error {
+  constructor(
+    public readonly reason:
+      | 'IMAGE_URL_CONTENT_CONFLICT'
+      | 'IMAGE_IDENTITY_MISSING'
+      | 'IMAGE_PATH_INVALID',
+    public readonly paths: string[],
+  ) {
+    super('图片地址映射校验失败');
+    this.name = 'RuleImageMappingError';
+  }
+}
+
+/** 相同地址的多个已验证副本共享确定性代表路径；内容不一致仍拒绝，遍历顺序不影响结果。 */
+export function createRuleImageMap(entries: readonly RuleImage[]): Map<string, string> {
+  const identities = new Map<string, RuleImage>();
+  for (const entry of entries) {
+    try {
+      if (assertArtifactPath(entry.path) !== entry.path) throw new Error('Noncanonical image path');
+    } catch {
+      throw new RuleImageMappingError('IMAGE_PATH_INVALID', [entry.path]);
+    }
+    if (
+      !/^[a-f0-9]{64}$/.test(entry.sha256) ||
+      !Number.isSafeInteger(entry.size) ||
+      entry.size <= 0
+    )
+      throw new RuleImageMappingError('IMAGE_IDENTITY_MISSING', [entry.path]);
+    const previous = identities.get(entry.url);
+    if (previous && (previous.sha256 !== entry.sha256 || previous.size !== entry.size))
+      throw new RuleImageMappingError('IMAGE_URL_CONTENT_CONFLICT', [previous.path, entry.path]);
+    if (!previous || entry.path < previous.path) identities.set(entry.url, entry);
+  }
+  return new Map([...identities].map(([url, entry]) => [url, entry.path]));
+}
+
+/** 冲突成为可读取的失败检查报告，保持真实失败状态，不能据此跳过图片对账。 */
+export function ruleImageMappingReport(error: RuleImageMappingError) {
+  const paths = [...error.paths].sort();
+  return {
+    ok: false,
+    checked: ['IMG-reconcile'],
+    passed: [],
+    failed: ['IMG-reconcile'],
+    skipped: [],
+    warnings: [],
+    violations: [
+      {
+        rule: 'IMG-reconcile',
+        code: error.reason,
+        nodeId: '-',
+        name: '图片URL映射',
+        type: 'IMG',
+        file: paths[0],
+        paths,
+        line: 0,
+        snippet: '',
+        expected: '同一平台图片URL的本地别名须有相同且有效的当前文件SHA-256与字节数',
+        actual: `${
+          error.reason === 'IMAGE_URL_CONTENT_CONFLICT'
+            ? '同一图片地址对应不同内容或字节数；请核对真实图片及地址映射，不要重写规则报告。'
+            : '图片缺少有效身份或规范路径；请核对真实文件及切图清单后重查。'
+        } 路径：${paths.join('，')}`,
+      },
+    ],
+  };
+}
 
 /** 仅在完整字面量精确命中时回映；query、片段、前后缀或动态拼接均不猜测。 */
 export function mapPublishedImages(content: string, images: ReadonlyMap<string, string>) {
