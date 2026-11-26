@@ -1,0 +1,27 @@
+.Knowledge/topics/d2c-team-collaboration.md
+  s_e16f52fd1de115::t_8800cb09001a0f 3,15,26,44-52
+.Knowledge/index.md
+  s_e16f52fd1de115::t_8800cb09001a0f 49
+.Knowledge/stock-docs/d2c-team-collaboration.md
+  s_e16f52fd1de115::t_8800cb09001a0f 5,7,25,48-52
+.Knowledge/topics/project-config.md
+  s_e16f52fd1de115::t_8800cb09001a0f 3,53-54
+docs/使用指南.md
+  s_e16f52fd1de115::t_8800cb09001a0f 7,46-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "a9fcb173481b1838a80dc106c0addb1d6467e0e4",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
