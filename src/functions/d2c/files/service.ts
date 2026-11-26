@@ -1,3 +1,4 @@
+import { binaryMimeType } from '../utils/binaryMimeType';
 import type { ImageVariants } from '../images/variants';
 import { findOrderedRows } from '../utils/orderedRead';
 import { assetUrl } from '../utils/assetUrls';
@@ -44,7 +45,9 @@ function summary(file: D2cFile) {
     fileId: file.fileId,
     path: file.path,
     kind: file.kind,
-    mimeType: file.mimeType,
+    mimeType: ['asset', 'attachment'].includes(file.kind!)
+      ? binaryMimeType(file.objectLocator, file.mimeType)
+      : file.mimeType,
     size: file.size,
     sha256: file.sha256,
     revision: file.revision,

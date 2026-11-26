@@ -1,3 +1,4 @@
+import { binaryMimeType } from '../utils/binaryMimeType';
 import { findOrderedRows } from '../utils/orderedRead';
 import { decisionInstructions } from './decisions';
 import { modelActivitySchema, type ModelActivity } from './agent/modelActivity';
@@ -550,8 +551,9 @@ export function createRunPersistence(
           throw new Error('资源类型冲突');
         if (prior?.sha256 === sha256 && prior.size === content.length) {
           const clean = copyTextStorage(mysql, { content: null });
-          if ('contentRef' in clean && prior.contentRef != null)
-            await prior.update(clean, { transaction });
+          const mimeType = binaryMimeType(objectLocator, prior.mimeType);
+          if (prior.mimeType !== mimeType || ('contentRef' in clean && prior.contentRef != null))
+            await prior.update({ ...clean, mimeType }, { transaction });
           return session.fileRevision;
         }
         if (
@@ -566,6 +568,7 @@ export function createRunPersistence(
         const values = {
           ...copyTextStorage(mysql, { content: null }),
           objectLocator,
+          mimeType: binaryMimeType(objectLocator),
           size: content.length,
           sha256,
           revision,
@@ -579,7 +582,6 @@ export function createRunPersistence(
                 path: relative,
                 pathHash,
                 kind: 'asset',
-                mimeType: 'application/octet-stream',
                 ...values,
               },
               { transaction },
