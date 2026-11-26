@@ -177,6 +177,7 @@ export function createMessageService(
             );
         }
         let recovery: ReturnType<typeof automaticRecoveryPlan> = null;
+        let resumedModel: D2cRun['modelSnapshot'] = null;
         if (resumeFromRunId) {
           const previous = await runs.findOne({
             where: { runId: resumeFromRunId, sessionId },
@@ -184,6 +185,11 @@ export function createMessageService(
             lock: transaction.LOCK.UPDATE,
           });
           if (!previous) throw new SessionError(404, 'RUN_NOT_FOUND', '执行轮次不存在');
+          if ((previous.requestedUserId ?? workspace.createdUserId) !== userId)
+            throw new SessionError(422, 'MODEL_CREDENTIAL_UNAVAILABLE', '只能由原轮次发起人继续');
+          if (!previous.modelSnapshot)
+            throw new SessionError(422, 'MODEL_CREDENTIAL_UNAVAILABLE', '原轮次模型快照不可用');
+          resumedModel = previous.modelSnapshot;
           if (
             previous.status !== 'interrupted' ||
             previous.leaseOwner !== null ||
@@ -304,9 +310,26 @@ export function createMessageService(
           throw new SessionError(503, 'RUNTIME_UNAVAILABLE', 'RuntimeConfig 执行参数尚未就绪');
         }
         let model = runtime.modelConfigs[0];
-        let modelCredentialId = session.modelCredentialId ?? null;
-        // 首条消息前允许保存个人设置；之后会话固定原修订，恢复也不换模型。
-        if (!modelCredentialId && !recovery && session.timelineSeq === 0) {
+        let modelCredentialId = resumedModel
+          ? ((resumedModel.modelCredentialId as string | undefined) ?? null)
+          : workspace.teamId
+            ? null
+            : (session.modelCredentialId ?? null);
+        if (
+          resumedModel &&
+          !workspace.teamId &&
+          modelCredentialId !== (session.modelCredentialId ?? null)
+        )
+          throw new SessionError(
+            422,
+            'MODEL_CREDENTIAL_UNAVAILABLE',
+            '恢复轮次的模型凭据绑定不一致',
+          );
+        /** 团队新轮次选实际发起人的最新修订，不改创建者绑定；续作始终固定原 Run。 */
+        if (
+          !resumedModel &&
+          (workspace.teamId || (!modelCredentialId && session.timelineSeq === 0))
+        ) {
           const latest = await findOrderedOne(credentials, 'credentialId', {
             where: { ownerUserId: userId, kind: 'model', status: 'active' },
             attributes: ['credentialId'],
@@ -315,10 +338,10 @@ export function createMessageService(
           });
           if (latest?.credentialId) {
             modelCredentialId = latest.credentialId;
-            await session.update({ modelCredentialId }, { transaction });
+            if (!workspace.teamId) await session.update({ modelCredentialId }, { transaction });
           }
         }
-        if (!modelCredentialId && isExternalUserId(userId))
+        if (!modelCredentialId && (workspace.teamId || isExternalUserId(userId)))
           throw new SessionError(
             422,
             'MODEL_CREDENTIAL_UNAVAILABLE',
@@ -362,7 +385,12 @@ export function createMessageService(
             personalToken = await personalCredentials.getToken(
               userId,
               modelCredentialId,
-              model,
+              resumedModel
+                ? {
+                    MODEL_BASE_URL: resumedModel.MODEL_BASE_URL as string,
+                    MODEL_NAME: resumedModel.MODEL_NAME as string,
+                  }
+                : model,
               transaction,
             );
           } catch {
@@ -404,18 +432,19 @@ export function createMessageService(
             resourceRevisionId: workspace.activeResourceRevisionId,
             configRevision: workspace.configRevision,
             configSnapshot,
-            modelSnapshot: recovery?.modelSnapshot ?? {
-              ...(modelCredentialId ? { modelCredentialId } : {}),
-              MODEL_BASE_URL: model.MODEL_BASE_URL,
-              MODEL_NAME: model.MODEL_NAME,
-              contextBudgetTokens: model.contextBudgetTokens,
-              requestTimeoutMs: model.requestTimeoutMs ?? 180000,
-              ...(model.reasoningPolicy !== undefined
-                ? { reasoningPolicy: model.reasoningPolicy }
-                : {}),
-              maxTurns: runtime.d2c.execution.maxTurns,
-              runTimeoutMs: runtime.d2c.execution.runTimeoutMs,
-            },
+            modelSnapshot: recovery?.modelSnapshot ??
+              resumedModel ?? {
+                ...(modelCredentialId ? { modelCredentialId } : {}),
+                MODEL_BASE_URL: model.MODEL_BASE_URL,
+                MODEL_NAME: model.MODEL_NAME,
+                contextBudgetTokens: model.contextBudgetTokens,
+                requestTimeoutMs: model.requestTimeoutMs ?? 180000,
+                ...(model.reasoningPolicy !== undefined
+                  ? { reasoningPolicy: model.reasoningPolicy }
+                  : {}),
+                maxTurns: runtime.d2c.execution.maxTurns,
+                runTimeoutMs: runtime.d2c.execution.runTimeoutMs,
+              },
             credentialId,
             baseFileRevision: session.fileRevision,
             resumeFromRunId: resumeFromRunId ?? null,
@@ -508,6 +537,8 @@ export function createMessageService(
           lock: transaction.LOCK.UPDATE,
         });
         if (!run) throw new SessionError(404, 'RUN_NOT_FOUND', '执行轮次不存在');
+        if ((run.requestedUserId ?? workspace.createdUserId) !== userId)
+          throw new SessionError(422, 'MODEL_CREDENTIAL_UNAVAILABLE', '只能由原轮次发起人回答');
         const prior = await timeline.findOne({
           where: {
             sessionId,
@@ -560,14 +591,23 @@ export function createMessageService(
           try {
             if (
               run.requestedUserId !== userId ||
-              run.modelSnapshot.modelCredentialId !== session.modelCredentialId
+              (!workspace.teamId &&
+                run.modelSnapshot.modelCredentialId !== session.modelCredentialId)
             )
               throw new Error();
             token = await createModelCredentialService(
               mysql,
               () => runtime.d2c.secrets,
               () => runtime.modelConfigs,
-            ).getToken(userId, String(run.modelSnapshot.modelCredentialId), undefined, transaction);
+            ).getToken(
+              userId,
+              String(run.modelSnapshot.modelCredentialId),
+              {
+                MODEL_BASE_URL: run.modelSnapshot.MODEL_BASE_URL as string,
+                MODEL_NAME: run.modelSnapshot.MODEL_NAME as string,
+              },
+              transaction,
+            );
           } catch {
             throw new SessionError(
               422,

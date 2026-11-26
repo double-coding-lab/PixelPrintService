@@ -11,6 +11,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Sequelize, Transaction } from 'sequelize';
 import type { D2cRun } from '@/models/D2cRun';
+import type { D2cCredential } from '@/models/D2cCredential';
 import type { D2cSession } from '@/models/D2cSession';
 import type { D2cWorkspace } from '@/models/D2cWorkspace';
 import type { D2cWorkspaceRevision } from '@/models/D2cWorkspaceRevision';
@@ -240,8 +241,36 @@ export function createRunPersistence(
           })
           .map((file) => file.path!);
         const model = modelSchema.parse(run.modelSnapshot);
-        if ((session.modelCredentialId ?? null) !== (model.modelCredentialId ?? null))
+        if (workspace.teamId && model.modelCredentialId) {
+          /** 新团队选择必须有明确发起人及本人有效凭据，不能只跳过会话绑定校验。 */
+          const credentialOwner =
+            run.requestedUserId ??
+            (model.modelCredentialId === session.modelCredentialId
+              ? workspace.createdUserId
+              : null);
+          const credential = credentialOwner
+            ? await (mysql.models.D2cCredential as typeof D2cCredential).findOne({
+                where: {
+                  credentialId: model.modelCredentialId,
+                  ownerUserId: credentialOwner,
+                  kind: 'model',
+                  status: 'active',
+                },
+                transaction,
+              })
+            : null;
+          if (
+            !credential ||
+            credential.credentialId !== model.modelCredentialId ||
+            credential.ownerUserId !== credentialOwner ||
+            credential.kind !== 'model' ||
+            credential.status !== 'active'
+          )
+            throw new Error('固定模型凭据绑定不一致');
+        } else if ((session.modelCredentialId ?? null) !== (model.modelCredentialId ?? null)) {
+          /** 个人及旧的无凭据团队快照继续执行原绑定规则。 */
           throw new Error('固定模型凭据绑定不一致');
+        }
         return {
           message: {
             id: incoming.messageId,
