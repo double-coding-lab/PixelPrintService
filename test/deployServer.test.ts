@@ -25,7 +25,14 @@ const runtimeFiles = [
 /** Exercise the actual deploy script with isolated command boundaries; no SSH or live Docker. */
 async function fixture(
   t: any,
-  options: { stale?: boolean; healthFailure?: boolean; badArchive?: boolean } = {},
+  options: {
+    stale?: boolean;
+    healthFailure?: boolean;
+    badArchive?: boolean;
+    fetchFailures?: number;
+    fetchError?: string;
+    proxy?: boolean;
+  } = {},
 ) {
   const root = await mkdtemp(path.join(tmpdir(), 'pixelprint-deploy smoke-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -61,8 +68,15 @@ async function fixture(
   }
   await executable(
     'git',
-    `case "$1" in
-    fetch|merge) exit 0 ;;
+    `while [ "$1" = '-c' ]; do shift 2; done
+  case "$1" in
+    fetch)
+      count=0
+      [ ! -f "$TEST_FETCH_COUNT" ] || count=$(cat "$TEST_FETCH_COUNT")
+      count=$((count + 1)); printf '%s' "$count" > "$TEST_FETCH_COUNT"
+      if [ "$count" -le "$TEST_FETCH_FAILURES" ]; then printf '%s\\n' "$TEST_FETCH_ERROR" >&2; exit 128; fi
+      exit 0 ;;
+    merge) exit 0 ;;
     rev-parse) printf '%s\\n' "$TEST_MAIN_SHA" ;;
     archive) exec tar -cf - -C "$TEST_SOURCE" . ;;
     *) exit 91 ;;
@@ -89,6 +103,10 @@ async function fixture(
     TEST_LOG: log,
     TEST_MAIN_SHA: options.stale ? 'b'.repeat(40) : release,
     TEST_HEALTH_FAIL: options.healthFailure ? '1' : '0',
+    TEST_FETCH_COUNT: path.join(root, 'fetch-count'),
+    TEST_FETCH_FAILURES: String(options.fetchFailures ?? 0),
+    TEST_FETCH_ERROR: options.fetchError ?? 'SSL_ERROR_SYSCALL',
+    ...(options.proxy ? { DEPLOY_GIT_PROXY: 'http://127.0.0.1:7890' } : {}),
   };
   const signature = execFileSync('bash', ['scripts/runtime-signature.sh'], {
     cwd: app,
@@ -104,7 +122,7 @@ async function fixture(
       env,
       timeout: 15000,
     });
-  return { app, log, run };
+  return { app, log, run, fetchCount: env.TEST_FETCH_COUNT };
 }
 
 test('deployment refuses invalid commit input before reading an archive', () => {
@@ -143,3 +161,24 @@ test('failed health check restores the previous image without recording success'
   );
   assert.match(result.stderr, /restoring previous app image/);
 });
+
+for (const proxy of [false, true])
+  test(`temporary Git transport failures retry fetch before activation; proxy=${proxy}`, async (t) => {
+    const f = await fixture(t, { fetchFailures: 2, proxy });
+    const result = f.run();
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(f.fetchCount, 'utf8'), '3');
+    assert.match(result.stderr, /retrying fetch/);
+    assert.equal(
+      (await readFile(path.join(f.app, '.runtime/deployed-commit'), 'utf8')).trim(),
+      release,
+    );
+  });
+for (const error of ['SSL_ERROR_SYSCALL', 'Authentication failed'])
+  test(`fetch failure retains old deployment and stops with original status: ${error}`, async (t) => {
+    const f = await fixture(t, { fetchFailures: 9, fetchError: error });
+    const result = f.run();
+    assert.equal(result.status, 128);
+    assert.equal(await readFile(f.fetchCount, 'utf8'), error === 'SSL_ERROR_SYSCALL' ? '3' : '1');
+    assert.equal(await readFile(f.log, 'utf8'), '');
+  });
