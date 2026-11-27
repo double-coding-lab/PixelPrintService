@@ -1,3 +1,4 @@
+import { coveredReadView } from './readCoverage';
 import {
   AIMessage,
   AIMessageChunk,
@@ -291,9 +292,9 @@ function repeatedResultView(messages: BaseMessage[], feedbackOnly: boolean) {
     : messages;
 }
 
-/** 只折叠逐字相同的正常读取，最新完整证据继续保留。 */
+/** 折叠相同回执及由较新同版本分页完整覆盖的读取，保留所有独有正文。 */
 export function repeatedReadView(messages: BaseMessage[]) {
-  return repeatedResultView(messages, false);
+  return coveredReadView(repeatedResultView(messages, false));
 }
 
 /** 只折叠参数及正文逐字相同、唯一配对的结构化反馈；未知副作用及最新失败不折叠。 */

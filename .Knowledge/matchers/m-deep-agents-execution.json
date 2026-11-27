@@ -72,6 +72,9 @@
     "ER_NET_PACKET_TOO_LARGE",
     "max_allowed_packet",
     "思考字段缺失",
-    "空思考兼容"
+    "空思考兼容",
+    "重复读取",
+    "分页去重",
+    "章节目录"
   ]
 }

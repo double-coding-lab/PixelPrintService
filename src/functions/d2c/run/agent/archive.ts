@@ -140,6 +140,7 @@ export function createHistoryArchive(input: {
         return JSON.stringify({
           path,
           offset,
+          sha256: createHash('sha256').update(content).digest('hex'),
           totalCharacters: content.length,
           content: content.slice(offset, offset + length),
           nextOffset: offset + length < content.length ? offset + length : null,

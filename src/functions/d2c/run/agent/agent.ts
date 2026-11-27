@@ -380,6 +380,16 @@ export async function runAgent(input: AgentRunInput): Promise<{
     ),
     tool(
       ({ path, resource = false, offset, length, view }) => {
+        if (view === 'outline' && (!resource || !resources))
+          throw toolIssue(
+            'INVALID_ARGUMENT',
+            'VALIDATION_FAILED',
+            { stage: 'tool', tool: 'read_file' },
+            {
+              detail:
+                'view=outline仅用于resource=true的固定资料目录；会话源码与历史正文继续使用view=full。',
+            },
+          );
         if (view === 'scan_pending') {
           if (resource || !input.readScanPending)
             throw toolIssue('INVALID_ARGUMENT', 'VALIDATION_FAILED', {
@@ -396,8 +406,10 @@ export async function runAgent(input: AgentRunInput): Promise<{
         }
         if (resources && resource)
           return track(
-            resources
-              .readText(path, offset ?? 0, readLength(length))
+            (view === 'outline'
+              ? resources.readOutline(path, offset ?? 0, length ?? 32)
+              : resources.readText(path, offset ?? 0, readLength(length))
+            )
               .catch(async (error: unknown) => {
                 if (
                   error instanceof Error &&
@@ -456,13 +468,15 @@ export async function runAgent(input: AgentRunInput): Promise<{
       },
       {
         name: 'read_file',
-        description: `读取会话文本或 PNG/JPEG/WebP 图片；图片作为视觉输入。resource=true 读取固定 Skill，resource=false 读取会话文件或 /history/ 内部历史。${input.readScanPending ? '原生扫描可用view=scan_pending读取未完成项，offset/length按条目分页；不传view仍为完整文件。' : ''}文本length=null由平台按当前剩余Token预算自动选择页长，小文件尽量一次读完；单次最多256000字符、128000估算Token，同轮并行读取共享预算。仅需局部时指定length；长文件按返回nextOffset接续；同一上下文已有完整且未变的内容直接使用，仅补读缺失部分。`,
+        description: `读取会话文本或 PNG/JPEG/WebP 图片；图片作为视觉输入。resource=true 读取固定 Skill，resource=false 读取会话文件或 /history/ 内部历史。${input.readScanPending ? '原生扫描可用view=scan_pending读取未完成项，offset/length按条目分页；不传view仍为完整文件。' : ''}固定资料可用view=outline先定位章节，目录offset/length按条目（默认32、最多64）；sections的offset/end用于view=full按字符读取对应正文，目录不代表读完规则。默认及view=full的文本length=null由平台按当前剩余Token预算自动选择页长，小文件尽量一次读完；单次最多256000字符、128000估算Token，同轮并行读取共享预算。仅需局部时指定length；长文件按返回nextOffset接续；同一上下文已有完整且未变的内容直接使用，仅补读缺失部分。`,
         schema: z.object({
           path: z.string(),
           resource: z.boolean().default(false),
           offset: z.number().int().min(0).nullish(),
           length: z.number().int().min(1).max(maxReadCharacters).nullish(),
-          ...(input.readScanPending ? { view: z.enum(['full', 'scan_pending']).nullish() } : {}),
+          view: z
+            .enum(['full', 'outline', ...(input.readScanPending ? ['scan_pending' as const] : [])])
+            .nullish(),
         }),
       },
     ),

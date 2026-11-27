@@ -1,3 +1,5 @@
+import { markdownOutline } from './markdownOutline';
+import { createHash } from 'node:crypto';
 import { maxReadCharacters } from './context';
 import { StateBackend, type BackendProtocolV2, type FileData } from 'deepagents';
 import { validateResourceBundle, type ResourceBundle } from '../../workspace/resources';
@@ -135,6 +137,30 @@ export function createFixedResourceBackend(input: {
           .sort(),
       );
     },
+    /** 显式目录视图按章节条目分页；完整正文和原字符分页接口继续可用。 */
+    async readOutline(value: string, offset = 0, limit = 32) {
+      if (
+        !Number.isSafeInteger(offset) ||
+        offset < 0 ||
+        !Number.isSafeInteger(limit) ||
+        limit < 1 ||
+        limit > 64
+      )
+        throw new Error('固定资源分页参数无效');
+      const result = await backend.readRaw(location(value));
+      if (result.error || !result.data) throw new Error('固定资源不存在');
+      const text = result.data.content;
+      if (typeof text !== 'string') throw new Error('固定资源不是文本');
+      return JSON.stringify({
+        view: 'outline',
+        path: value,
+        sha256: createHash('sha256').update(text).digest('hex'),
+        totalCharacters: text.length,
+        ...markdownOutline(text, offset, limit),
+        message:
+          '本结果只有目录，不表示已读正文或规则。sections中的offset/end为正文字符位置，用view=full、offset=章节offset、length=end-offset按需读取；完整章节仍按nextOffset接续。目录自身offset/length按条目计数。',
+      });
+    },
     /** 保留旧工具的字符分页约定；原生 Skill 路径在这里映射，不访问本机目录。 */
     async readText(value: string, offset = 0, length = 8000) {
       if (
@@ -154,6 +180,7 @@ export function createFixedResourceBackend(input: {
       if (typeof text !== 'string') throw new Error('固定资源不是文本');
       return JSON.stringify({
         path: value,
+        sha256: createHash('sha256').update(text).digest('hex'),
         totalCharacters: text.length,
         offset,
         content: text.slice(offset, offset + length),
