@@ -1,4 +1,8 @@
-import { previewInspectionOptionsSchema, type PreviewInspectionOptions } from './interaction';
+import {
+  previewInspectionOptionsSchema,
+  type PreviewInspectionOptions,
+  type PreviewLayoutCheck,
+} from './interaction';
 import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { PreviewService } from './service';
@@ -16,6 +20,8 @@ export function createPreviewInspection(input: {
   signal: AbortSignal;
   assertLease: () => Promise<void>;
   capture?: typeof runPreviewCapture;
+  layoutChecks?: () => Promise<PreviewLayoutCheck[]>;
+  requireWholePage?: boolean;
   saveCapture?: (value: {
     previewId: string;
     fileRevision: number;
@@ -25,12 +31,48 @@ export function createPreviewInspection(input: {
   }) => Promise<{ imageRef: string; image: AgentImage }>;
 }) {
   let dirty = false;
+  const layoutProblems = new Map<string, string>();
+  let wholePagePending = false;
   let selectedEntry: string | undefined;
   let scheduled: ReturnType<typeof setTimeout> | undefined;
   let pending: Promise<unknown> | undefined;
   const images = new Map<string, AgentImage>();
   const checked = new Map<string, string>();
   const reportedBuildFailures = new Set<string>();
+
+  /** Partial/action captures clear only the axes actually measured; unrelated failures survive. */
+  function recordLayout(
+    layout: PreviewCaptureResult['layout'],
+    checks: PreviewLayoutCheck[],
+    entry: string,
+  ) {
+    if (!layout) return;
+    const blocked = new Set(
+      layout.issues.filter((issue) => !/mismatch$/.test(issue.code)).map((issue) => issue.selector),
+    );
+    for (const check of checks) {
+      if (blocked.has(check.selector) || (check.container && blocked.has(check.container)))
+        continue;
+      for (const [property, code] of [
+        ['width', 'width_mismatch'],
+        ['height', 'height_mismatch'],
+        ['centerX', 'center_x_mismatch'],
+        ['centerY', 'center_y_mismatch'],
+      ] as const) {
+        if (check[property] !== undefined && check[property] !== false && !layout.truncated)
+          layoutProblems.delete(`${entry}:${check.selector}:${code}`);
+      }
+    }
+    for (const issue of layout.issues) {
+      if (!/mismatch$/.test(issue.code)) continue;
+      const key = `${entry}:${issue.selector}:${issue.code}`;
+      if (layoutProblems.size < 40 || layoutProblems.has(key))
+        layoutProblems.set(
+          key,
+          `实际布局未通过：${entry} ${issue.selector} ${issue.code}，预期 ${issue.expected}，实际 ${issue.actual} CSS px；定点修复后复验，不重扫设计稿。`,
+        );
+    }
+  }
 
   /** 等待真实队列构建，保留取消和租约检查，不调用宿主编译或对象上传。 */
   async function ready(entryPath?: string) {
@@ -59,6 +101,8 @@ export function createPreviewInspection(input: {
     /** 文件提交后合并唤醒；客户端关闭也不影响当前 Run 的后台预览。 */
     changed() {
       dirty = true;
+      layoutProblems.clear();
+      wholePagePending = input.requireWholePage === true;
       if (scheduled) clearTimeout(scheduled);
       scheduled = setTimeout(() => {
         scheduled = undefined;
@@ -70,6 +114,10 @@ export function createPreviewInspection(input: {
           });
       }, 800);
       scheduled.unref();
+    },
+    /** Only current-source geometry failures enter the existing bounded delivery repair loop. */
+    problems() {
+      return dirty ? [] : [...layoutProblems.values()].slice(0, 8);
     },
     tools: {
       /** 复用自动预览的真实失败结果；不轮询、不新增构建，也不使用旧修订猜测当前错误。 */
@@ -105,7 +153,7 @@ export function createPreviewInspection(input: {
       },
       /** 自动收尾仅检查本轮实际修改过的文件；普通聊天不重复截图。 */
       async needsInspection() {
-        return dirty;
+        return dirty || wholePagePending;
       },
       /** 返回真实构建状态与安全诊断，失败供模型调整，不误报为存储失败。 */
       async build(entryPath?: string) {
@@ -113,8 +161,27 @@ export function createPreviewInspection(input: {
       },
       /** 同一不可变预览只截图一次；生产接线持久保存聊天附件，模型历史只保存短引用。 */
       async inspect(entryPath?: string, options: PreviewInspectionOptions = {}) {
-        const inspection = previewInspectionOptionsSchema.parse(options);
+        const explicit = previewInspectionOptionsSchema.parse(options);
+        const baseline =
+          !explicit.actions?.length && !explicit.focusSelector
+            ? ((await input.layoutChecks?.()) ?? [])
+            : [];
+        const inspection = previewInspectionOptionsSchema.parse({
+          ...explicit,
+          ...(explicit.layoutChecks?.length || baseline.length
+            ? {
+                layoutChecks: [
+                  ...(explicit.layoutChecks ?? []),
+                  ...baseline.filter(
+                    (check) =>
+                      !explicit.layoutChecks?.some((value) => value.selector === check.selector),
+                  ),
+                ].slice(0, 32),
+              }
+            : {}),
+        });
         dirty = false;
+        if (!explicit.actions?.length && !explicit.focusSelector) wholePagePending = false;
         const result = await ready(entryPath);
         if (!result.ok) return JSON.stringify(result);
         const preview = result.preview;
@@ -122,7 +189,10 @@ export function createPreviewInspection(input: {
         const inspectionKey = createHash('sha256').update(JSON.stringify(inspection)).digest('hex');
         const captureKey = `${preview.previewId}:${inspectionKey}`;
         const cached = checked.get(captureKey);
-        if (cached) return cached;
+        if (cached) {
+          recordLayout(JSON.parse(cached).layout, inspection.layoutChecks ?? [], preview.entryPath);
+          return cached;
+        }
         try {
           const files = await input.service.captureInputs(input.userId, preview.previewId);
           const capture = await (input.capture ?? runPreviewCapture)({
@@ -147,6 +217,7 @@ export function createPreviewInspection(input: {
           images.set(imageRef, saved?.image ?? { mimeType: capture.mimeType, data: capture.image });
           /** 最近四张已够一次视觉请求，避免长任务在进程内积累全部截图。 */
           while (images.size > 4) images.delete(images.keys().next().value!);
+          recordLayout(capture.layout, inspection.layoutChecks ?? [], preview.entryPath);
           const output = JSON.stringify({
             ok: true,
             previewId: preview.previewId,
@@ -158,6 +229,7 @@ export function createPreviewInspection(input: {
             ...(capture.truncated ? { truncated: true } : {}),
             ...(capture.interaction ? { interaction: capture.interaction } : {}),
             ...(capture.coverage ? { coverage: capture.coverage } : {}),
+            ...(capture.layout ? { layout: capture.layout } : {}),
             errors: capture.errors,
             missingAssets: capture.missingAssets,
             message:

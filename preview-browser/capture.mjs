@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { collectLayout, validLayoutChecks } from './layout.mjs';
 
 /** Always resolve the pinned browser beside this script, independent of HOME or parent env. */
 process.env.PLAYWRIGHT_BROWSERS_PATH = fileURLToPath(new URL('./.browsers', import.meta.url));
@@ -35,8 +36,11 @@ function validInspection(options) {
   const number = (value, limit = 24000) =>
     typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= limit;
   if (
-    Object.keys(options).some((key) => !['focusSelector', 'actions'].includes(key)) ||
-    (options.focusSelector !== undefined && !css(options.focusSelector))
+    Object.keys(options).some(
+      (key) => !['focusSelector', 'actions', 'layoutChecks'].includes(key),
+    ) ||
+    (options.focusSelector !== undefined && !css(options.focusSelector)) ||
+    !validLayoutChecks(options.layoutChecks, css)
   )
     return false;
   if (options.actions === undefined) return true;
@@ -584,6 +588,7 @@ try {
       .map((image) => image.currentSrc || image.src),
   );
   for (const url of broken) asset(url);
+  const layout = await collectLayout(frame, input.inspection?.layoutChecks ?? []);
   let image;
   /** Crop height instead of recompressing/rescaling PNGs that exceed the byte budget. */
   for (;;) {
@@ -610,6 +615,7 @@ try {
       width: input.width,
       height,
       truncated,
+      layout,
       ...(interaction ? { interaction } : {}),
       coverage: {
         mode: focused ? 'focused' : 'page',

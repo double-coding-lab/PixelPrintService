@@ -43,6 +43,9 @@ const captureReport = z.object({
   errors: z.array(z.unknown()).length(0),
   missingAssets: z.array(z.unknown()).length(0),
   truncated: z.literal(false).optional(),
+  layout: z
+    .object({ issues: z.array(z.unknown()).length(0), truncated: z.literal(false) })
+    .optional(),
 });
 
 /** 这是下一请求的建议，不是规则/视觉通过凭据，也不改变推理档位或任何验收门禁。 */

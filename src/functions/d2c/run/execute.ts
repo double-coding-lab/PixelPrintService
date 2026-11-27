@@ -1,6 +1,7 @@
 import { consumeRunGuidance } from '../session/queue';
 import { createRunScreenshotWriter } from './screenshots';
 import { createPreviewInspection } from '../preview/inspection';
+import { cachedLayoutChecks } from '../preview/layoutBaseline';
 import type { PreviewService } from '../preview/service';
 import { resolveAttachmentImages } from '../session/attachments';
 import { redactPartialText } from './agent/textStream';
@@ -249,6 +250,11 @@ export async function executeGenerationRun(input: {
         sessionId: lease.sessionId,
         signal,
         assertLease,
+        requireWholePage: !snapshot.files.some((file) => /\.[jt]sx?$/.test(file.path)),
+        layoutChecks:
+          target === 'h5' && !snapshot.files.some((file) => /\.[jt]sx?$/.test(file.path))
+            ? () => cachedLayoutChecks(restored.workspace, snapshot.figmaUrl)
+            : undefined,
         saveCapture: (value) => boundary('STORAGE_FAILED', 'storage', () => saveScreenshot(value)),
       })
     : undefined;
@@ -364,7 +370,15 @@ export async function executeGenerationRun(input: {
     /** SDK 只取得工具接口；稳定历史写入由 persistence 处理，Token 留在可信工具边界。 */
     const result = await runDeepGeneration({
       inspectDelivery: (required) =>
-        boundary('STORAGE_FAILED', 'storage', () => runtime.delivery(required)),
+        boundary('STORAGE_FAILED', 'storage', async () => {
+          const delivery = await runtime.delivery(required);
+          const problems = preview?.problems() ?? [];
+          return {
+            ...delivery,
+            signature: `${delivery.signature}:${JSON.stringify(problems)}`,
+            problems: [...delivery.problems, ...problems],
+          };
+        }),
       readGuidance: (applied) =>
         boundary('STORAGE_FAILED', 'storage', () =>
           consumeRunGuidance(input.mysql, leases, lease, applied, input.notify),

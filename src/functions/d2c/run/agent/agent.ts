@@ -1694,7 +1694,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
           tool((params: DelegationInput) => track(launchDelegation(params)), {
             name: 'delegate_agent',
             description:
-              '有持久化子任务时本工具只启动后台工作并返回accepted/agentId，尚未完成。主Agent继续实现自己的区域，为独立子区块保留接口/占位；需要子产物或进行组合、全局检查、预览前用wait_subagents(wait=true)收集结果，不要立刻等待或循环查状态。局部失败返回handoff和resumeAgentId；优先沿用原role/nodeId/writePaths并传resumeAgentId恢复，接管前读取contextPath，不丢弃已有进度。委派独立子Agent：rule_scan每次仅扫描一个nodeId并保存其唯一rule-hits.json；多个区块分别委派，不能共用一个nodeId生成多份报告；ui仅为真实sub-图层生成区块源码和assets.txt，必须提供nodeId；无sub-整页由主Agent自己出码，Rule-Scan页面根虚拟block不允许委派ui；writePaths列出本次允许保存的全部精确相对文件路径。design/review仍只读。所有子Agent不继承聊天历史、不递归或运行任意脚本，对已知独立且writePaths不重叠的任务，一次提交全部委派进入现有队列，不要只派两项再等待整批；队列最多两个同时执行，完成自动补位，共享总预算。需要后续任务决策时用wait_subagents(wait=true,mode=any)先收取已完成项；最终整合用mode=all；UI子Agent须对授权blocks/<alias>目录执行check_rules(block)，修复后重新检查；同一违规连续两轮未改善以RULE_REPAIR_STALLED交回，父级定点接管，不原样重派；不能merge或检查越界目录。父Agent只负责自己的区域与组合，最后一次机械merge不重复深入子区域语义校验；全局单agent复验仅用户主动请求时执行。已知框架检查需要区块目录，与精确writePaths不兼容时保守拒绝，不能扩大写权限。task最多8000个UTF-8字节，中文通常每字3字节；只给目标nodeId、h5/rn、Skill/配置/全局清单/缓存/报告路径及必要约束，不复制源码、规则正文或节点JSON，详情由子Agent读取；rule_scan若平台提供原生扫描，只按待判断视图读取对应规则与节点并提交增量判断；无原生扫描时按rules/README.md原文读取全部规则（不硬编码数量）。不要在task中要求原生扫描重扫完整报告；ui读取扫描报告落实assets.txt消费证明；内层sub返回父级继续派发。',
+              '有持久化子任务时本工具只启动后台工作并返回accepted/agentId，尚未完成。主Agent继续实现自己的区域，为独立子区块保留接口/占位；需要子产物或进行组合、全局检查、预览前用wait_subagents(wait=true)收集结果，不要立刻等待或循环查状态。局部失败返回handoff和resumeAgentId；优先沿用原role/nodeId/writePaths并传resumeAgentId恢复，接管前读取contextPath，不丢弃已有进度。委派独立子Agent：rule_scan每次仅扫描一个nodeId并保存其唯一rule-hits.json；多个区块分别委派，不能共用一个nodeId生成多份报告；ui仅为真实sub-图层生成区块源码和assets.txt，必须提供nodeId；无sub-整页由主Agent自己出码，Rule-Scan页面根虚拟block不允许委派ui；writePaths列出本次允许保存的全部精确相对文件路径。design/review仍只读。所有子Agent不继承聊天历史、不递归或运行任意脚本，对已知独立且writePaths不重叠的任务，一次提交全部委派进入现有队列，不要只派两项再等待整批；队列最多两个同时执行，完成自动补位，共享总预算。需要后续任务决策时用wait_subagents(wait=true,mode=any)先收取已完成项；最终整合用mode=all；UI子Agent须对授权blocks/<alias>目录执行check_rules(block)，修复后重新检查；同一违规连续两轮未改善以RULE_REPAIR_STALLED交回，父级定点接管，不原样重派；不能merge或检查越界目录。父Agent只负责自己的区域与组合，最后一次机械merge不重复深入子区域语义校验；全量单Agent语义重扫仅用户主动请求时执行；组合完成后仍须对最终修订做一次整体运行截图和轻量布局核对，复用有效局部证据。已知框架检查需要区块目录，与精确writePaths不兼容时保守拒绝，不能扩大写权限。task最多8000个UTF-8字节，中文通常每字3字节；只给目标nodeId、h5/rn、Skill/配置/全局清单/缓存/报告路径及必要约束，不复制源码、规则正文或节点JSON，详情由子Agent读取；rule_scan若平台提供原生扫描，只按待判断视图读取对应规则与节点并提交增量判断；无原生扫描时按rules/README.md原文读取全部规则（不硬编码数量）。不要在task中要求原生扫描重扫完整报告；ui读取扫描报告落实assets.txt消费证明；内层sub返回父级继续派发。',
             schema: z.object({
               role: z.enum(['design', 'review', 'rule_scan', 'ui']),
               resumeAgentId: z.string().uuid().nullable().optional(),
@@ -1785,7 +1785,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
             {
               name: 'inspect_preview',
               description:
-                '在当前源码预览执行受控click/swipe/scroll及expect断言并截图。交互修改用actions覆盖真实操作和预期结果，循环覆盖双向及重复边界；focusSelector定位页面下方目标。禁止用改默认值代替点击。截图和动作结果不等于整页规则或视觉通过。',
+                '在当前源码预览执行受控click/swipe/scroll及expect断言并截图。交互修改用actions覆盖真实操作和预期结果，循环覆盖双向及重复边界；focusSelector定位页面下方目标。禁止用改默认值代替点击。layoutChecks可在同次截图核对实际宽高与相对容器的centerX/centerY，尺寸为375视口CSS像素，最多32项。从已有节点缓存选择固定尺寸及设计明确居中的文字，不把100%/auto一律改为定宽。检查layout.issues并定点修复；合并后在最新修订完成一次整体截图验收，复用有效局部证据，不新增全量扫描。截图和动作结果不等于整页规则或视觉通过。',
               schema: previewInspectionOptionsSchema.extend({
                 entryPath: z.string().max(512).nullish(),
               }),

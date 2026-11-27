@@ -2,6 +2,8 @@ import {
   previewInspectionOptionsSchema,
   previewInteractionResultSchema,
   previewCoverageSchema,
+  previewLayoutResultSchema,
+  type PreviewLayoutResult,
   type PreviewInspectionOptions,
   type PreviewInteractionResult,
   type PreviewCoverage,
@@ -30,6 +32,7 @@ export interface PreviewCaptureResult {
   truncated: boolean;
   interaction?: PreviewInteractionResult;
   coverage?: PreviewCoverage;
+  layout?: PreviewLayoutResult;
 }
 
 /** Fixed safe failures never expose stderr, generated code or host configuration. */
@@ -341,9 +344,12 @@ function decode(output: Buffer, width: number): PreviewCaptureResult {
     value.interaction === undefined
       ? undefined
       : previewInteractionResultSchema.safeParse(value.interaction);
+  const layout =
+    value.layout === undefined ? undefined : previewLayoutResultSchema.safeParse(value.layout);
   const coverage =
     value.coverage === undefined ? undefined : previewCoverageSchema.safeParse(value.coverage);
   if (
+    (layout && !layout.success) ||
     (interaction && !interaction.success) ||
     (coverage &&
       (!coverage.success || coverage.data.width !== width || coverage.data.height !== value.height))
@@ -365,6 +371,7 @@ function decode(output: Buffer, width: number): PreviewCaptureResult {
     width,
     height: value.height,
     truncated: value.truncated,
+    ...(layout?.success ? { layout: layout.data } : {}),
     ...(interaction?.success ? { interaction: interaction.data } : {}),
     ...(coverage?.success ? { coverage: coverage.data } : {}),
     errors: value.errors.map((item: { code: string }) => ({ code: item.code })),

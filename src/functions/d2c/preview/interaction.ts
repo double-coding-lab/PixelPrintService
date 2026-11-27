@@ -50,10 +50,61 @@ const expectations = [
     .strict(),
 ] as const;
 
+/** Bounded geometry assertions use CSS pixels in the existing screenshot viewport. */
+export const previewLayoutCheckSchema = z
+  .object({
+    selector,
+    width: z.number().finite().positive().max(24000).optional(),
+    height: z.number().finite().positive().max(24000).optional(),
+    container: selector.optional(),
+    centerX: z.boolean().optional(),
+    centerY: z.boolean().optional(),
+    tolerance: z.number().finite().min(0).max(20).default(3),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      (value.width !== undefined || value.height !== undefined || value.centerX || value.centerY) &&
+      (!(value.centerX || value.centerY) || value.container !== undefined),
+  );
+export type PreviewLayoutCheck = z.infer<typeof previewLayoutCheckSchema>;
+
+/** Browser diagnostics expose bounded geometry only, never page text or stylesheets. */
+export const previewLayoutResultSchema = z
+  .object({
+    durationMs: z.number().finite().nonnegative().max(75000),
+    checked: z.number().int().min(0).max(300),
+    truncated: z.boolean(),
+    issues: z
+      .array(
+        z
+          .object({
+            code: z.enum([
+              'width_mismatch',
+              'height_mismatch',
+              'center_x_mismatch',
+              'center_y_mismatch',
+              'not_found',
+              'ambiguous_selector',
+              'not_visible',
+              'overflow',
+            ]),
+            selector,
+            expected: z.number().finite().optional(),
+            actual: z.number().finite().optional(),
+          })
+          .strict(),
+      )
+      .max(40),
+  })
+  .strict();
+export type PreviewLayoutResult = z.infer<typeof previewLayoutResultSchema>;
+
 /** Every interaction is declarative, bounded and limited to the isolated preview DOM. */
 export const previewInspectionOptionsSchema = z
   .object({
     focusSelector: selector.optional(),
+    layoutChecks: z.array(previewLayoutCheckSchema).max(32).optional(),
     actions: z
       .array(
         z.union([
@@ -102,7 +153,7 @@ export const previewInspectionOptionsSchema = z
       .optional(),
   })
   .strict();
-export type PreviewInspectionOptions = z.infer<typeof previewInspectionOptionsSchema>;
+export type PreviewInspectionOptions = z.input<typeof previewInspectionOptionsSchema>;
 
 /** Trusted protocol strips page exception text and only exposes fixed failure reasons. */
 export const previewInteractionResultSchema = z
