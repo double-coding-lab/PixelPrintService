@@ -1785,7 +1785,7 @@ export async function runAgent(input: AgentRunInput): Promise<{
             {
               name: 'inspect_preview',
               description:
-                '在当前源码预览执行受控click/swipe/scroll及expect断言并截图。交互修改用actions覆盖真实操作和预期结果，循环覆盖双向及重复边界；focusSelector定位页面下方目标。禁止用改默认值代替点击。layoutChecks可在同次截图核对实际宽高与相对容器的centerX/centerY，尺寸为375视口CSS像素，最多32项。从已有节点缓存选择固定尺寸及设计明确居中的文字，不把100%/auto一律改为定宽。检查layout.issues并定点修复；合并后在最新修订完成一次整体截图验收，复用有效局部证据，不新增全量扫描。截图和动作结果不等于整页规则或视觉通过。',
+                '在当前源码预览执行受控click/swipe/scroll及expect断言并截图。交互修改用actions覆盖真实操作和预期结果，循环覆盖双向及重复边界；focusSelector定位页面下方目标。禁止用改默认值代替点击。layoutChecks可在同次截图核对实际宽高与相对容器的centerX/centerY，overflow=true按需检查内容溢出，尺寸为375视口CSS像素，最多32项。从已有节点缓存选择固定尺寸及设计明确居中的文字，不把100%/auto一律改为定宽。检查layout.issues并定点修复；合并后在最新修订完成一次整体截图验收，复用有效局部证据，不新增全量扫描。截图和动作结果不等于整页规则或视觉通过。',
               schema: previewInspectionOptionsSchema.extend({
                 entryPath: z.string().max(512).nullish(),
               }),

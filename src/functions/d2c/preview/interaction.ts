@@ -59,12 +59,17 @@ export const previewLayoutCheckSchema = z
     container: selector.optional(),
     centerX: z.boolean().optional(),
     centerY: z.boolean().optional(),
+    overflow: z.boolean().optional(),
     tolerance: z.number().finite().min(0).max(20).default(3),
   })
   .strict()
   .refine(
     (value) =>
-      (value.width !== undefined || value.height !== undefined || value.centerX || value.centerY) &&
+      (value.width !== undefined ||
+        value.height !== undefined ||
+        value.centerX ||
+        value.centerY ||
+        value.overflow) &&
       (!(value.centerX || value.centerY) || value.container !== undefined),
   );
 export type PreviewLayoutCheck = z.infer<typeof previewLayoutCheckSchema>;

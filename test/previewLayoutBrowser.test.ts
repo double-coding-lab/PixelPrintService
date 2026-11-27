@@ -203,3 +203,18 @@ test(
     assert.equal(result.layout.checked, 1);
   },
 );
+
+test(
+  'real Chromium: overflow is opt-in so intentional clipping remains unaffected',
+  { skip: !browser, timeout: 45000 },
+  async () => {
+    const result = await capture(
+      '<div id="box" style="width:50px;height:20px;overflow:hidden"><div style="width:200px;height:20px"></div></div>',
+      [{ selector: '#box', overflow: true }],
+    );
+    assert.equal(result.error, undefined);
+    assert.deepEqual(result.layout.issues, [
+      { code: 'overflow', selector: '#box', expected: 50, actual: 200 },
+    ]);
+  },
+);

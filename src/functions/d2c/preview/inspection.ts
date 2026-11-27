@@ -48,7 +48,9 @@ export function createPreviewInspection(input: {
   ) {
     if (!layout) return;
     const blocked = new Set(
-      layout.issues.filter((issue) => !/mismatch$/.test(issue.code)).map((issue) => issue.selector),
+      layout.issues
+        .filter((issue) => !/(?:mismatch|overflow)$/.test(issue.code))
+        .map((issue) => issue.selector),
     );
     for (const check of checks) {
       if (blocked.has(check.selector) || (check.container && blocked.has(check.container)))
@@ -58,13 +60,14 @@ export function createPreviewInspection(input: {
         ['height', 'height_mismatch'],
         ['centerX', 'center_x_mismatch'],
         ['centerY', 'center_y_mismatch'],
+        ['overflow', 'overflow'],
       ] as const) {
         if (check[property] !== undefined && check[property] !== false && !layout.truncated)
           layoutProblems.delete(`${entry}:${check.selector}:${code}`);
       }
     }
     for (const issue of layout.issues) {
-      if (!/mismatch$/.test(issue.code)) continue;
+      if (!/(?:mismatch|overflow)$/.test(issue.code)) continue;
       const key = `${entry}:${issue.selector}:${issue.code}`;
       if (layoutProblems.size < 40 || layoutProblems.has(key))
         layoutProblems.set(

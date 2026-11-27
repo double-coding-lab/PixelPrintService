@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 23
+revision: 24
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -138,3 +138,5 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 - H5首次生成且轮次开始时无页面源码，在普通整页截图中复用当前设计链接的单份本地根缓存，最多遍历2000项/生成32项；只提取显式FIXED轴及设计坐标明确居中的文字，跳过隐藏层、整体切图子孙和FILL/HUG尺寸。根缓存缺失/无可用节点时保留显式检查入口，RN与局部交互依赖显式约束，不声称自动全页覆盖。
 - 实测尺寸/居中偏差进入已有有限交付修复流程；缺失、重复和不可见节点保留为覆盖缺口。新源码使旧诊断失效，相同不可变预览和参数复用截图及原失败结果。生成期定点截图保留整体检查欠账；最终整体检查仍不等于视觉通过。
 - Docker浏览器镜像需同步打包layout.mjs；服务端、浏览器协议和Skill一起部署。真实Chromium回归覆盖百分比父级变窄、flex收缩、装饰层旁文字偏移、正确弹性布局及有界协议。检查耗时单独记录，端到端提速需同稿同配置实测。
+
+- 轻量布局支持显式`overflow:true`：同次截图检查容器scrollWidth/scrollHeight相对client尺寸的溢出，并沿用有限修复及证据保留；轮播、滚动容器、装饰外扩和省略号不自动套用溢出断言。

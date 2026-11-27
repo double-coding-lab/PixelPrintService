@@ -10,17 +10,29 @@ export function validLayoutChecks(checks, css) {
       typeof check === 'object' &&
       !Array.isArray(check) &&
       Object.keys(check).every((key) =>
-        ['selector', 'width', 'height', 'container', 'centerX', 'centerY', 'tolerance'].includes(
-          key,
-        ),
+        [
+          'selector',
+          'width',
+          'height',
+          'container',
+          'centerX',
+          'centerY',
+          'overflow',
+          'tolerance',
+        ].includes(key),
       ) &&
       css(check.selector) &&
-      (check.width !== undefined || check.height !== undefined || check.centerX || check.centerY) &&
+      (check.width !== undefined ||
+        check.height !== undefined ||
+        check.centerX ||
+        check.centerY ||
+        check.overflow) &&
       (check.width === undefined || (number(check.width, 24000) && check.width > 0)) &&
       (check.height === undefined || (number(check.height, 24000) && check.height > 0)) &&
       (check.tolerance === undefined || number(check.tolerance, 20)) &&
       (check.centerX === undefined || typeof check.centerX === 'boolean') &&
       (check.centerY === undefined || typeof check.centerY === 'boolean') &&
+      (check.overflow === undefined || typeof check.overflow === 'boolean') &&
       (check.container === undefined || css(check.container)) &&
       (!(check.centerX || check.centerY) || css(check.container)),
   );
@@ -99,6 +111,13 @@ function auditLayout(checks) {
     };
     if (check.width !== undefined) compare('width_mismatch', check.width, rect.width);
     if (check.height !== undefined) compare('height_mismatch', check.height, rect.height);
+    if (check.overflow) {
+      const element = document.querySelector(check.selector);
+      if (element.clientWidth > 0 && element.scrollWidth > element.clientWidth + tolerance)
+        add('overflow', check.selector, element.clientWidth, element.scrollWidth);
+      if (element.clientHeight > 0 && element.scrollHeight > element.clientHeight + tolerance)
+        add('overflow', check.selector, element.clientHeight, element.scrollHeight);
+    }
     if (check.centerX || check.centerY) {
       const container = resolve(check.container);
       if (!container) continue;
