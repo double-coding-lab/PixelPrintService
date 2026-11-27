@@ -1,6 +1,6 @@
 ---
 id: d2c-preview-editing
-revision: 22
+revision: 23
 summary: "本地Vite预览、缓存、截图、元素审查和在线编辑"
 primary: module
 confidence: inferred
@@ -131,3 +131,10 @@ sourceDoc: .Knowledge/stock-docs/d2c-preview-editing.md
 
 - 构建/增量/截图固定资源通过src/paths.ts按服务模块定位；模板CLI入口比较realpath后的路径，支持受控执行目录符号链接。
 - RN图片别名枚举原始inputRoot，构建work镜像不重复计入候选；真实同名冲突继续拒绝。publicPreview与incremental-container覆盖异地cwd、H5/RN真实构建、增量与截图。
+
+## 轻量实际布局验收
+
+- `inspect_preview.layoutChecks` 在既有375 CSS像素视口、同次Chromium截图前读取实际border-box，最多32项；支持宽高、相对唯一容器的水平/垂直居中及0–20像素容差。百分比、auto、flex保持设计意图，检查实际结果；结果含有界issues、checked、truncated及durationMs，不增加固定模型请求或独立构建。
+- H5首次生成且轮次开始时无页面源码，在普通整页截图中复用当前设计链接的单份本地根缓存，最多遍历2000项/生成32项；只提取显式FIXED轴及设计坐标明确居中的文字，跳过隐藏层、整体切图子孙和FILL/HUG尺寸。根缓存缺失/无可用节点时保留显式检查入口，RN与局部交互依赖显式约束，不声称自动全页覆盖。
+- 实测尺寸/居中偏差进入已有有限交付修复流程；缺失、重复和不可见节点保留为覆盖缺口。新源码使旧诊断失效，相同不可变预览和参数复用截图及原失败结果。生成期定点截图保留整体检查欠账；最终整体检查仍不等于视觉通过。
+- Docker浏览器镜像需同步打包layout.mjs；服务端、浏览器协议和Skill一起部署。真实Chromium回归覆盖百分比父级变窄、flex收缩、装饰层旁文字偏移、正确弹性布局及有界协议。检查耗时单独记录，端到端提速需同稿同配置实测。
