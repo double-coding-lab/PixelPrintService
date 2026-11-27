@@ -302,11 +302,12 @@ test('子工具检查不能吞掉取消、存储或租约异常', async () => {
   }
 });
 
-test('主指令保留机械merge与按需全局复验，并声明真实screenshot基准与现有预览', () => {
+test('主指令区分按需语义重扫与最终组合布局验收，并声明真实截图基准', () => {
   const instructions = createGenerationInstructions('h5', 'https://figma.com/file/test');
   assert.match(instructions, /最终机械merge.*不深入复验子区域/);
-  assert.match(instructions, /全局单agent复验仅用户主动要求/);
-  assert.match(instructions, /完成末尾简短提示此选项/);
+  assert.match(instructions, /全量单Agent语义重扫仅用户主动要求/);
+  assert.match(instructions, /组合完成后仍须对最终修订做一次整体运行截图和轻量布局核对/);
+  assert.match(instructions, /复用有效局部证据/);
   assert.match(instructions, /首次出码前.*command=screenshot,nodeId=会话绑定根,scale=1/);
   assert.match(instructions, /design-reference根图及元数据.*不能用切图代替/);
   assert.match(instructions, /按设计版本复用或重建.*失败如实报告/);
