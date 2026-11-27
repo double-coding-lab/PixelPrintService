@@ -1,3 +1,4 @@
+import { createEditBuildRevision, editBuildKey, editBuildUnit } from './buildKey';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Transaction, type Sequelize } from 'sequelize';
 import type { StorageFileClient } from '@/hooks/tools/storage';
@@ -100,6 +101,8 @@ export function createEditService(
     readLimits: () => Limits;
     notify?: (sessionId: string, seq?: number) => void;
     cache?: PreviewCache;
+    /** 可信构建器版本注入；默认按随包模板与依赖锁确定，不接受请求参数。 */
+    buildRevision?: () => Promise<string>;
     assetCache?: ReturnType<typeof createEditAssetCache>;
     report?: (details: Record<string, unknown>) => void | Promise<void>;
   },
@@ -125,6 +128,7 @@ export function createEditService(
   }
   const cache =
     options.cache ?? createPreviewCache('.runtime/edit-previews', { ttlMs: EDIT_TTL_MS });
+  const buildRevision = options.buildRevision ?? createEditBuildRevision();
   const warm = options.run ? undefined : createWarmPreviewRunner();
   const assetCache = options.assetCache ?? (options.run ? undefined : createEditAssetCache());
   const files = detached ? undefined : createFileService(mysql, options.readLimits, options.notify);
@@ -242,10 +246,13 @@ export function createEditService(
       }
     }
   }
-  /** 不可变输出键按 editId/revision/job 隔离，旧 iframe 票据仍指向旧结果。 */
-  function key(record: EditRecord) {
-    return sha(
-      JSON.stringify([record.editId, record.revision, record.preview.job, record.entryPath]),
+  /** 内容相同可跨独立副本复用，旧 iframe 票据仍绑定原产物和活动副本。 */
+  async function key(record: EditRecord) {
+    return editBuildKey(
+      record,
+      [previewPrefix, record.ownerUserId, record.sessionId],
+      await buildRevision(),
+      limits(),
     );
   }
   /** 冻结的配置和二进制定位重建；不访问最新会话文件，不创建 D2cPreview。 */
@@ -284,17 +291,11 @@ export function createEditService(
         throw new Error('EDIT_INPUT_LIMIT');
       output.push({ path: file.path, content });
     }
-    const config = record.configSnapshot.config as
-      | { unit?: { outputUnit?: string; outputBase?: number } }
-      | undefined;
     const input: Parameters<typeof runPreviewBuild>[0] = {
       files: output,
       target: record.target,
       entryPath: record.entryPath!,
-      unit: {
-        outputUnit: record.target === 'h5' || config?.unit?.outputUnit === 'vw' ? 'vw' : 'px',
-        outputBase: Number(config?.unit?.outputBase ?? 750),
-      },
+      unit: editBuildUnit(record),
       signal,
     };
     progress('build');
@@ -354,6 +355,15 @@ export function createEditService(
           Date.parse(current.expiresAt) <= Date.now()
         )
           return;
+        progress('cache');
+        const cacheKey = await key(record);
+        signal.throwIfAborted();
+        if (await cache.has(cacheKey)) {
+          signal.throwIfAborted();
+          progress('publish');
+          await settle(record, { status: 'ready', key: cacheKey });
+          return;
+        }
         const built = await build(record, signal, progress);
         signal.throwIfAborted();
         progress('output');
@@ -369,10 +379,10 @@ export function createEditService(
         )
           return;
         progress('cache');
-        await cache.write(key(record), built);
+        await cache.write(cacheKey, built);
         signal.throwIfAborted();
         progress('publish');
-        await settle(record, { status: 'ready', key: key(record) });
+        await settle(record, { status: 'ready', key: cacheKey });
       })
       .catch(async (error: unknown) => {
         if (controller.signal.aborted || closed) {
