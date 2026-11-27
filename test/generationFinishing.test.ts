@@ -653,3 +653,20 @@ for (const scenario of [
       assert.equal(readReasoningDecision(saved?.checkpoint.channel_values)?.escalated, true);
   });
 }
+
+test('layout mismatches and truncated layout coverage cannot provide a finishing hint', () => {
+  for (const layout of [
+    { issues: [{ code: 'width_mismatch' }], truncated: false },
+    { issues: [], truncated: true },
+  ]) {
+    assert.equal(
+      evidence([
+        user(),
+        ...merge(),
+        ...pair('inspect_preview', { entryPath }, { ...captured(), layout }),
+        ...read(),
+      ]),
+      undefined,
+    );
+  }
+});

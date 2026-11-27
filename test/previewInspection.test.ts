@@ -226,7 +226,7 @@ test('同一源码修订的不同交互与聚焦计划使用独立截图缓存�
   const saved: string[] = [];
   const inspection = createPreviewInspection({
     service: service(),
-    eid: 'employee',
+    userId: 'employee',
     sessionId: 'session',
     signal: new AbortController().signal,
     assertLease: async () => {},
@@ -278,5 +278,116 @@ test('同一源码修订的不同交互与聚焦计划使用独立截图缓存�
     } as never),
   );
   assert.equal(captures, 2);
+  await inspection.close();
+});
+
+test('layout audit shares capture/cache, preserves explicit overrides, and only current mismatches enter delivery', async () => {
+  let captures = 0;
+  const inspection = createPreviewInspection({
+    service: service(),
+    userId: 'employee',
+    sessionId: 'session',
+    signal: new AbortController().signal,
+    assertLease: async () => {},
+    requireWholePage: true,
+    layoutChecks: async () => [{ selector: '#box', width: 80, tolerance: 3 }],
+    capture: async (input) => {
+      captures++;
+      assert.deepEqual(input.inspection?.layoutChecks, [
+        { selector: '#box', width: 100, tolerance: 3 },
+      ]);
+      return {
+        image: Buffer.from('image'),
+        mimeType: 'image/png',
+        width: 375,
+        height: 900,
+        errors: [],
+        missingAssets: [],
+        truncated: false,
+        layout: {
+          checked: 1,
+          durationMs: 1,
+          truncated: false,
+          issues: [{ code: 'width_mismatch', selector: '#box', expected: 100, actual: 40 }],
+        },
+      };
+    },
+  });
+  inspection.changed();
+  const options = { layoutChecks: [{ selector: '#box', width: 100 }] };
+  const result = JSON.parse(await inspection.tools.inspect(undefined, options));
+  assert.equal(result.layout.issues[0].actual, 40);
+  assert.equal(inspection.problems().length, 1);
+  inspection.changed();
+  assert.deepEqual(inspection.problems(), [], 'stale source evidence is invalidated');
+  await inspection.tools.inspect(undefined, options);
+  assert.equal(captures, 1, 'unchanged immutable preview reuses capture');
+  assert.equal(inspection.problems().length, 1, 'cached failures cannot become passes');
+  assert.equal(await inspection.tools.needsInspection(), false);
+  await inspection.close();
+});
+
+test('focused capture does not discharge initial-generation whole-page inspection', async () => {
+  let captures = 0;
+  const inspection = createPreviewInspection({
+    service: service(),
+    userId: 'employee',
+    sessionId: 'session',
+    signal: new AbortController().signal,
+    assertLease: async () => {},
+    requireWholePage: true,
+    capture: async () => {
+      captures++;
+      return {
+        image: Buffer.from('image'),
+        mimeType: 'image/png',
+        width: 375,
+        height: 900,
+        errors: [],
+        missingAssets: [],
+        truncated: false,
+      };
+    },
+  });
+  inspection.changed();
+  await inspection.tools.inspect(undefined, { focusSelector: '#button' });
+  assert.equal(await inspection.tools.needsInspection(), true);
+  await inspection.tools.inspect();
+  assert.equal(await inspection.tools.needsInspection(), false);
+  assert.equal(captures, 2);
+  await inspection.close();
+});
+
+test('partial/action-only capture cannot erase unresolved width evidence', async () => {
+  const inspection = createPreviewInspection({
+    service: service(),
+    userId: 'employee',
+    sessionId: 'session',
+    signal: new AbortController().signal,
+    assertLease: async () => {},
+    capture: async (input) => ({
+      image: Buffer.from('image'),
+      mimeType: 'image/png',
+      width: 375,
+      height: 900,
+      errors: [],
+      missingAssets: [],
+      truncated: false,
+      layout: {
+        checked: input.inspection?.layoutChecks?.length ?? 0,
+        durationMs: 1,
+        truncated: false,
+        issues: input.inspection?.layoutChecks?.length
+          ? [{ code: 'width_mismatch', selector: '#box', expected: 100, actual: 40 }]
+          : [],
+      },
+    }),
+  });
+  await inspection.tools.inspect(undefined, { layoutChecks: [{ selector: '#box', width: 100 }] });
+  assert.equal(inspection.problems().length, 1);
+  await inspection.tools.inspect(undefined, { focusSelector: '#other' });
+  assert.equal(inspection.problems().length, 1);
+  await inspection.tools.inspect(undefined, { focusSelector: '#other' });
+  assert.equal(inspection.problems().length, 1, 'cache hits also retain unrelated failures');
   await inspection.close();
 });
