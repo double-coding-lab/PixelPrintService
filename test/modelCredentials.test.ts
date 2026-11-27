@@ -617,6 +617,8 @@ test('团队手动及自动恢复只许原发起人，固定原模型修订及�
       usage: { requests: 3 },
     });
     const original = structuredClone(f.tables.D2cRun[0].modelSnapshot);
+    f.runtime.d2c.execution.maxTurns = 600;
+    f.runtime.d2c.execution.runTimeoutMs = 10800000;
     await f.service.save('employee-b', 'sk-later-b', {
       baseUrl: 'https://later.example.test/v1',
       modelName: 'later',
@@ -632,8 +634,16 @@ test('团队手动及自动恢复只许原发起人，固定原模型修订及�
     assert.equal(run.modelSnapshot.modelCredentialId, saved.credentialId);
     assert.equal(run.modelSnapshot.MODEL_BASE_URL, original.MODEL_BASE_URL);
     assert.equal(run.modelSnapshot.MODEL_NAME, original.MODEL_NAME);
-    assert.equal(run.modelSnapshot.maxTurns, original.maxTurns - (automatic ? 3 : 0));
-    assert.equal(run.modelSnapshot.runTimeoutMs, original.runTimeoutMs - (automatic ? 10000 : 0));
+    assert.equal(run.modelSnapshot.maxTurns, automatic ? original.maxTurns - 3 : 600);
+    assert.equal(
+      run.modelSnapshot.runTimeoutMs,
+      automatic ? original.runTimeoutMs - 10000 : 10800000,
+    );
+    assert.deepEqual(run.modelSnapshot, {
+      ...original,
+      maxTurns: automatic ? original.maxTurns - 3 : 600,
+      runTimeoutMs: automatic ? original.runTimeoutMs - 10000 : 10800000,
+    });
     assert.equal((await loadModelRun(f, resumed.runId)).ownerUserId, 'employee-b');
   }
 });

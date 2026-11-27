@@ -433,7 +433,13 @@ export function createMessageService(
             configRevision: workspace.configRevision,
             configSnapshot,
             modelSnapshot: recovery?.modelSnapshot ??
-              resumedModel ?? {
+              (resumedModel
+                ? {
+                    ...resumedModel,
+                    maxTurns: runtime.d2c.execution.maxTurns,
+                    runTimeoutMs: runtime.d2c.execution.runTimeoutMs,
+                  }
+                : null) ?? {
                 ...(modelCredentialId ? { modelCredentialId } : {}),
                 MODEL_BASE_URL: model.MODEL_BASE_URL,
                 MODEL_NAME: model.MODEL_NAME,
