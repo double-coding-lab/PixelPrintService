@@ -27,6 +27,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run check:templates
       - run: npm run prepare:images
+      - name: Keep unrelated Microsoft feed out of browser dependency setup
+        run: sudo -n python3 scripts/prepare-ci-apt.py
       - run: npm run prepare:preview
       - run: npm run typecheck
       - run: node --import tsx --test --test-concurrency=2 test/*.test.ts

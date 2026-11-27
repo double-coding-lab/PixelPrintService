@@ -15,11 +15,21 @@ trap 'rm -rf "$stage"' EXIT
 # Drain stdin before fetching: only the CI-produced dist archive is accepted.
 head -c 67108865 > "$stage/build.tgz"
 [[ $(wc -c < "$stage/build.tgz") -le 67108864 ]] || { echo 'Build archive too large' >&2; exit 2; }
-if [[ -n ${DEPLOY_GIT_PROXY:-} ]]; then
-  git -c "http.proxy=$DEPLOY_GIT_PROXY" fetch --no-tags origin main
-else
-  git fetch --no-tags origin main
-fi
+fetch_command=(git)
+[[ -z ${DEPLOY_GIT_PROXY:-} ]] || fetch_command+=(-c "http.proxy=$DEPLOY_GIT_PROXY")
+for attempt in 1 2 3; do
+  if "${fetch_command[@]}" fetch --no-tags origin main > "$stage/fetch.log" 2>&1; then
+    break
+  else
+    fetch_status=$?
+  fi
+  cat "$stage/fetch.log" >&2
+  if [[ $attempt == 3 ]] || ! grep -Eiq 'SSL_ERROR_SYSCALL|Could not resolve (host|proxy)|Failed to connect|Connection (timed out|reset)|RPC failed.*curl (5|6|7|18|28|35|52|55|56|92)( |:)' "$stage/fetch.log"; then
+    exit "$fetch_status"
+  fi
+  echo "Temporary Git transport failure; retrying fetch ($attempt/3)" >&2
+  sleep "$((attempt * 2))"
+done
 current=$(git rev-parse refs/remotes/origin/main)
 if [[ $release != "$current" ]]; then
   echo 'Skipped stale release: main has moved forward'
