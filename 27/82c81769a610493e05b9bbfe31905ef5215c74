@@ -1,0 +1,25 @@
+src/functions/d2c/edit/service.ts
+  s_e16f52fd1de115::t_108b7815ad5749 1,104-105,131,249-255,298,358-366,382,385
+.Knowledge/matchers/m-d2c-preview-editing.json
+  s_e16f52fd1de115::t_bdad4ad1e50592 31-34
+src/functions/d2c/edit/buildKey.ts
+  s_e16f52fd1de115::t_108b7815ad5749 2-26,28-32,36-38,40-75,77-91
+  s_e16f52fd1de115::t_f24143d8c42d87 33-35,76
+  s_e16f52fd1de115::t_c331bd10db9bad 39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.52-trip",
+  "base_commit_sha": "2782c81769a610493e05b9bbfe31905ef5215c74",
+  "prompts": {},
+  "sessions": {
+    "s_e16f52fd1de115": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c7b0-40f3-7e81-a139-8f8d612ae806",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Lands-1203 <61341868+Lands-1203@users.noreply.github.com>"
+    }
+  }
+}
