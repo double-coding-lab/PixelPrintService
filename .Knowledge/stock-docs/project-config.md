@@ -61,3 +61,5 @@ Figma Token 用 AES-256-GCM 加密保存。`activeKeyId` 选择当前加密材�
 - 默认Compose提供MySQL、Redis和本地文件；compose.external.yaml仅启动应用，连接部署方已有服务。Redis当前是单节点配置，MySQL没有证书配置入口；文件对接S3兼容接口，OSS等须先验证兼容操作。
 - compose.build-proxy.yaml仅向镜像构建传HTTP_PROXY/HTTPS_PROXY，运行时仍由network.proxyUrl显式选择Figma/GitHub代理。Docker基础镜像拉取由daemon/BuildKit配置；浏览器访问网站走独立入站链路。
 - publicUrl、DNS记录、HTTPS证书和OAuth回调按同一个公开来源配置；通配证书与DNS解析分别管理。可复制的部署步骤见[自主部署指南](../../docs/deployment/部署与配置.md)。
+
+自动部署对明确的Git临时连接错误有限重试，并在临时CI环境排除无关Microsoft软件源故障；配置、证书校验和失败保留边界见[自动部署排查](../../docs/deployment/自动部署.md#软件源与git连接失败)。

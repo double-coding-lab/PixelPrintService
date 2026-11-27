@@ -1,6 +1,6 @@
 ---
 id: project-config
-revision: 10
+revision: 11
 summary: "本地配置字段、模型预算、存储与生效时机"
 primary: config
 confidence: inferred
@@ -64,3 +64,5 @@ project.config.json、配置填写、运行配置、modelConfigs、contextBudget
 
 - Actions的DEPLOY_HOST/USER/PORT为部署变量，DEPLOY_SSH_KEY与DEPLOY_KNOWN_HOSTS保存在Secrets。服务器deploy.env选择Compose、实际Dockerfile和额外构建文件，git/build代理与应用运行代理分离。
 - 未配置部署主机时仅检查，PR不部署；历史数据库迁移仍先按SQL说明处理。详见[自动部署](../../docs/deployment/自动部署.md)。
+
+- CI浏览器依赖准备仅在临时Runner中停用未使用的packages.microsoft.com软件源，保留Ubuntu源和签名校验；服务端Git fetch按原DEPLOY_GIT_PROXY设置执行，明确的临时TLS/DNS/连接错误最多尝试三次，认证及其他错误立即停止。源码拉取全部失败时保留原应用，更新部署脚本须同步服务器受控安装副本。
